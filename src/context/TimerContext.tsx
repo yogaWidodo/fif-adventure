@@ -10,6 +10,7 @@ interface TimerContextValue {
   timerRemainingSeconds: number | null;
   timerStartedAt: string | null;
   eventId: string | null;
+  isExpired: boolean;
 }
 
 const defaultValue: TimerContextValue = {
@@ -17,6 +18,7 @@ const defaultValue: TimerContextValue = {
   timerRemainingSeconds: null,
   timerStartedAt: null,
   eventId: null,
+  isExpired: false,
 };
 
 const TimerContext = createContext<TimerContextValue>(defaultValue);
@@ -27,6 +29,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
   const [timerRemainingSeconds, setTimerRemainingSeconds] = useState<number | null>(null);
   const [timerStartedAt, setTimerStartedAt] = useState<string | null>(null);
   const [eventId, setEventId] = useState<string | null>(null);
+  const [isExpired, setIsExpired] = useState(false);
 
   useEffect(() => {
     // Admin users always stay idle — no subscription
@@ -79,9 +82,11 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
             return;
           }
           if (data) {
-            setTimerState((data.timer_state as TimerState) ?? 'idle');
+            const newState = (data.timer_state as TimerState) ?? 'idle';
+            setTimerState(newState);
             setTimerRemainingSeconds(data.timer_remaining_seconds ?? null);
             setTimerStartedAt(data.timer_started_at ?? null);
+            setIsExpired(newState === 'ended');
           }
         });
 
@@ -105,9 +110,11 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
             };
 
             if (row) {
-              setTimerState((row.timer_state as TimerState) ?? 'idle');
+              const newState = (row.timer_state as TimerState) ?? 'idle';
+              setTimerState(newState);
               setTimerRemainingSeconds(row.timer_remaining_seconds ?? null);
               setTimerStartedAt(row.timer_started_at ?? null);
+              setIsExpired(newState === 'ended');
             }
           },
         )
@@ -124,7 +131,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <TimerContext.Provider
-      value={{ timerState, timerRemainingSeconds, timerStartedAt, eventId }}
+      value={{ timerState, timerRemainingSeconds, timerStartedAt, eventId, isExpired }}
     >
       {children}
     </TimerContext.Provider>

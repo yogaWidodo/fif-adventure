@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import dynamic from 'next/dynamic';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import AuthGuard from '@/components/AuthGuard';
@@ -8,6 +9,11 @@ import QRCodeDisplay from '@/components/admin/QRCodeDisplay';
 import CSVImporter from '@/components/admin/CSVImporter';
 import EventSelector from '@/components/admin/EventSelector';
 import UsersTab from '@/components/admin/UsersTab';
+
+// Dynamically import chart components to avoid SSR issues with recharts
+const TopTeamsChart = dynamic(() => import('@/components/admin/AnalyticsCharts').then(m => m.TopTeamsChart), { ssr: false });
+const WahanaActivityChart = dynamic(() => import('@/components/admin/AnalyticsCharts').then(m => m.WahanaActivityChart), { ssr: false });
+const ScanTimelineChart = dynamic(() => import('@/components/admin/AnalyticsCharts').then(m => m.ScanTimelineChart), { ssr: false });
 import TeamsTabComponent from '@/components/admin/TeamsTab';
 import { generateBarcodeData } from '@/lib/auth';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -1421,44 +1427,6 @@ function AnalyticsTab() {
     }
   };
 
-  // Dynamically import recharts to avoid SSR issues
-  const [RechartsComponents, setRechartsComponents] = useState<{
-    BarChart: typeof import('recharts').BarChart;
-    Bar: typeof import('recharts').Bar;
-    XAxis: typeof import('recharts').XAxis;
-    YAxis: typeof import('recharts').YAxis;
-    CartesianGrid: typeof import('recharts').CartesianGrid;
-    Tooltip: typeof import('recharts').Tooltip;
-    ResponsiveContainer: typeof import('recharts').ResponsiveContainer;
-    LineChart: typeof import('recharts').LineChart;
-    Line: typeof import('recharts').Line;
-  } | null>(null);
-
-  useEffect(() => {
-    import('recharts').then(rc => {
-      setRechartsComponents({
-        BarChart: rc.BarChart,
-        Bar: rc.Bar,
-        XAxis: rc.XAxis,
-        YAxis: rc.YAxis,
-        CartesianGrid: rc.CartesianGrid,
-        Tooltip: rc.Tooltip,
-        ResponsiveContainer: rc.ResponsiveContainer,
-        LineChart: rc.LineChart,
-        Line: rc.Line,
-      });
-    });
-  }, []);
-
-  const chartTooltipStyle = {
-    backgroundColor: '#0a1a0f',
-    border: '1px solid rgba(212,175,55,0.3)',
-    borderRadius: '2px',
-    color: '#f4e4bc',
-    fontSize: '11px',
-    fontFamily: 'var(--font-content, sans-serif)',
-  };
-
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -1501,7 +1469,7 @@ function AnalyticsTab() {
         <StatCard count={stats.scoreLogs} label="Scores Given" sub="By LO" />
       </div>
 
-      {loading || !RechartsComponents ? (
+      {loading ? (
         <div className="flex items-center justify-center py-24 opacity-40">
           <Loader2 className="w-8 h-8 text-primary animate-spin mr-3" />
           <span className="font-adventure text-sm uppercase tracking-widest">Loading charts...</span>
@@ -1515,21 +1483,7 @@ function AnalyticsTab() {
             {topTeams.length === 0 ? (
               <p className="text-center text-sm italic opacity-30 py-8">No team data yet.</p>
             ) : (
-              <RechartsComponents.ResponsiveContainer width="100%" height={280}>
-                <RechartsComponents.BarChart data={topTeams} margin={{ top: 4, right: 16, left: 0, bottom: 40 }}>
-                  <RechartsComponents.CartesianGrid strokeDasharray="3 3" stroke="rgba(212,175,55,0.1)" />
-                  <RechartsComponents.XAxis
-                    dataKey="name"
-                    tick={{ fill: 'rgba(244,228,188,0.5)', fontSize: 10 }}
-                    angle={-35}
-                    textAnchor="end"
-                    interval={0}
-                  />
-                  <RechartsComponents.YAxis tick={{ fill: 'rgba(244,228,188,0.4)', fontSize: 10 }} />
-                  <RechartsComponents.Tooltip contentStyle={chartTooltipStyle} cursor={{ fill: 'rgba(212,175,55,0.05)' }} />
-                  <RechartsComponents.Bar dataKey="total_points" name="Points" fill="rgba(212,175,55,0.7)" radius={[2, 2, 0, 0]} />
-                </RechartsComponents.BarChart>
-              </RechartsComponents.ResponsiveContainer>
+              <TopTeamsChart data={topTeams} />
             )}
           </div>
 
@@ -1540,22 +1494,7 @@ function AnalyticsTab() {
             {wahanaActivity.length === 0 ? (
               <p className="text-center text-sm italic opacity-30 py-8">No location data yet.</p>
             ) : (
-              <RechartsComponents.ResponsiveContainer width="100%" height={280}>
-                <RechartsComponents.BarChart data={wahanaActivity} margin={{ top: 4, right: 16, left: 0, bottom: 40 }}>
-                  <RechartsComponents.CartesianGrid strokeDasharray="3 3" stroke="rgba(212,175,55,0.1)" />
-                  <RechartsComponents.XAxis
-                    dataKey="name"
-                    tick={{ fill: 'rgba(244,228,188,0.5)', fontSize: 10 }}
-                    angle={-35}
-                    textAnchor="end"
-                    interval={0}
-                  />
-                  <RechartsComponents.YAxis tick={{ fill: 'rgba(244,228,188,0.4)', fontSize: 10 }} />
-                  <RechartsComponents.Tooltip contentStyle={chartTooltipStyle} cursor={{ fill: 'rgba(212,175,55,0.05)' }} />
-                  <RechartsComponents.Bar dataKey="checkins" name="Check-ins" fill="rgba(212,175,55,0.6)" radius={[2, 2, 0, 0]} />
-                  <RechartsComponents.Bar dataKey="scored" name="Scored" fill="rgba(74,222,128,0.5)" radius={[2, 2, 0, 0]} />
-                </RechartsComponents.BarChart>
-              </RechartsComponents.ResponsiveContainer>
+              <WahanaActivityChart data={wahanaActivity} />
             )}
           </div>
 
@@ -1566,23 +1505,7 @@ function AnalyticsTab() {
             {scanTimeline.length === 0 ? (
               <p className="text-center text-sm italic opacity-30 py-8">No scan data yet.</p>
             ) : (
-              <RechartsComponents.ResponsiveContainer width="100%" height={220}>
-                <RechartsComponents.LineChart data={scanTimeline} margin={{ top: 4, right: 16, left: 0, bottom: 20 }}>
-                  <RechartsComponents.CartesianGrid strokeDasharray="3 3" stroke="rgba(212,175,55,0.1)" />
-                  <RechartsComponents.XAxis dataKey="hour" tick={{ fill: 'rgba(244,228,188,0.5)', fontSize: 10 }} />
-                  <RechartsComponents.YAxis tick={{ fill: 'rgba(244,228,188,0.4)', fontSize: 10 }} />
-                  <RechartsComponents.Tooltip contentStyle={chartTooltipStyle} />
-                  <RechartsComponents.Line
-                    type="monotone"
-                    dataKey="scans"
-                    name="Scans"
-                    stroke="rgba(212,175,55,0.8)"
-                    strokeWidth={2}
-                    dot={{ fill: 'rgba(212,175,55,0.8)', r: 3 }}
-                    activeDot={{ r: 5 }}
-                  />
-                </RechartsComponents.LineChart>
-              </RechartsComponents.ResponsiveContainer>
+              <ScanTimelineChart data={scanTimeline} />
             )}
           </div>
         </div>
@@ -1598,8 +1521,6 @@ function AuditTab({ activeEvent }: { activeEvent: Event | null }) {
   const [loading, setLoading] = useState(true);
   const [filterTeam, setFilterTeam] = useState('');
   const [filterLocation, setFilterLocation] = useState('');
-  const [filterFrom, setFilterFrom] = useState('');
-  const [filterTo, setFilterTo] = useState('');
 
   const fetchLogs = useCallback(async () => {
     setLoading(true);
@@ -1614,9 +1535,6 @@ function AuditTab({ activeEvent }: { activeEvent: Event | null }) {
       `)
       .order('created_at', { ascending: false })
       .limit(200);
-
-    if (filterFrom) query = query.gte('created_at', filterFrom);
-    if (filterTo) query = query.lte('created_at', filterTo);
 
     const { data } = await query;
 
@@ -1641,7 +1559,7 @@ function AuditTab({ activeEvent }: { activeEvent: Event | null }) {
 
     setLogs(filtered);
     setLoading(false);
-  }, [filterTeam, filterLocation, filterFrom, filterTo]);
+  }, [filterTeam, filterLocation]);
 
   useEffect(() => { fetchLogs(); }, [fetchLogs]);
 
@@ -1682,24 +1600,6 @@ function AuditTab({ activeEvent }: { activeEvent: Event | null }) {
               onChange={e => setFilterLocation(e.target.value)}
               placeholder="Filter by location..."
               className="w-full bg-transparent border-b border-primary/20 py-2 text-sm text-foreground focus:outline-none focus:border-primary/60 transition-colors placeholder:text-foreground/20"
-            />
-          </div>
-          <div>
-            <label className="block text-[10px] uppercase tracking-widest font-adventure text-foreground/40 mb-1">From</label>
-            <input
-              type="datetime-local"
-              value={filterFrom}
-              onChange={e => setFilterFrom(e.target.value)}
-              className="w-full bg-transparent border-b border-primary/20 py-2 text-sm text-foreground focus:outline-none focus:border-primary/60 transition-colors"
-            />
-          </div>
-          <div>
-            <label className="block text-[10px] uppercase tracking-widest font-adventure text-foreground/40 mb-1">To</label>
-            <input
-              type="datetime-local"
-              value={filterTo}
-              onChange={e => setFilterTo(e.target.value)}
-              className="w-full bg-transparent border-b border-primary/20 py-2 text-sm text-foreground focus:outline-none focus:border-primary/60 transition-colors"
             />
           </div>
         </div>

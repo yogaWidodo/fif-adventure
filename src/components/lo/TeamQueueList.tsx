@@ -1,0 +1,215 @@
+'use client';
+
+import { useState, useEffect, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Users, Clock, CheckCircle2, Circle, Compass } from 'lucide-react';
+import { supabase } from '@/lib/supabase';
+
+interface TeamQueueEntry {
+  scan_id: string;
+  team_id: string;
+  team_name: string;
+  scanned_at: string;
+  has_score: boolean;
+}
+
+interface TeamQueueListProps {
+  wahanaId: string;
+  /** Called when the list is refreshed — passes the current entries */
+  onQueueLoaded?: (entries: TeamQueueEntry[]) => void;
+  /** Refresh trigger: increment this value to force a re-fetch */
+  refreshTrigger?: number;
+  /** Currently selected team for score input */
+  selectedTeamId?: string | null;
+  onSelectTeam?: (teamId: string, teamName: string) => void;
+}
+
+export default function TeamQueueList({
+  wahanaId,
+  onQueueLoaded,
+  refreshTrigger = 0,
+  selectedTeamId,
+  onSelectTeam,
+}: TeamQueueListProps) {
+  const [entries, setEntries] = useState<TeamQueueEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const fetchQueue = useCallback(async () => {
+    setLoading(true);
+
+    // Query scans joined with teams, then check score_logs for each team
+    const { data: scans, error: scansError } = await supabase
+      .from('scans')
+      .select(`
+        id,
+        team_id,
+        scanned_at,
+        teams ( name )
+      `)
+      .eq('location_id', wahanaId)
+      .order('scanned_at', { ascending: true });
+
+    if (scansError || !scans) {
+      setLoading(false);
+      return;
+    }
+
+    // Fetch score_logs for this wahana to determine which teams already have scores
+    const { data: scoreLogs } = await supabase
+      .from('score_logs')
+      .select('team_id')
+      .eq('location_id', wahanaId);
+
+    const scoredTeamIds = new Set((scoreLogs ?? []).map((s) => s.team_id));
+
+    const queue: TeamQueueEntry[] = scans.map((scan) => ({
+      scan_id: scan.id,
+      team_id: scan.team_id,
+      // @ts-expect-error — Supabase join returns nested object
+      team_name: scan.teams?.name ?? 'Unknown Team',
+      scanned_at: scan.scanned_at,
+      has_score: scoredTeamIds.has(scan.team_id),
+    }));
+
+    setEntries(queue);
+    onQueueLoaded?.(queue);
+    setLoading(false);
+  }, [wahanaId, onQueueLoaded]);
+
+  useEffect(() => {
+    fetchQueue();
+  }, [fetchQueue, refreshTrigger]);
+
+  const formatTime = (isoString: string) => {
+    const date = new Date(isoString);
+    return date.toLocaleTimeString('id-ID', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    });
+  };
+
+  return (
+    <div className="adventure-card border-primary/20 bg-card/60 backdrop-blur-md overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center gap-3 px-6 py-4 border-b border-primary/20 bg-primary/5">
+        <Users className="w-4 h-4 text-primary" />
+        <h3 className="font-adventure text-sm uppercase tracking-[0.3em] text-primary">
+          Team Queue
+        </h3>
+        {!loading && (
+          <span className="ml-auto text-[10px] font-adventure text-primary/50 bg-primary/10 px-2 py-0.5 border border-primary/20">
+            {entries.length} team{entries.length !== 1 ? 's' : ''}
+          </span>
+        )}
+      </div>
+
+      {/* Column Headers */}
+      <div className="grid grid-cols-12 gap-2 px-6 py-3 border-b border-primary/10 bg-black/20">
+        <div className="col-span-5 font-adventure text-[9px] uppercase tracking-[0.3em] text-primary/50">
+          Team
+        </div>
+        <div className="col-span-4 font-adventure text-[9px] uppercase tracking-[0.3em] text-primary/50">
+          Check-in
+        </div>
+        <div className="col-span-3 font-adventure text-[9px] uppercase tracking-[0.3em] text-primary/50 text-right">
+          Score
+        </div>
+      </div>
+
+      {/* Rows */}
+      <div className="divide-y divide-primary/10 max-h-[400px] overflow-y-auto">
+        <AnimatePresence mode="popLayout">
+          {loading ? (
+            <motion.div
+              key="loading"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="flex flex-col items-center justify-center p-16 opacity-40"
+            >
+              <Compass className="w-8 h-8 text-primary animate-spin-slow mb-3" />
+              <p className="font-adventure text-xs tracking-widest italic">
+                Scanning the field...
+              </p>
+            </motion.div>
+          ) : entries.length === 0 ? (
+            <motion.div
+              key="empty"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="flex flex-col items-center justify-center p-16 opacity-40 text-center"
+            >
+              <Users className="w-8 h-8 text-primary/40 mb-3" />
+              <p className="font-adventure text-xs tracking-widest italic">
+                No teams have checked in yet
+              </p>
+            </motion.div>
+          ) : (
+            entries.map((entry, idx) => {
+              const isSelected = selectedTeamId === entry.team_id;
+              return (
+                <motion.button
+                  key={entry.scan_id}
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: idx * 0.04 }}
+                  onClick={() =>
+                    !entry.has_score && onSelectTeam?.(entry.team_id, entry.team_name)
+                  }
+                  disabled={entry.has_score}
+                  className={`w-full grid grid-cols-12 gap-2 px-6 py-4 items-center text-left transition-all
+                    ${entry.has_score
+                      ? 'opacity-50 cursor-default'
+                      : 'hover:bg-primary/5 cursor-pointer'
+                    }
+                    ${isSelected ? 'bg-primary/10 border-l-4 border-l-primary' : ''}
+                  `}
+                >
+                  {/* Team name */}
+                  <div className="col-span-5">
+                    <p
+                      className={`font-adventure text-sm tracking-tight truncate transition-colors ${
+                        isSelected ? 'text-primary' : 'text-foreground'
+                      }`}
+                    >
+                      {entry.team_name}
+                    </p>
+                  </div>
+
+                  {/* Check-in time */}
+                  <div className="col-span-4 flex items-center gap-1.5">
+                    <Clock className="w-3 h-3 text-primary/40 flex-shrink-0" />
+                    <span className="text-[11px] font-mono text-muted-foreground">
+                      {formatTime(entry.scanned_at)}
+                    </span>
+                  </div>
+
+                  {/* Score status */}
+                  <div className="col-span-3 flex justify-end">
+                    {entry.has_score ? (
+                      <div className="flex items-center gap-1.5">
+                        <CheckCircle2 className="w-4 h-4 text-green-500" />
+                        <span className="text-[10px] font-adventure uppercase tracking-widest text-green-400">
+                          Done
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1.5">
+                        <Circle className="w-4 h-4 text-primary/30" />
+                        <span className="text-[10px] font-adventure uppercase tracking-widest text-primary/40">
+                          Pending
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </motion.button>
+              );
+            })
+          )}
+        </AnimatePresence>
+      </div>
+    </div>
+  );
+}

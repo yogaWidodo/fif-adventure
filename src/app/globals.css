@@ -1,0 +1,177 @@
+@import "tailwindcss";
+
+@font-face {
+  font-family: "Adventure";
+  src: url("/fonts/Adventure.ttf") format("truetype");
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Adventure-Subtitles";
+  src: url("/fonts/AdventureSubtitles.ttf") format("truetype");
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Adventure-Subtitles";
+  src: url("/fonts/AdventureSubtitlesBold.ttf") format("truetype");
+  font-weight: bold;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Adventure-Subtitles";
+  src: url("/fonts/AdventureSubtitlesItalic-vJz9.ttf") format("truetype");
+  font-weight: normal;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Adventure-Subtitles";
+  src: url("/fonts/AdventureSubtitlesBoldItalic.ttf") format("truetype");
+  font-weight: bold;
+  font-style: italic;
+  font-display: swap;
+}
+
+@layer base {
+  :root {
+    --background: #121d17; /* Deep Jungle Dark */
+    --foreground: #e6dfc1; /* Aged Parchment */
+    
+    --card: #1c2e26;
+    --card-foreground: #d4b483;
+    
+    --primary: #d4af37; /* Gold */
+    --primary-foreground: #1c2e26;
+    
+    --secondary: #8b4513; /* Saddle Brown */
+    --secondary-foreground: #f4ece2;
+    
+    --accent: #e67e22; /* Torch Orange */
+    --accent-foreground: #ffffff;
+    
+    --muted: #2f4f4f;
+    --muted-foreground: #a9a9a9;
+    
+    --border: #4a3728;
+    --input: #4a3728;
+    --ring: #d4af37;
+    
+    --radius: 0.5rem;
+  }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-primary: var(--primary);
+  --color-secondary: var(--secondary);
+  --color-accent: var(--accent);
+  --color-border: var(--border);
+  --font-adventure: "Adventure", serif;
+  --font-content: "Adventure-Subtitles", "Inter", sans-serif;
+  
+  --animate-torch: torch-flicker 3s infinite ease-in-out;
+  --animate-fog: fog-drift 60s linear infinite;
+}
+
+@keyframes torch-flicker {
+  0%, 100% { 
+    filter: brightness(1) drop-shadow(0 0 10px rgba(230, 126, 34, 0.4)); 
+  }
+  50% { 
+    filter: brightness(1.2) drop-shadow(0 0 25px rgba(230, 126, 34, 0.6)); 
+  }
+}
+
+@keyframes fog-drift {
+  from { background-position: 0 0; }
+  to { background-position: 100% 100%; }
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-content);
+  background-image: 
+    radial-gradient(circle at 50% 50%, rgba(20, 40, 30, 0.8) 0%, rgba(10, 20, 15, 1) 100%),
+    url("https://www.transparenttextures.com/patterns/dark-leather.png");
+  min-height: 100vh;
+  margin: 0;
+  overflow-x: hidden;
+}
+
+h1, h2, h3, h4, .font-adventure {
+  font-family: var(--font-adventure);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.adventure-card {
+  background: linear-gradient(135deg, rgba(28, 46, 38, 0.9), rgba(15, 25, 20, 1));
+  backdrop-filter: blur(12px);
+  border: 1.5px solid rgba(212, 175, 55, 0.3);
+  box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 1);
+  border-radius: 8px;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.adventure-card:hover {
+  border-color: var(--primary);
+  transform: translateY(-4px);
+  box-shadow: 0 15px 50px -5px rgba(0, 0, 0, 1);
+}
+
+.gold-engraving {
+  background: linear-gradient(to bottom, #d4af37 0%, #a67c00 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.parchment {
+  background: #f4e4bc;
+  background-image: url("https://www.transparenttextures.com/patterns/cream-paper.png");
+  color: #2b1d0e;
+  box-shadow: inset 0 0 50px rgba(0,0,0,0.1), 0 5px 15px rgba(0,0,0,0.2);
+  border: 2px solid #d4b483;
+}
+
+.torch-glow {
+  animation: var(--animate-torch);
+}
+
+.jungle-overlay {
+  background-image: url("https://www.transparenttextures.com/patterns/foggy-birds.png");
+  animation: var(--animate-fog);
+  pointer-events: none;
+  opacity: 0.1;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0a140f;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #4a3728;
+  border-radius: 0px;
+  border: 2px solid #0a140f;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #d4af37;
+}

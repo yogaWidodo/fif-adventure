@@ -112,8 +112,9 @@ export async function GET(request: NextRequest): Promise<Response> {
 
     const header = ['Nama Tim', 'Slogan', 'Total Poin', 'Nama Kaptain'];
     const dataRows = (teams ?? []).map((team) => {
-      // users may be a single object or null depending on the join
-      const captainUser = team.users as { nama: string } | null;
+      // Supabase foreign key join returns an array; take the first element
+      const usersArr = team.users as { nama: string }[] | null;
+      const captainUser = Array.isArray(usersArr) ? usersArr[0] : null;
       return [
         team.name,
         team.slogan ?? '',

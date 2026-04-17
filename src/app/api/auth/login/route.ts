@@ -77,7 +77,8 @@ export async function POST(request: NextRequest) {
   }
 
   // Return session tokens + user info
-  return Response.json({
+  // Set sb-access-token as HttpOnly cookie so API routes can read it server-side
+  const response = Response.json({
     session: {
       access_token: authData.session.access_token,
       refresh_token: authData.session.refresh_token,
@@ -92,4 +93,17 @@ export async function POST(request: NextRequest) {
       event_id: userRecord.event_id ?? null,
     },
   });
-}
+
+  const isProduction = process.env.NODE_ENV === 'production';
+  const maxAge = authData.session.expires_in ?? 3600;
+
+  response.headers.append(
+    'Set-Cookie',
+    `sb-access-token=${authData.session.access_token}; Path=/; Max-Age=${maxAge}; SameSite=Lax${isProduction ? '; Secure' : ''}; HttpOnly`
+  );
+  response.headers.append(
+    'Set-Cookie',
+    `sb-refresh-token=${authData.session.refresh_token}; Path=/; Max-Age=${60 * 60 * 24 * 7}; SameSite=Lax${isProduction ? '; Secure' : ''}; HttpOnly`
+  );
+
+  return response;

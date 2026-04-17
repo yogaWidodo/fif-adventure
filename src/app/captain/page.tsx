@@ -3,15 +3,18 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Camera, BookOpen, Compass, ShieldAlert, Skull } from 'lucide-react';
+import { Camera, BookOpen, Compass, ShieldAlert, Skull, QrCode, X } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import { useAuth } from '@/context/AuthContext';
 import AuthGuard from '@/components/AuthGuard';
 import ExpeditionTimer from '@/components/ExpeditionTimer';
 import MapPanel from '@/components/MapPanel';
+import { generateTeamBarcode } from '@/lib/auth';
 
 export default function CaptainPortal() {
   const { logout, user } = useAuth();
   const [expeditionOver, setExpeditionOver] = useState(false);
+  const [showQR, setShowQR] = useState(false);
 
   return (
     <AuthGuard allowedRoles={['admin', 'kaptain', 'cocaptain']}>
@@ -24,6 +27,48 @@ export default function CaptainPortal() {
         <div className="fixed inset-0 z-10 jungle-overlay opacity-5 pointer-events-none" />
 
         <ExpeditionTimer eventId={user?.event_id} onExpired={() => setExpeditionOver(true)} />
+
+        {/* QR Code Modal */}
+        <AnimatePresence>
+          {showQR && user?.team_id && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[95] bg-black/80 backdrop-blur-md flex items-center justify-center p-6"
+              onClick={() => setShowQR(false)}
+            >
+              <motion.div
+                initial={{ scale: 0.85, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.85, opacity: 0 }}
+                transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+                className="adventure-card p-8 max-w-sm w-full text-center border-primary/30"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <button
+                  onClick={() => setShowQR(false)}
+                  className="absolute top-4 right-4 text-foreground/40 hover:text-foreground transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+                <p className="text-[10px] uppercase font-adventure tracking-widest text-primary opacity-60 mb-2">Team QR Code</p>
+                <h2 className="font-adventure text-2xl gold-engraving mb-6">{user.nama}</h2>
+                <div className="bg-white p-4 rounded-lg inline-block mb-6">
+                  <QRCodeSVG
+                    value={generateTeamBarcode(user.team_id)}
+                    size={200}
+                    level="M"
+                    includeMargin={false}
+                  />
+                </div>
+                <p className="text-xs text-foreground/40 italic font-content">
+                  Show this to the Location Officer to check in your team.
+                </p>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Expedition Over Overlay */}
         <AnimatePresence>
@@ -109,6 +154,22 @@ export default function CaptainPortal() {
               <p className="text-[10px] uppercase font-adventure tracking-widest text-foreground/40 italic">Check Global Rankings</p>
             </motion.button>
           </Link>
+
+          {/* Show Team QR Code */}
+          {user?.team_id && (
+            <motion.button
+              whileHover={{ scale: 1.05, translateY: -5 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => setShowQR(true)}
+              className="w-full adventure-card p-10 flex flex-col items-center justify-center text-center group border-primary/20 hover:border-primary transition-all shadow-[0_0_40px_rgba(0,0,0,0.5)]"
+            >
+              <div className="bg-primary/10 p-4 rounded-lg mb-6 group-hover:bg-primary/20 transition-colors">
+                <QrCode className="w-10 h-10 text-primary torch-glow" />
+              </div>
+              <h3 className="font-adventure text-2xl gold-engraving mb-2">Team Badge</h3>
+              <p className="text-[10px] uppercase font-adventure tracking-widest text-foreground/40 italic">Show QR to Location Officer</p>
+            </motion.button>
+          )}
 
           <div className="col-span-full mt-6">
             <div className="adventure-card p-6 bg-red-900/10 border-red-500/20 flex items-center gap-6 backdrop-blur-sm">

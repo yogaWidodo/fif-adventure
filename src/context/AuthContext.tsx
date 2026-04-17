@@ -122,6 +122,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = async () => {
     try {
+      // Clear server-side cookies
+      await fetch('/api/auth/logout', { method: 'POST' });
       await supabase.auth.signOut();
       setUser(null);
       localStorage.removeItem('fif_user');

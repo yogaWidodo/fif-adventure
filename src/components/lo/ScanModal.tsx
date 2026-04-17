@@ -24,10 +24,19 @@ import {
 import { supabase } from '@/lib/supabase';
 import { isTeamBarcode } from '@/lib/auth';
 
-// Helper: get current access token from Supabase session
+// Helper: get current access token from Supabase session or localStorage
 async function getAccessToken(): Promise<string | null> {
+  // 1. Try Supabase session first
   const { data: { session } } = await supabase.auth.getSession();
-  return session?.access_token ?? null;
+  if (session?.access_token) return session.access_token;
+
+  // 2. Fallback: localStorage (set during login)
+  if (typeof window !== 'undefined') {
+    const stored = localStorage.getItem('fif_access_token');
+    if (stored) return stored;
+  }
+
+  return null;
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────

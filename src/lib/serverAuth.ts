@@ -20,16 +20,16 @@ const supabaseAnonKey =
  * Returns null if neither is present.
  */
 export async function getAccessToken(request: NextRequest): Promise<string | null> {
-  // 1. Try cookie first
-  const cookieStore = await cookies();
-  const cookieToken = cookieStore.get('sb-access-token')?.value;
-  if (cookieToken) return cookieToken;
-
-  // 2. Fallback: Authorization header
+  // 1. Try Authorization header first (most reliable in production)
   const authHeader = request.headers.get('Authorization');
   if (authHeader?.startsWith('Bearer ')) {
     return authHeader.slice(7);
   }
+
+  // 2. Fallback: cookie
+  const cookieStore = await cookies();
+  const cookieToken = cookieStore.get('sb-access-token')?.value;
+  if (cookieToken) return cookieToken;
 
   return null;
 }

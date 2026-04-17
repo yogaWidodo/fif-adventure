@@ -109,6 +109,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           };
           setUser(userData);
           localStorage.setItem('fif_user', JSON.stringify(userData));
+          // Store access token for API calls (fallback when cookie not available)
+          localStorage.setItem('fif_access_token', data.session.access_token);
           return { success: true, role, eventTimerState: data.eventTimerState ?? undefined };
         }
       }
@@ -127,6 +129,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await supabase.auth.signOut();
       setUser(null);
       localStorage.removeItem('fif_user');
+      localStorage.removeItem('fif_access_token');
       router.push('/login');
     } catch (error) {
       console.error('Logout error:', error);

@@ -200,17 +200,10 @@ function EventsTab({ onEventChange }: { onEventChange: (e: Event | null) => void
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [newName, setNewName] = useState('');
-  const [startTime, setStartTime] = useState('');
-  const [endTime, setEndTime] = useState('');
+  const [newDurationHours, setNewDurationHours] = useState('');
+  const [newDurationMinutes, setNewDurationMinutes] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-
-  // Edit legacy start/end timer state
-  const [editingTimer, setEditingTimer] = useState<Event | null>(null);
-  const [editStart, setEditStart] = useState('');
-  const [editEnd, setEditEnd] = useState('');
-  const [editSaving, setEditSaving] = useState(false);
-  const [editError, setEditError] = useState('');
 
   // Duration input state per event (keyed by event id)
   const [durationHours, setDurationHours] = useState<Record<string, string>>({});
@@ -283,64 +276,30 @@ function EventsTab({ onEventChange }: { onEventChange: (e: Event | null) => void
 
   const handleCreate = async () => {
     if (!newName) return;
-    if (startTime && endTime && new Date(endTime) <= new Date(startTime)) {
-      setError('End time must be after start time');
-      return;
-    }
     setSaving(true);
     setError('');
-    const payload: Record<string, unknown> = { name: newName };
-    if (startTime) payload.start_time = new Date(startTime).toISOString();
-    if (endTime) payload.end_time = new Date(endTime).toISOString();
 
-    const { error: err } = await supabase.from('events').insert(payload);
+    const h = parseInt(newDurationHours || '0', 10);
+    const m = parseInt(newDurationMinutes || '0', 10);
+    const durationResult = validateDuration(h, m);
+    if (!durationResult.valid) {
+      setError(durationResult.error!);
+      setSaving(false);
+      return;
+    }
+
+    const { error: err } = await supabase.from('events').insert({
+      name: newName,
+      duration_seconds: durationResult.duration_seconds,
+    });
     if (err) { setError(err.message); } else {
       setShowModal(false);
-      setNewName(''); setStartTime(''); setEndTime('');
+      setNewName('');
+      setNewDurationHours('');
+      setNewDurationMinutes('');
       fetchEvents();
     }
     setSaving(false);
-  };
-
-  const openEditTimer = (event: Event) => {
-    setEditingTimer(event);
-    const toLocalDatetimeInput = (iso: string) => {
-      const d = new Date(iso);
-      const offset = d.getTimezoneOffset();
-      const local = new Date(d.getTime() - offset * 60 * 1000);
-      return local.toISOString().slice(0, 16);
-    };
-    setEditStart(event.start_time ? toLocalDatetimeInput(event.start_time) : '');
-    setEditEnd(event.end_time ? toLocalDatetimeInput(event.end_time) : '');
-    setEditError('');
-  };
-
-  const toUTCISOString = (localDatetimeStr: string): string => {
-    return new Date(localDatetimeStr).toISOString();
-  };
-
-  const handleSaveTimer = async () => {
-    if (!editingTimer) return;
-    if (editStart && editEnd && new Date(editEnd) <= new Date(editStart)) {
-      setEditError('End time must be after start time');
-      return;
-    }
-    setEditSaving(true);
-    setEditError('');
-    const { error: err } = await supabase
-      .from('events')
-      .update({
-        start_time: editStart ? toUTCISOString(editStart) : null,
-        end_time: editEnd ? toUTCISOString(editEnd) : null,
-      })
-      .eq('id', editingTimer.id);
-    if (err) {
-      setEditError(err.message);
-    } else {
-      setEditingTimer(null);
-      fetchEvents();
-    }
-    setEditSaving(false);
   };
 
   const toggleActive = async (event: Event) => {
@@ -625,87 +584,14 @@ function EventsTab({ onEventChange }: { onEventChange: (e: Event | null) => void
                         <p className="text-red-400 text-[10px] mb-3">{timerActionError[event.id]}</p>
                       )}
 
-                      {/* Legacy start/end time info */}
-                      <div className="space-y-1 mb-3">
-                        <p className="text-[10px] text-muted-foreground/60 flex items-center gap-1">
-                          <Clock className="w-3 h-3 shrink-0" />
-                          <span className="font-adventure uppercase tracking-wider opacity-60 mr-1">Start:</span>
-                          {event.start_time ? new Date(event.start_time).toLocaleString('id-ID') : <span className="opacity-30 italic">not set</span>}
-                        </p>
-                        <p className="text-[10px] text-muted-foreground/60 flex items-center gap-1">
-                          <Clock className="w-3 h-3 shrink-0" />
-                          <span className="font-adventure uppercase tracking-wider opacity-60 mr-1">End:</span>
-                          {event.end_time ? new Date(event.end_time).toLocaleString('id-ID') : <span className="opacity-30 italic">not set</span>}
-                        </p>
-                      </div>
-
-                      {/* Inline edit legacy timer form */}
-                      <AnimatePresence>
-                        {editingTimer?.id === event.id && (
-                          <motion.div
-                            initial={{ opacity: 0, height: 0 }}
-                            animate={{ opacity: 1, height: 'auto' }}
-                            exit={{ opacity: 0, height: 0 }}
-                            className="overflow-hidden mb-3"
-                          >
-                            <div className="border border-primary/20 rounded p-4 space-y-3 bg-primary/5">
-                              <div>
-                                <label className="block text-[10px] uppercase tracking-widest font-adventure text-primary/60 mb-1">Start Time</label>
-                                <input
-                                  type="datetime-local"
-                                  value={editStart}
-                                  onChange={e => setEditStart(e.target.value)}
-                                  className="w-full bg-transparent border-b border-primary/30 py-1.5 text-sm text-foreground focus:outline-none focus:border-primary transition-colors"
-                                />
-                              </div>
-                              <div>
-                                <label className="block text-[10px] uppercase tracking-widest font-adventure text-primary/60 mb-1">End Time</label>
-                                <input
-                                  type="datetime-local"
-                                  value={editEnd}
-                                  onChange={e => setEditEnd(e.target.value)}
-                                  className="w-full bg-transparent border-b border-primary/30 py-1.5 text-sm text-foreground focus:outline-none focus:border-primary transition-colors"
-                                />
-                              </div>
-                              {editError && <p className="text-red-400 text-[10px]">{editError}</p>}
-                              <div className="flex gap-2 pt-1">
-                                <button
-                                  onClick={handleSaveTimer}
-                                  disabled={editSaving}
-                                  className="flex-1 flex items-center justify-center gap-1 bg-primary/20 hover:bg-primary/30 border border-primary/40 text-primary text-[10px] font-adventure uppercase tracking-widest py-2 transition-all disabled:opacity-40"
-                                >
-                                  {editSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
-                                  Save
-                                </button>
-                                <button
-                                  onClick={() => setEditingTimer(null)}
-                                  className="px-3 border border-foreground/10 text-foreground/40 hover:text-foreground text-[10px] font-adventure uppercase tracking-widest py-2 transition-all"
-                                >
-                                  Cancel
-                                </button>
-                              </div>
-                            </div>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-
                       <div className="flex justify-between items-center pt-4 border-t border-primary/5">
                         <span className="text-[10px] uppercase font-adventure text-primary">● Active</span>
-                        <div className="flex items-center gap-3">
-                          <button
-                            onClick={() => editingTimer?.id === event.id ? setEditingTimer(null) : openEditTimer(event)}
-                            className="text-[10px] font-adventure uppercase tracking-widest text-primary/50 hover:text-primary transition-colors flex items-center gap-1"
-                          >
-                            <Clock className="w-3 h-3" />
-                            Legacy Timer
-                          </button>
-                          <button
-                            onClick={() => toggleActive(event)}
-                            className="text-[10px] font-adventure uppercase tracking-widest hover:text-primary underline underline-offset-4 transition-all"
-                          >
-                            Deactivate
-                          </button>
-                        </div>
+                        <button
+                          onClick={() => toggleActive(event)}
+                          className="text-[10px] font-adventure uppercase tracking-widest hover:text-primary underline underline-offset-4 transition-all"
+                        >
+                          Deactivate
+                        </button>
                       </div>
                     </motion.div>
                   );
@@ -716,18 +602,32 @@ function EventsTab({ onEventChange }: { onEventChange: (e: Event | null) => void
         </div>
       )}
 
-      <AdventureModal show={showModal} onClose={() => setShowModal(false)} title="New Event">
+      <AdventureModal show={showModal} onClose={() => { setShowModal(false); setError(''); }} title="New Event">
         <div className="space-y-5">
           <ModalField label="Event Name" value={newName} onChange={setNewName} placeholder="e.g. FIF Adventure 2025" />
           <div>
-            <label className="block text-[10px] uppercase tracking-widest font-adventure text-[#2b1d0e]/60 mb-2">Start Time</label>
-            <input type="datetime-local" value={startTime} onChange={e => setStartTime(e.target.value)}
-              className="w-full bg-transparent border-b-2 border-[#2b1d0e]/20 p-3 font-adventure text-[#2b1d0e] focus:outline-none focus:border-[#8b4513] transition-colors" />
-          </div>
-          <div>
-            <label className="block text-[10px] uppercase tracking-widest font-adventure text-[#2b1d0e]/60 mb-2">End Time</label>
-            <input type="datetime-local" value={endTime} onChange={e => setEndTime(e.target.value)}
-              className="w-full bg-transparent border-b-2 border-[#2b1d0e]/20 p-3 font-adventure text-[#2b1d0e] focus:outline-none focus:border-[#8b4513] transition-colors" />
+            <label className="block text-[10px] uppercase tracking-widest font-adventure text-[#2b1d0e]/60 mb-2">Duration</label>
+            <div className="flex items-center gap-3">
+              <div className="flex-1">
+                <label className="block text-[9px] uppercase tracking-widest font-adventure text-[#2b1d0e]/40 mb-1">Hours</label>
+                <input
+                  type="number" min={0} value={newDurationHours}
+                  onChange={e => setNewDurationHours(e.target.value)}
+                  placeholder="0"
+                  className="w-full bg-transparent border-b-2 border-[#2b1d0e]/20 p-2 font-adventure text-[#2b1d0e] focus:outline-none focus:border-[#8b4513] transition-colors text-center"
+                />
+              </div>
+              <span className="text-[#2b1d0e]/40 font-adventure text-lg mt-4">:</span>
+              <div className="flex-1">
+                <label className="block text-[9px] uppercase tracking-widest font-adventure text-[#2b1d0e]/40 mb-1">Minutes</label>
+                <input
+                  type="number" min={0} max={59} value={newDurationMinutes}
+                  onChange={e => setNewDurationMinutes(e.target.value)}
+                  placeholder="0"
+                  className="w-full bg-transparent border-b-2 border-[#2b1d0e]/20 p-2 font-adventure text-[#2b1d0e] focus:outline-none focus:border-[#8b4513] transition-colors text-center"
+                />
+              </div>
+            </div>
           </div>
           {error && <p className="text-red-500 text-xs">{error}</p>}
           <ModalSubmit label="Create Event" onClick={handleCreate} disabled={!newName || saving} loading={saving} />
@@ -751,12 +651,12 @@ function WahanaTab({ activeEvent }: { activeEvent: Event | null }) {
 
   const fetchWahanas = useCallback(async () => {
     setLoading(true);
-    const query = supabase
+    let query = supabase
       .from('locations')
       .select('*')
       .eq('type', 'wahana')
       .order('created_at', { ascending: false });
-    if (activeEvent) query.eq('event_id', activeEvent.id);
+    if (activeEvent) query = query.eq('event_id', activeEvent.id);
     const { data } = await query;
     setWahanas(data || []);
     setLoading(false);
@@ -889,21 +789,31 @@ function ChallengesTab({ activeEvent }: { activeEvent: Event | null }) {
   const [saving, setSaving] = useState(false);
   const [expandedQR, setExpandedQR] = useState<string | null>(null);
   const [limitError, setLimitError] = useState('');
+  const [allEvents, setAllEvents] = useState<EventListItem[]>([]);
+  const [newEventId, setNewEventId] = useState<string | null>(null);
 
   const fetchChallenges = useCallback(async () => {
     setLoading(true);
-    const query = supabase
+    let query = supabase
       .from('locations')
       .select('*')
       .eq('type', 'challenge')
       .order('created_at', { ascending: false });
-    if (activeEvent) query.eq('event_id', activeEvent.id);
+    if (activeEvent) query = query.eq('event_id', activeEvent.id);
     const { data } = await query;
     setChallenges(data || []);
     setLoading(false);
   }, [activeEvent]);
 
   useEffect(() => { fetchChallenges(); }, [fetchChallenges]);
+
+  useEffect(() => {
+    if (!showModal) return;
+    supabase.from('events').select('id, name, is_active, start_time, end_time')
+      .order('created_at', { ascending: false })
+      .then(({ data }) => setAllEvents(data || []));
+    setNewEventId(activeEvent?.id ?? null);
+  }, [showModal, activeEvent]);
 
   const handleCreate = async () => {
     if (!newName || !newPoints) return;
@@ -930,7 +840,7 @@ function ChallengesTab({ activeEvent }: { activeEvent: Event | null }) {
       barcode_data: barcodeData,
       is_active: true,
     };
-    if (activeEvent) payload.event_id = activeEvent.id;
+    if (newEventId) payload.event_id = newEventId;
 
     const { error } = await supabase.from('locations').insert(payload);
     if (!error) {
@@ -1036,7 +946,7 @@ function ChallengesTab({ activeEvent }: { activeEvent: Event | null }) {
         </div>
       )}
 
-      <AdventureModal show={showModal} onClose={() => setShowModal(false)} title="New Challenge">
+      <AdventureModal show={showModal} onClose={() => { setShowModal(false); setNewEventId(null); }} title="New Challenge">
         <div className="space-y-5">
           <ModalField label="Challenge Name" value={newName} onChange={setNewName} placeholder="e.g. Bridge of Doom" />
           <ModalField label="Description (optional)" value={newDesc} onChange={setNewDesc} placeholder="Describe this challenge..." />
@@ -1059,6 +969,11 @@ function ChallengesTab({ activeEvent }: { activeEvent: Event | null }) {
               ))}
             </div>
           </div>
+          <EventSelector
+            events={allEvents}
+            value={newEventId}
+            onChange={setNewEventId}
+          />
           {limitError && <p className="text-red-600 text-xs">{limitError}</p>}
           <ModalSubmit label="Create Challenge" onClick={handleCreate} disabled={!newName || !newPoints || saving} loading={saving} />
         </div>
@@ -1086,21 +1001,31 @@ function TreasureTab({ activeEvent }: { activeEvent: Event | null }) {
   const [claimTeams, setClaimTeams] = useState<{ team_name: string }[]>([]);
   const [editQuota, setEditQuota] = useState<{ id: string; value: string } | null>(null);
   const [limitError, setLimitError] = useState('');
+  const [allEvents, setAllEvents] = useState<EventListItem[]>([]);
+  const [newEventId, setNewEventId] = useState<string | null>(null);
 
   const fetchTreasures = useCallback(async () => {
     setLoading(true);
-    const query = supabase
+    let query = supabase
       .from('locations')
       .select('*')
       .eq('type', 'treasure')
       .order('created_at', { ascending: false });
-    if (activeEvent) query.eq('event_id', activeEvent.id);
+    if (activeEvent) query = query.eq('event_id', activeEvent.id);
     const { data } = await query;
     setTreasures(data || []);
     setLoading(false);
   }, [activeEvent]);
 
   useEffect(() => { fetchTreasures(); }, [fetchTreasures]);
+
+  useEffect(() => {
+    if (!showModal) return;
+    supabase.from('events').select('id, name, is_active, start_time, end_time')
+      .order('created_at', { ascending: false })
+      .then(({ data }) => setAllEvents(data || []));
+    setNewEventId(activeEvent?.id ?? null);
+  }, [showModal, activeEvent]);
 
   const fetchClaims = async (locationId: string) => {
     const { data } = await supabase
@@ -1137,7 +1062,7 @@ function TreasureTab({ activeEvent }: { activeEvent: Event | null }) {
       barcode_data: barcodeData,
       is_active: true,
     };
-    if (activeEvent) payload.event_id = activeEvent.id;
+    if (newEventId) payload.event_id = newEventId;
 
     const { error } = await supabase.from('locations').insert(payload);
     if (!error) {
@@ -1314,13 +1239,14 @@ function TreasureTab({ activeEvent }: { activeEvent: Event | null }) {
         </div>
       )}
 
-      <AdventureModal show={showModal} onClose={() => setShowModal(false)} title="New Treasure">
+      <AdventureModal show={showModal} onClose={() => { setShowModal(false); setNewEventId(null); }} title="New Treasure">
         <div className="space-y-5">
           <ModalField label="Treasure Name" value={newName} onChange={setNewName} placeholder="e.g. Golden Idol" />
           <ModalField label="Description (optional)" value={newDesc} onChange={setNewDesc} placeholder="Describe this treasure..." />
           <ModalField label="Points" value={newPoints} onChange={setNewPoints} placeholder="e.g. 200" type="number" />
           <ModalField label="Hint (optional)" value={newHint} onChange={setNewHint} placeholder="e.g. Look near the ancient tree..." />
           <ModalField label="Claim Quota" value={newQuota} onChange={setNewQuota} placeholder="e.g. 5" type="number" />
+          <EventSelector events={allEvents} value={newEventId} onChange={setNewEventId} />
           {limitError && <p className="text-red-600 text-xs">{limitError}</p>}
           <ModalSubmit label="Bury the Treasure" onClick={handleCreate} disabled={!newName || !newPoints || !newQuota || saving} loading={saving} />
         </div>

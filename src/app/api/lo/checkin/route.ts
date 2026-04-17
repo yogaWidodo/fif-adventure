@@ -104,7 +104,7 @@ export async function POST(request: NextRequest): Promise<Response> {
   // Requirement 6.8: reject if event is inactive or has ended
   const { data: event, error: eventError } = await supabase
     .from('events')
-    .select('is_active, end_time')
+    .select('is_active, end_time, timer_state')
     .eq('id', team.event_id)
     .single();
 
@@ -112,10 +112,14 @@ export async function POST(request: NextRequest): Promise<Response> {
     return Response.json({ error: 'Event tidak ditemukan' }, { status: 404 });
   }
 
+  // Use timer_state as primary source of truth; end_time as fallback only if timer not used
+  const timerEnded = event.timer_state === 'ended';
   const now = new Date();
-  const eventEnded = event.end_time ? new Date(event.end_time) <= now : false;
+  const legacyEnded = !event.timer_state || event.timer_state === 'idle'
+    ? (event.end_time ? new Date(event.end_time) <= now : false)
+    : false;
 
-  if (!event.is_active || eventEnded) {
+  if (!event.is_active || timerEnded || legacyEnded) {
     return Response.json({ error: 'Event sudah berakhir' }, { status: 403 });
   }
 

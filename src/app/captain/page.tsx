@@ -1,20 +1,27 @@
 'use client';
 
+import { useEffect } from 'react';
 import { useState } from 'react';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Camera, BookOpen, Compass, ShieldAlert, Skull, QrCode, X } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { useAuth } from '@/context/AuthContext';
+import { useTimerContext } from '@/context/TimerContext';
 import AuthGuard from '@/components/AuthGuard';
-import ExpeditionTimer from '@/components/ExpeditionTimer';
 import MapPanel from '@/components/MapPanel';
 import { generateTeamBarcode } from '@/lib/auth';
 
 export default function CaptainPortal() {
   const { logout, user } = useAuth();
+  const { isExpired } = useTimerContext();
   const [expeditionOver, setExpeditionOver] = useState(false);
   const [showQR, setShowQR] = useState(false);
+
+  // Sync expeditionOver with timer context
+  useEffect(() => {
+    if (isExpired) setExpeditionOver(true);
+  }, [isExpired]);
 
   return (
     <AuthGuard allowedRoles={['admin', 'kaptain', 'cocaptain']}>
@@ -25,8 +32,6 @@ export default function CaptainPortal() {
           style={{ backgroundImage: 'url("/images/jungle_hq_bg.png")', filter: 'brightness(0.2)' }}
         />
         <div className="fixed inset-0 z-10 jungle-overlay opacity-5 pointer-events-none" />
-
-        <ExpeditionTimer eventId={user?.event_id} onExpired={() => setExpeditionOver(true)} />
 
         {/* QR Code Modal */}
         <AnimatePresence>

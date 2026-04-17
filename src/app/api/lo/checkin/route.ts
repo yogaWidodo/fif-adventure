@@ -1,8 +1,8 @@
 // Requirements: 6.1, 6.2, 6.3, 6.4, 6.5, 6.8, 9.1, 9.2, 9.3, 9.4, 9.5
 
 import { createClient } from '@supabase/supabase-js';
-import { cookies } from 'next/headers';
 import type { NextRequest } from 'next/server';
+import { getAccessToken, isEventPaused } from '@/lib/serverAuth';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
 const supabaseAnonKey =
@@ -31,10 +31,8 @@ export async function POST(request: NextRequest): Promise<Response> {
   const barcodeData = barcode_data.trim();
   const locationId = location_id.trim();
 
-  // ── 2. Validate session from cookie ───────────────────────────────────────
-  // Requirement 9.4: validate sb-access-token before processing any request
-  const cookieStore = await cookies();
-  const accessToken = cookieStore.get('sb-access-token')?.value;
+  // ── 2. Validate session (cookie or Authorization header) ───────────────────
+  const accessToken = await getAccessToken(request);
 
   if (!accessToken) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 });
@@ -119,6 +117,12 @@ export async function POST(request: NextRequest): Promise<Response> {
 
   if (!event.is_active || eventEnded) {
     return Response.json({ error: 'Event sudah berakhir' }, { status: 403 });
+  }
+
+  // ── 6b. Block if event is paused ──────────────────────────────────────────
+  const paused = await isEventPaused(supabase, team.event_id);
+  if (paused) {
+    return Response.json({ error: 'Event sedang dijeda. Tunggu hingga event dilanjutkan.' }, { status: 403 });
   }
 
   // ── 7. Insert scan record ─────────────────────────────────────────────────

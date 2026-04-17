@@ -4,7 +4,6 @@ import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { Compass, Map as MapIcon, ShieldCheck, UserCircle, LogOut } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
-import ExpeditionTimer from '@/components/ExpeditionTimer';
 import { getRoleRedirect } from '@/lib/auth';
 import MapPanel from '@/components/MapPanel';
 
@@ -18,8 +17,6 @@ export default function Home() {
 
   return (
     <div className="relative min-h-screen flex flex-col items-center justify-center overflow-hidden bg-black selection:bg-primary selection:text-primary-foreground">
-      {/* Expedition countdown timer — visible to all users */}
-      <ExpeditionTimer />
       {/* Background Image with Overlay */}
       <div
         className="absolute inset-0 z-0 bg-cover bg-center transition-transform duration-[20s] animate-pulse"

@@ -18,7 +18,7 @@ interface User {
 interface AuthContextType {
   userRole: Role;
   user: User | null;
-  login: (nama: string, npk: string, noUnik: string) => Promise<{ success: boolean; role?: Role }>;
+  login: (nama: string, npk: string, noUnik: string) => Promise<{ success: boolean; role?: Role; eventTimerState?: string }>;
   logout: () => Promise<void>;
   isLoading: boolean;
 }
@@ -74,7 +74,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => subscription.unsubscribe();
   }, []);
 
-  const login = async (nama: string, npk: string, noUnik: string): Promise<{ success: boolean; role?: Role }> => {
+  const login = async (nama: string, npk: string, noUnik: string): Promise<{ success: boolean; role?: Role; eventTimerState?: string }> => {
     try {
       const response = await fetch('/api/auth/login', {
         method: 'POST',
@@ -109,7 +109,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           };
           setUser(userData);
           localStorage.setItem('fif_user', JSON.stringify(userData));
-          return { success: true, role };
+          return { success: true, role, eventTimerState: data.eventTimerState ?? undefined };
         }
       }
 

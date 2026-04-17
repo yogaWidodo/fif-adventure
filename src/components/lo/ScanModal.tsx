@@ -1,12 +1,12 @@
 'use client';
 
 /**
- * ScanModal — modal utama untuk scan QR code tim.
- * Mengintegrasikan kamera (html5-qrcode), deteksi alur otomatis,
- * dan state machine ScanFlowState.
+ * ScanModal — modal scan QR code tim untuk LO.
  *
- * Requirements: 5.3, 5.4, 5.5, 5.6, 6.1, 6.6, 6.7,
- *               7.1, 7.3, 7.7, 7.10, 8.1, 8.2, 8.3, 8.4, 8.5, 8.6
+ * Flow baru:
+ * 1. Kamera aktif → scan QR → kamera STOP setelah berhasil decode
+ * 2. Muncul pilihan: Check In atau Give Point
+ * 3. LO pilih → eksekusi → modal tutup otomatis jika berhasil
  */
 
 import { useEffect, useRef, useCallback, useId, useState } from 'react';
@@ -18,11 +18,17 @@ import {
   Loader2,
   CheckCircle2,
   AlertTriangle,
-  Info,
+  LogIn,
+  Star,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { isTeamBarcode } from '@/lib/auth';
-import ConfirmationModal from '@/components/lo/ConfirmationModal';
+
+// Helper: get current access token from Supabase session
+async function getAccessToken(): Promise<string | null> {
+  const { data: { session } } = await supabase.auth.getSession();
+  return session?.access_token ?? null;
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -36,12 +42,18 @@ interface ScanModalProps {
   onScoringSuccess: (teamName: string, score: number) => void;
 }
 
-type ScanFlowState =
-  | { phase: 'scanning' }
-  | { phase: 'checking'; barcodeData: string }
-  | { phase: 'confirming'; teamId: string; teamName: string; score: number }
-  | { phase: 'error'; message: string }
-  | { phase: 'done'; message: string };
+type Phase =
+  | 'scanning'                  // kamera aktif, menunggu scan
+  | 'choosing'                  // QR berhasil di-scan, pilih aksi
+  | 'submitting'                // sedang kirim ke API
+  | 'error'                     // error, bisa retry
+  | 'success';                  // berhasil, modal akan tutup
+
+interface TeamInfo {
+  id: string;
+  name: string;
+  barcodeData: string;
+}
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -54,21 +66,19 @@ export default function ScanModal({
   onCheckinSuccess,
   onScoringSuccess,
 }: ScanModalProps) {
-  // Stable unique ID for the scanner DOM element — avoids conflicts if multiple modals exist
   const reactId = useId();
   const scannerId = `qr-scanner-${reactId.replace(/:/g, '')}`;
 
-  const [flowState, setFlowState] = useState<ScanFlowState>({ phase: 'scanning' });
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [phase, setPhase] = useState<Phase>('scanning');
+  const [team, setTeam] = useState<TeamInfo | null>(null);
+  const [errorMsg, setErrorMsg] = useState('');
   const [cameraError, setCameraError] = useState<string | null>(null);
 
-  // Ref to the Html5Qrcode instance — avoids stale closure issues
   const scannerRef = useRef<import('html5-qrcode').Html5Qrcode | null>(null);
   const isScanningRef = useRef(false);
-  // Guard: prevent processing multiple scans simultaneously
   const processingRef = useRef(false);
 
-  // ── Camera lifecycle ────────────────────────────────────────────────────────
+  // ── Camera ──────────────────────────────────────────────────────────────────
 
   const stopCamera = useCallback(async () => {
     if (!scannerRef.current) return;
@@ -79,368 +89,234 @@ export default function ScanModal({
       }
       scannerRef.current.clear();
     } catch {
-      // Ignore errors during cleanup — camera may already be stopped
+      // ignore — camera may already be stopped
     }
     scannerRef.current = null;
   }, []);
 
   const startCamera = useCallback(async () => {
-    // Dynamically import to avoid SSR issues (html5-qrcode uses browser APIs)
     const { Html5Qrcode } = await import('html5-qrcode');
-
     const scanner = new Html5Qrcode(scannerId);
     scannerRef.current = scanner;
 
     try {
       await scanner.start(
         { facingMode: 'environment' },
-        {
-          fps: 10,
-          qrbox: { width: 250, height: 250 },
-          aspectRatio: 1.0,
-        },
+        { fps: 10, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0 },
         (decodedText) => {
-          // onScanSuccess — called each time a QR code is decoded
           if (!processingRef.current) {
             processingRef.current = true;
             handleQRCodeScanned(decodedText);
           }
         },
-        () => {
-          // onScanFailure — called on each frame without a QR code; intentionally ignored
-        }
+        () => { /* scan failure per frame — ignored */ }
       );
       isScanningRef.current = true;
       setCameraError(null);
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      const lower = message.toLowerCase();
-      const isPermissionDenied =
-        lower.includes('permission') ||
-        lower.includes('denied') ||
-        lower.includes('notallowed');
-      const isNotFound =
-        lower.includes('notfound') ||
-        lower.includes('no camera') ||
-        lower.includes('devicenotfound');
-
-      if (isPermissionDenied) {
-        setCameraError(
-          'Akses kamera ditolak. Izinkan akses kamera di pengaturan browser Anda, lalu muat ulang halaman.'
-        );
-      } else if (isNotFound) {
-        setCameraError(
-          'Kamera tidak ditemukan. Pastikan perangkat Anda memiliki kamera yang terhubung.'
-        );
+      const msg = err instanceof Error ? err.message : String(err);
+      const lower = msg.toLowerCase();
+      if (lower.includes('permission') || lower.includes('denied') || lower.includes('notallowed')) {
+        setCameraError('Akses kamera ditolak. Izinkan akses kamera di pengaturan browser, lalu muat ulang halaman.');
+      } else if (lower.includes('notfound') || lower.includes('no camera') || lower.includes('devicenotfound')) {
+        setCameraError('Kamera tidak ditemukan. Pastikan perangkat Anda memiliki kamera.');
       } else {
-        setCameraError(
-          `Kamera tidak dapat diakses. Periksa pengaturan browser Anda dan pastikan tidak ada aplikasi lain yang menggunakan kamera.`
-        );
+        setCameraError('Kamera tidak dapat diakses. Periksa pengaturan browser Anda.');
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scannerId]);
 
-  // ── Modal open/close effect ─────────────────────────────────────────────────
+  // ── Modal lifecycle ─────────────────────────────────────────────────────────
 
   useEffect(() => {
     if (!isOpen) {
-      // Reset state when modal closes
       stopCamera();
-      setFlowState({ phase: 'scanning' });
+      setPhase('scanning');
+      setTeam(null);
+      setErrorMsg('');
       setCameraError(null);
       processingRef.current = false;
       return;
     }
 
-    // Small delay to ensure the DOM element is mounted before initialising scanner
-    const timer = setTimeout(() => {
-      startCamera();
-    }, 150);
-
-    return () => {
-      clearTimeout(timer);
-    };
+    const timer = setTimeout(() => startCamera(), 150);
+    return () => clearTimeout(timer);
   }, [isOpen, startCamera, stopCamera]);
 
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      stopCamera();
-    };
+  useEffect(() => () => { stopCamera(); }, [stopCamera]);
+
+  // ── QR scan handler ─────────────────────────────────────────────────────────
+
+  const handleQRCodeScanned = useCallback(async (rawValue: string) => {
+    // Stop camera immediately after successful decode
+    await stopCamera();
+
+    if (!isTeamBarcode(rawValue)) {
+      setErrorMsg('QR code tidak valid. Pastikan Anda scan QR code tim.');
+      setPhase('error');
+      processingRef.current = false;
+      return;
+    }
+
+    // Look up team
+    const { data: teamRecord } = await supabase
+      .from('teams')
+      .select('id, name')
+      .eq('barcode_data', rawValue)
+      .maybeSingle();
+
+    if (!teamRecord) {
+      setErrorMsg('Tim tidak ditemukan.');
+      setPhase('error');
+      processingRef.current = false;
+      return;
+    }
+
+    setTeam({ id: teamRecord.id, name: teamRecord.name, barcodeData: rawValue });
+    setPhase('choosing');
+    processingRef.current = false;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stopCamera]);
 
-  // ── QR code scan handler ────────────────────────────────────────────────────
+  // ── Actions ─────────────────────────────────────────────────────────────────
 
-  const handleQRCodeScanned = useCallback(
-    async (rawValue: string) => {
-      // 1. Validate format — Requirement 8.6
-      if (!isTeamBarcode(rawValue)) {
-        setFlowState({
-          phase: 'error',
-          message:
-            'QR code tidak valid. Pastikan Anda scan QR code tim, bukan QR code wahana.',
-        });
-        processingRef.current = false;
-        return;
-      }
+  const handleCheckin = async () => {
+    if (!team) return;
+    setPhase('submitting');
 
-      const teamBarcodeData = rawValue;
-
-      // 2. Show loading — Requirement 8.5
-      setFlowState({ phase: 'checking', barcodeData: teamBarcodeData });
-
-      try {
-        // 3. Look up team first (need team_id for subsequent queries)
-        const teamResult = await supabase
-          .from('teams')
-          .select('id, name')
-          .eq('barcode_data', teamBarcodeData)
-          .maybeSingle();
-
-        const teamRecord = teamResult.data;
-
-        if (!teamRecord) {
-          setFlowState({ phase: 'error', message: 'Tim tidak ditemukan.' });
-          processingRef.current = false;
-          return;
-        }
-
-        // 4. Parallel query: scans and score_logs — Requirement 8.1
-        const [scanResult, scoreResult] = await Promise.all([
-          supabase
-            .from('scans')
-            .select('id')
-            .eq('location_id', locationId)
-            .eq('team_id', teamRecord.id)
-            .maybeSingle(),
-          supabase
-            .from('score_logs')
-            .select('id')
-            .eq('location_id', locationId)
-            .eq('team_id', teamRecord.id)
-            .maybeSingle(),
-        ]);
-
-        const scanRecord = scanResult.data;
-        const scoreRecord = scoreResult.data;
-
-        // 5. Route based on state — Requirements 8.2, 8.3, 8.4
-        if (!scanRecord) {
-          // Not checked in → run check-in flow — Requirement 8.2
-          await runCheckin(teamBarcodeData, teamRecord.name);
-        } else if (!scoreRecord) {
-          // Checked in, no score yet → show confirmation — Requirement 8.3
-          setFlowState({
-            phase: 'confirming',
-            teamId: teamRecord.id,
-            teamName: teamRecord.name,
-            score: locationPoints,
-          });
-          // processingRef stays true until user confirms or cancels
-        } else {
-          // Already scored → show done message — Requirement 8.4
-          setFlowState({
-            phase: 'done',
-            message: `Tim ${teamRecord.name} sudah selesai bermain di wahana ini.`,
-          });
-          processingRef.current = false;
-        }
-      } catch {
-        setFlowState({
-          phase: 'error',
-          message: 'Gagal terhubung ke server. Periksa koneksi internet Anda.',
-        });
-        processingRef.current = false;
-      }
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [locationId, locationPoints]
-  );
-
-  // ── Check-in flow ───────────────────────────────────────────────────────────
-
-  const runCheckin = async (barcodeData: string, teamName: string) => {
     try {
-      const response = await fetch('/api/lo/checkin', {
+      const token = await getAccessToken();
+      const res = await fetch('/api/lo/checkin', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ barcode_data: barcodeData, location_id: locationId }),
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ barcode_data: team.barcodeData, location_id: locationId }),
       });
 
-      if (response.ok) {
-        // Requirement 6.6: close modal and notify success
-        onCheckinSuccess(teamName);
-      } else if (response.status === 409) {
-        // Requirement 6.7: show error without closing modal
-        setFlowState({
-          phase: 'error',
-          message: 'Tim sudah check-in sebelumnya.',
-        });
-      } else if (response.status === 403) {
-        const data = await response.json().catch(() => ({}));
-        setFlowState({
-          phase: 'error',
-          message: (data as { error?: string }).error ?? 'Akses ditolak.',
-        });
-        // Per design: 403 → show error and close modal
-        setTimeout(() => onClose(), 2500);
+      if (res.ok) {
+        setPhase('success');
+        setTimeout(() => onCheckinSuccess(team.name), 800);
       } else {
-        const data = await response.json().catch(() => ({}));
-        setFlowState({
-          phase: 'error',
-          message: (data as { error?: string }).error ?? 'Gagal melakukan check-in.',
-        });
+        const data = await res.json().catch(() => ({}));
+        setErrorMsg(
+          res.status === 409
+            ? 'Tim sudah check-in sebelumnya.'
+            : (data as { error?: string }).error ?? 'Gagal melakukan check-in.'
+        );
+        setPhase('error');
       }
     } catch {
-      setFlowState({
-        phase: 'error',
-        message: 'Gagal terhubung ke server. Periksa koneksi internet Anda.',
-      });
-    } finally {
-      processingRef.current = false;
+      setErrorMsg('Gagal terhubung ke server.');
+      setPhase('error');
     }
   };
 
-  // ── Scoring flow ────────────────────────────────────────────────────────────
+  const handleGivePoint = async () => {
+    if (!team) return;
+    setPhase('submitting');
 
-  const handleConfirmScore = async () => {
-    if (flowState.phase !== 'confirming') return;
-    const { teamId, teamName, score } = flowState;
-
-    // Reconstruct barcode_data from teamId
-    const barcodeData = `fif-team-${teamId}`;
-
-    setIsSubmitting(true);
     try {
-      const response = await fetch('/api/lo/score', {
+      const token = await getAccessToken();
+      const res = await fetch('/api/lo/score', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ barcode_data: barcodeData, location_id: locationId }),
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ barcode_data: team.barcodeData, location_id: locationId }),
       });
 
-      if (response.ok) {
-        // Requirement 7.7: close all modals and notify success
-        onScoringSuccess(teamName, score);
-      } else if (response.status === 409) {
-        setFlowState({
-          phase: 'error',
-          message: 'Tim sudah mendapat poin di wahana ini.',
-        });
-      } else if (response.status === 403) {
-        const data = await response.json().catch(() => ({}));
-        setFlowState({
-          phase: 'error',
-          message: (data as { error?: string }).error ?? 'Akses ditolak.',
-        });
-        setTimeout(() => onClose(), 2500);
+      if (res.ok) {
+        setPhase('success');
+        setTimeout(() => onScoringSuccess(team.name, locationPoints), 800);
       } else {
-        const data = await response.json().catch(() => ({}));
-        setFlowState({
-          phase: 'error',
-          message: (data as { error?: string }).error ?? 'Gagal memberikan poin.',
-        });
+        const data = await res.json().catch(() => ({}));
+        setErrorMsg(
+          res.status === 409
+            ? 'Tim sudah mendapat poin di wahana ini.'
+            : res.status === 422
+            ? 'Tim belum check-in di wahana ini.'
+            : (data as { error?: string }).error ?? 'Gagal memberikan poin.'
+        );
+        setPhase('error');
       }
     } catch {
-      setFlowState({
-        phase: 'error',
-        message: 'Gagal terhubung ke server. Periksa koneksi internet Anda.',
-      });
-    } finally {
-      setIsSubmitting(false);
-      processingRef.current = false;
+      setErrorMsg('Gagal terhubung ke server.');
+      setPhase('error');
     }
   };
-
-  // Requirement 7.10: cancel confirmation → return to scanning
-  const handleCancelConfirm = () => {
-    setFlowState({ phase: 'scanning' });
-    processingRef.current = false;
-  };
-
-  // ── Retry scan ──────────────────────────────────────────────────────────────
 
   const handleRetry = () => {
-    setFlowState({ phase: 'scanning' });
+    setPhase('scanning');
+    setTeam(null);
+    setErrorMsg('');
     processingRef.current = false;
+    setTimeout(() => startCamera(), 150);
   };
 
-  // ── Close handler ───────────────────────────────────────────────────────────
-
   const handleClose = () => {
-    if (isSubmitting) return;
+    if (phase === 'submitting') return;
     onClose();
   };
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
-  const isConfirming = flowState.phase === 'confirming';
-
   return (
-    <>
-      <AnimatePresence>
-        {isOpen && (
+    <AnimatePresence>
+      {isOpen && (
+        <motion.div
+          key="scan-backdrop"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.2 }}
+          className="fixed inset-0 z-[200] flex items-center justify-center p-4"
+          style={{ background: 'rgba(5, 12, 8, 0.92)', backdropFilter: 'blur(10px)' }}
+          onClick={(e) => { if (e.target === e.currentTarget) handleClose(); }}
+        >
           <motion.div
-            key="scan-modal-backdrop"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.25 }}
-            className="fixed inset-0 z-[200] flex items-center justify-center p-4"
-            style={{
-              background: 'rgba(5, 12, 8, 0.9)',
-              backdropFilter: 'blur(10px)',
-            }}
-            onClick={(e) => {
-              if (e.target === e.currentTarget && !isSubmitting) handleClose();
-            }}
+            key="scan-card"
+            initial={{ scale: 0.92, opacity: 0, y: 20 }}
+            animate={{ scale: 1, opacity: 1, y: 0 }}
+            exit={{ scale: 0.92, opacity: 0, y: 20 }}
+            transition={{ duration: 0.25, ease: 'easeOut' }}
+            className="adventure-card w-full max-w-sm mx-auto overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
           >
-            <motion.div
-              key="scan-modal-content"
-              initial={{ scale: 0.92, opacity: 0, y: 24 }}
-              animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.92, opacity: 0, y: 24 }}
-              transition={{ duration: 0.3, ease: 'easeOut' }}
-              className="adventure-card w-full max-w-sm mx-auto overflow-hidden"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {/* Header */}
-              <div className="flex items-center justify-between px-6 py-4 border-b border-primary/20 bg-primary/5">
-                <div className="flex items-center gap-2">
-                  <Camera className="w-4 h-4 text-primary torch-glow" />
-                  <h2 className="font-adventure text-sm uppercase tracking-[0.3em] text-primary">
-                    Scan QR Code Tim
-                  </h2>
-                </div>
-                <button
-                  onClick={handleClose}
-                  disabled={isSubmitting}
-                  className="text-foreground/40 hover:text-foreground transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-                  aria-label="Tutup"
-                >
-                  <X className="w-4 h-4" />
-                </button>
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-primary/20 bg-primary/5">
+              <div className="flex items-center gap-2">
+                <Camera className="w-4 h-4 text-primary torch-glow" />
+                <h2 className="font-adventure text-sm uppercase tracking-[0.3em] text-primary">
+                  {phase === 'choosing' ? `Tim: ${team?.name}` : 'Scan QR Code Tim'}
+                </h2>
               </div>
+              <button
+                onClick={handleClose}
+                disabled={phase === 'submitting'}
+                className="text-foreground/40 hover:text-foreground transition-colors disabled:opacity-30"
+                aria-label="Tutup"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
 
-              {/* Camera viewfinder — Requirement 5.4 */}
+            {/* Camera viewfinder — only shown during scanning */}
+            {(phase === 'scanning') && (
               <div className="relative bg-black">
-                {/* The div that html5-qrcode mounts into */}
-                <div
-                  id={scannerId}
-                  className="w-full"
-                  style={{ minHeight: '280px' }}
-                />
+                <div id={scannerId} className="w-full" style={{ minHeight: '280px' }} />
 
-                {/* Viewfinder overlay — visual guide for aiming */}
-                {!cameraError && flowState.phase === 'scanning' && (
+                {/* Viewfinder overlay */}
+                {!cameraError && (
                   <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
                     <div className="relative w-52 h-52">
-                      {/* Corner brackets */}
                       <span className="absolute top-0 left-0 w-6 h-6 border-t-2 border-l-2 border-primary/80" />
                       <span className="absolute top-0 right-0 w-6 h-6 border-t-2 border-r-2 border-primary/80" />
                       <span className="absolute bottom-0 left-0 w-6 h-6 border-b-2 border-l-2 border-primary/80" />
                       <span className="absolute bottom-0 right-0 w-6 h-6 border-b-2 border-r-2 border-primary/80" />
-                      {/* Animated scan line */}
                       <motion.div
                         className="absolute left-1 right-1 h-0.5 bg-primary/60"
                         animate={{ top: ['10%', '90%', '10%'] }}
@@ -450,144 +326,138 @@ export default function ScanModal({
                   </div>
                 )}
 
-                {/* Camera error overlay — Requirement 5.6 */}
                 {cameraError && (
                   <div className="absolute inset-0 flex flex-col items-center justify-center p-6 bg-black/80 text-center gap-4">
                     <CameraOff className="w-10 h-10 text-red-400/80" />
-                    <p className="text-xs font-content text-red-300/80 leading-relaxed">
-                      {cameraError}
-                    </p>
+                    <p className="text-xs font-content text-red-300/80 leading-relaxed">{cameraError}</p>
                   </div>
                 )}
+              </div>
+            )}
 
-                {/* Checking overlay — Requirement 8.5 */}
-                {flowState.phase === 'checking' && (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/70 gap-3">
+            {/* Body — action area */}
+            <div className="px-6 py-5">
+              <AnimatePresence mode="wait">
+
+                {/* Scanning hint */}
+                {phase === 'scanning' && !cameraError && (
+                  <motion.p
+                    key="hint"
+                    initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                    className="text-[11px] font-content text-muted-foreground italic text-center opacity-60"
+                  >
+                    Arahkan kamera ke QR code tim
+                  </motion.p>
+                )}
+
+                {/* Choose action */}
+                {phase === 'choosing' && team && (
+                  <motion.div
+                    key="choosing"
+                    initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                    className="space-y-3"
+                  >
+                    <p className="text-[10px] uppercase font-adventure tracking-widest text-primary/50 text-center mb-4">
+                      Pilih aksi untuk tim ini
+                    </p>
+                    <button
+                      onClick={handleCheckin}
+                      className="w-full flex items-center gap-4 p-4 border border-primary/20 hover:border-primary hover:bg-primary/5 transition-all group"
+                    >
+                      <div className="bg-primary/10 p-2.5 rounded-lg group-hover:bg-primary/20 transition-colors">
+                        <LogIn className="w-5 h-5 text-primary" />
+                      </div>
+                      <div className="text-left">
+                        <p className="font-adventure text-sm text-primary tracking-wide">Check In</p>
+                        <p className="text-[10px] text-foreground/40 font-content">Tim tiba di wahana ini</p>
+                      </div>
+                    </button>
+                    <button
+                      onClick={handleGivePoint}
+                      className="w-full flex items-center gap-4 p-4 border border-primary/20 hover:border-primary hover:bg-primary/5 transition-all group"
+                    >
+                      <div className="bg-primary/10 p-2.5 rounded-lg group-hover:bg-primary/20 transition-colors">
+                        <Star className="w-5 h-5 text-primary" />
+                      </div>
+                      <div className="text-left">
+                        <p className="font-adventure text-sm text-primary tracking-wide">Give Point</p>
+                        <p className="text-[10px] text-foreground/40 font-content">{locationPoints} poin untuk tim ini</p>
+                      </div>
+                    </button>
+                    <button
+                      onClick={handleRetry}
+                      className="w-full text-center text-[10px] font-adventure uppercase tracking-[0.2em] text-foreground/30 hover:text-foreground/60 transition-colors pt-1"
+                    >
+                      Scan Ulang
+                    </button>
+                  </motion.div>
+                )}
+
+                {/* Submitting */}
+                {phase === 'submitting' && (
+                  <motion.div
+                    key="submitting"
+                    initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                    className="flex flex-col items-center gap-3 py-4"
+                  >
                     <Loader2 className="w-8 h-8 text-primary animate-spin" />
-                    <p className="text-xs font-adventure uppercase tracking-widest text-primary/80">
-                      Memeriksa...
+                    <p className="text-xs font-adventure uppercase tracking-widest text-primary/60">
+                      Memproses...
                     </p>
-                  </div>
+                  </motion.div>
                 )}
-              </div>
 
-              {/* Status area */}
-              <div className="px-6 py-4 min-h-[80px] flex flex-col justify-center">
-                <AnimatePresence mode="wait">
-                  {flowState.phase === 'scanning' && !cameraError && (
-                    <motion.p
-                      key="hint"
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      className="text-[11px] font-content text-muted-foreground italic text-center opacity-60"
+                {/* Success */}
+                {phase === 'success' && (
+                  <motion.div
+                    key="success"
+                    initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
+                    className="flex flex-col items-center gap-3 py-4"
+                  >
+                    <div className="bg-green-500/20 p-4 rounded-full border border-green-500/30">
+                      <CheckCircle2 className="w-8 h-8 text-green-400" />
+                    </div>
+                    <p className="font-adventure text-sm text-green-400 uppercase tracking-widest">Berhasil!</p>
+                  </motion.div>
+                )}
+
+                {/* Error */}
+                {phase === 'error' && (
+                  <motion.div
+                    key="error"
+                    initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                    className="flex flex-col items-center gap-3"
+                  >
+                    <div className="flex items-start gap-2 p-3 bg-red-900/30 border border-red-500/30 rounded-sm w-full">
+                      <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
+                      <p className="text-[11px] font-content text-red-300/90 leading-relaxed">{errorMsg}</p>
+                    </div>
+                    <button
+                      onClick={handleRetry}
+                      className="text-[10px] font-adventure uppercase tracking-[0.2em] text-primary/70 hover:text-primary transition-colors"
                     >
-                      Arahkan kamera ke QR code tim
-                    </motion.p>
-                  )}
+                      Scan Ulang
+                    </button>
+                  </motion.div>
+                )}
 
-                  {flowState.phase === 'error' && (
-                    <motion.div
-                      key="error"
-                      initial={{ opacity: 0, y: 6 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: 6 }}
-                      className="flex flex-col items-center gap-3"
-                    >
-                      <div className="flex items-start gap-2 p-3 bg-red-900/30 border border-red-500/30 rounded-sm w-full">
-                        <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
-                        <p className="text-[11px] font-content text-red-300/90 leading-relaxed">
-                          {flowState.message}
-                        </p>
-                      </div>
-                      <button
-                        onClick={handleRetry}
-                        className="text-[10px] font-adventure uppercase tracking-[0.2em] text-primary/70 hover:text-primary transition-colors"
-                      >
-                        Scan Ulang
-                      </button>
-                    </motion.div>
-                  )}
+              </AnimatePresence>
+            </div>
 
-                  {flowState.phase === 'done' && (
-                    <motion.div
-                      key="done"
-                      initial={{ opacity: 0, y: 6 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: 6 }}
-                      className="flex flex-col items-center gap-3"
-                    >
-                      <div className="flex items-start gap-2 p-3 bg-blue-900/30 border border-blue-500/30 rounded-sm w-full">
-                        <Info className="w-4 h-4 text-blue-400 flex-shrink-0 mt-0.5" />
-                        <p className="text-[11px] font-content text-blue-300/90 leading-relaxed">
-                          {flowState.message}
-                        </p>
-                      </div>
-                      <button
-                        onClick={handleRetry}
-                        className="text-[10px] font-adventure uppercase tracking-[0.2em] text-primary/70 hover:text-primary transition-colors"
-                      >
-                        Scan Tim Lain
-                      </button>
-                    </motion.div>
-                  )}
-
-                  {flowState.phase === 'confirming' && (
-                    <motion.div
-                      key="confirming"
-                      initial={{ opacity: 0, y: 6 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: 6 }}
-                      className="flex items-center gap-2 p-3 bg-green-900/20 border border-green-500/20 rounded-sm"
-                    >
-                      <CheckCircle2 className="w-4 h-4 text-green-400 flex-shrink-0" />
-                      <p className="text-[11px] font-content text-green-300/80">
-                        Tim ditemukan. Konfirmasi pemberian poin.
-                      </p>
-                    </motion.div>
-                  )}
-
-                  {flowState.phase === 'checking' && (
-                    <motion.p
-                      key="checking-hint"
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      className="text-[11px] font-content text-muted-foreground italic text-center opacity-60"
-                    >
-                      Sedang memeriksa status tim...
-                    </motion.p>
-                  )}
-                </AnimatePresence>
-              </div>
-
-              {/* Footer */}
+            {/* Footer */}
+            {phase !== 'success' && phase !== 'submitting' && (
               <div className="px-6 pb-5">
                 <button
                   onClick={handleClose}
-                  disabled={isSubmitting}
-                  className="w-full py-3 font-adventure text-xs uppercase tracking-[0.2em] border border-primary/20 text-foreground/50 hover:text-foreground hover:border-primary/40 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                  className="w-full py-3 font-adventure text-xs uppercase tracking-[0.2em] border border-primary/20 text-foreground/50 hover:text-foreground hover:border-primary/40 transition-all"
                 >
                   Tutup
                 </button>
               </div>
-            </motion.div>
+            )}
           </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* ConfirmationModal rendered inside ScanModal — Requirement 7.1 */}
-      {isOpen && isConfirming && flowState.phase === 'confirming' && (
-        <ConfirmationModal
-          isOpen={true}
-          teamName={flowState.teamName}
-          locationName={locationName}
-          score={flowState.score}
-          onConfirm={handleConfirmScore}
-          onCancel={handleCancelConfirm}
-          isSubmitting={isSubmitting}
-        />
+        </motion.div>
       )}
-    </>
+    </AnimatePresence>
   );
 }

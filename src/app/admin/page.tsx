@@ -159,7 +159,7 @@ export default function AdminDashboard() {
             <div className="pt-4 pb-2">
               <p className="text-[10px] uppercase tracking-widest text-foreground/30 font-adventure px-4 mb-2">Analytics</p>
             </div>
-            <SidebarLink icon={<BarChart3 className="w-5 h-5" />} label="HQ Insights" active={activeTab === 'analytics'} onClick={() => setActiveTab('analytics')} />
+            <SidebarLink icon={<BarChart3 className="w-5 h-5" />} label="Metrics" active={activeTab === 'analytics'} onClick={() => setActiveTab('analytics')} />
             <SidebarLink icon={<ScrollText className="w-5 h-5" />} label="Audit Log" active={activeTab === 'audit'} onClick={() => setActiveTab('audit')} />
           </nav>
 
@@ -1326,50 +1326,267 @@ function TreasureTab({ activeEvent }: { activeEvent: Event | null }) {
 // ─── Analytics Tab ────────────────────────────────────────────────────────────
 
 function AnalyticsTab() {
-  const [stats, setStats] = useState({ teams: 0, events: 0, wahana: 0, scans: 0 });
+  const [stats, setStats] = useState({ teams: 0, events: 0, wahana: 0, scans: 0, scoreLogs: 0 });
+  const [topTeams, setTopTeams] = useState<{ name: string; total_points: number }[]>([]);
+  const [wahanaActivity, setWahanaActivity] = useState<{ name: string; checkins: number; scored: number }[]>([]);
+  const [scanTimeline, setScanTimeline] = useState<{ hour: string; scans: number }[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
-    const fetchStats = async () => {
-      const [{ count: teamCount }, { count: eventCount }, { count: scanCount }, { count: locCount }] = await Promise.all([
+    const fetchAll = async () => {
+      setLoading(true);
+      const [
+        { count: teamCount },
+        { count: eventCount },
+        { count: scanCount },
+        { count: locCount },
+        { count: scoreCount },
+        { data: teamsData },
+        { data: locationsData },
+        { data: scansData },
+        { data: scoreLogsData },
+      ] = await Promise.all([
         supabase.from('teams').select('*', { count: 'exact', head: true }),
         supabase.from('events').select('*', { count: 'exact', head: true }),
         supabase.from('scans').select('*', { count: 'exact', head: true }),
         supabase.from('locations').select('*', { count: 'exact', head: true }),
+        supabase.from('score_logs').select('*', { count: 'exact', head: true }),
+        supabase.from('teams').select('name, total_points').order('total_points', { ascending: false }).limit(10),
+        supabase.from('locations').select('id, name').eq('is_active', true),
+        supabase.from('scans').select('location_id, scanned_at'),
+        supabase.from('score_logs').select('location_id'),
       ]);
-      setStats({ teams: teamCount || 0, events: eventCount || 0, wahana: locCount || 0, scans: scanCount || 0 });
+
+      setStats({
+        teams: teamCount || 0,
+        events: eventCount || 0,
+        wahana: locCount || 0,
+        scans: scanCount || 0,
+        scoreLogs: scoreCount || 0,
+      });
+
+      // Top teams chart
+      setTopTeams((teamsData || []).map(t => ({ name: t.name, total_points: t.total_points || 0 })));
+
+      // Wahana activity chart
+      if (locationsData && scansData && scoreLogsData) {
+        const checkinMap: Record<string, number> = {};
+        const scoreMap: Record<string, number> = {};
+        scansData.forEach(s => { checkinMap[s.location_id] = (checkinMap[s.location_id] || 0) + 1; });
+        scoreLogsData.forEach(s => { scoreMap[s.location_id] = (scoreMap[s.location_id] || 0) + 1; });
+        setWahanaActivity(
+          locationsData.map(loc => ({
+            name: loc.name.length > 12 ? loc.name.slice(0, 12) + '…' : loc.name,
+            checkins: checkinMap[loc.id] || 0,
+            scored: scoreMap[loc.id] || 0,
+          }))
+        );
+      }
+
+      // Scan timeline — group by hour
+      if (scansData && scansData.length > 0) {
+        const hourMap: Record<string, number> = {};
+        scansData.forEach(s => {
+          if (s.scanned_at) {
+            const hour = new Date(s.scanned_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', hour12: false }).slice(0, 5);
+            hourMap[hour] = (hourMap[hour] || 0) + 1;
+          }
+        });
+        const sorted = Object.entries(hourMap).sort(([a], [b]) => a.localeCompare(b));
+        setScanTimeline(sorted.map(([hour, scans]) => ({ hour, scans })));
+      }
+
+      setLoading(false);
     };
-    fetchStats();
+    fetchAll();
   }, []);
+
+  const handleExport = async (type: 'teams' | 'score_logs') => {
+    setExporting(true);
+    try {
+      const res = await fetch(`/api/export?type=${type}`);
+      if (!res.ok) throw new Error('Export failed');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = type === 'teams' ? 'teams-export.csv' : 'score-logs-export.csv';
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      // silently fail — user can retry
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  // Dynamically import recharts to avoid SSR issues
+  const [RechartsComponents, setRechartsComponents] = useState<{
+    BarChart: typeof import('recharts').BarChart;
+    Bar: typeof import('recharts').Bar;
+    XAxis: typeof import('recharts').XAxis;
+    YAxis: typeof import('recharts').YAxis;
+    CartesianGrid: typeof import('recharts').CartesianGrid;
+    Tooltip: typeof import('recharts').Tooltip;
+    ResponsiveContainer: typeof import('recharts').ResponsiveContainer;
+    LineChart: typeof import('recharts').LineChart;
+    Line: typeof import('recharts').Line;
+  } | null>(null);
+
+  useEffect(() => {
+    import('recharts').then(rc => {
+      setRechartsComponents({
+        BarChart: rc.BarChart,
+        Bar: rc.Bar,
+        XAxis: rc.XAxis,
+        YAxis: rc.YAxis,
+        CartesianGrid: rc.CartesianGrid,
+        Tooltip: rc.Tooltip,
+        ResponsiveContainer: rc.ResponsiveContainer,
+        LineChart: rc.LineChart,
+        Line: rc.Line,
+      });
+    });
+  }, []);
+
+  const chartTooltipStyle = {
+    backgroundColor: '#0a1a0f',
+    border: '1px solid rgba(212,175,55,0.3)',
+    borderRadius: '2px',
+    color: '#f4e4bc',
+    fontSize: '11px',
+    fontFamily: 'var(--font-content, sans-serif)',
+  };
 
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="p-10 space-y-12"
+      className="p-10 space-y-10"
     >
-      <header>
-        <h2 className="text-5xl font-adventure gold-engraving mb-2">Expedition Metrics</h2>
-        <p className="text-muted-foreground italic">"Knowing the numbers is half the survival."</p>
+      <header className="flex items-start justify-between">
+        <div>
+          <h2 className="text-5xl font-adventure gold-engraving mb-2">Expedition Metrics</h2>
+          <p className="text-muted-foreground italic text-sm">"Knowing the numbers is half the survival."</p>
+        </div>
+        {/* Export buttons */}
+        <div className="flex gap-3 mt-2">
+          <button
+            onClick={() => handleExport('teams')}
+            disabled={exporting}
+            className="flex items-center gap-2 bg-primary/20 hover:bg-primary/30 border border-primary/40 text-primary text-[10px] font-adventure uppercase tracking-widest px-4 py-2.5 transition-all disabled:opacity-50"
+          >
+            <FileText className="w-3.5 h-3.5" />
+            Export Teams
+          </button>
+          <button
+            onClick={() => handleExport('score_logs')}
+            disabled={exporting}
+            className="flex items-center gap-2 bg-primary/10 hover:bg-primary/20 border border-primary/30 text-primary/70 text-[10px] font-adventure uppercase tracking-widest px-4 py-2.5 transition-all disabled:opacity-50"
+          >
+            <ScrollText className="w-3.5 h-3.5" />
+            Export Score Logs
+          </button>
+        </div>
       </header>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatCard count={stats.events} label="Active Events" sub="Current deployment" />
-        <StatCard count={stats.teams} label="Expedition Teams" sub="Daring groups" />
-        <StatCard count={stats.wahana} label="Claimable Relics" sub="Locations found" />
-        <StatCard count={stats.scans} label="Total Discoveries" sub="Items secured" />
+      {/* Stat cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+        <StatCard count={stats.events} label="Events" sub="Total events" />
+        <StatCard count={stats.teams} label="Teams" sub="Expedition groups" />
+        <StatCard count={stats.wahana} label="Locations" sub="Active relics" />
+        <StatCard count={stats.scans} label="Check-ins" sub="Total scans" />
+        <StatCard count={stats.scoreLogs} label="Scores Given" sub="By LO" />
       </div>
 
-      <div className="adventure-card p-8 border-dashed border-primary/20 bg-primary/5 flex flex-col items-center justify-center text-center">
-        <h3 className="font-adventure text-xl mb-4 gold-engraving">End of Day Reporting</h3>
-        <p className="text-muted-foreground mb-8 max-w-md italic text-sm">Download the complete archive of expedition data for final verification and record-keeping.</p>
-        <a
-          href="/api/export?type=teams"
-          className="bg-primary text-primary-foreground px-10 py-4 font-adventure tracking-widest uppercase hover:scale-105 transition-transform inline-block"
-        >
-          Assemble Final Report
-        </a>
-      </div>
+      {loading || !RechartsComponents ? (
+        <div className="flex items-center justify-center py-24 opacity-40">
+          <Loader2 className="w-8 h-8 text-primary animate-spin mr-3" />
+          <span className="font-adventure text-sm uppercase tracking-widest">Loading charts...</span>
+        </div>
+      ) : (
+        <div className="space-y-8">
+          {/* Chart 1: Top 10 Teams by Points */}
+          <div className="adventure-card p-6">
+            <h3 className="font-adventure text-lg gold-engraving mb-1">Top 10 Teams by Points</h3>
+            <p className="text-[10px] text-muted-foreground/50 uppercase tracking-widest font-adventure mb-6">Leaderboard overview</p>
+            {topTeams.length === 0 ? (
+              <p className="text-center text-sm italic opacity-30 py-8">No team data yet.</p>
+            ) : (
+              <RechartsComponents.ResponsiveContainer width="100%" height={280}>
+                <RechartsComponents.BarChart data={topTeams} margin={{ top: 4, right: 16, left: 0, bottom: 40 }}>
+                  <RechartsComponents.CartesianGrid strokeDasharray="3 3" stroke="rgba(212,175,55,0.1)" />
+                  <RechartsComponents.XAxis
+                    dataKey="name"
+                    tick={{ fill: 'rgba(244,228,188,0.5)', fontSize: 10 }}
+                    angle={-35}
+                    textAnchor="end"
+                    interval={0}
+                  />
+                  <RechartsComponents.YAxis tick={{ fill: 'rgba(244,228,188,0.4)', fontSize: 10 }} />
+                  <RechartsComponents.Tooltip contentStyle={chartTooltipStyle} cursor={{ fill: 'rgba(212,175,55,0.05)' }} />
+                  <RechartsComponents.Bar dataKey="total_points" name="Points" fill="rgba(212,175,55,0.7)" radius={[2, 2, 0, 0]} />
+                </RechartsComponents.BarChart>
+              </RechartsComponents.ResponsiveContainer>
+            )}
+          </div>
+
+          {/* Chart 2: Check-ins & Scores per Wahana */}
+          <div className="adventure-card p-6">
+            <h3 className="font-adventure text-lg gold-engraving mb-1">Activity per Location</h3>
+            <p className="text-[10px] text-muted-foreground/50 uppercase tracking-widest font-adventure mb-6">Check-ins vs scores given per wahana</p>
+            {wahanaActivity.length === 0 ? (
+              <p className="text-center text-sm italic opacity-30 py-8">No location data yet.</p>
+            ) : (
+              <RechartsComponents.ResponsiveContainer width="100%" height={280}>
+                <RechartsComponents.BarChart data={wahanaActivity} margin={{ top: 4, right: 16, left: 0, bottom: 40 }}>
+                  <RechartsComponents.CartesianGrid strokeDasharray="3 3" stroke="rgba(212,175,55,0.1)" />
+                  <RechartsComponents.XAxis
+                    dataKey="name"
+                    tick={{ fill: 'rgba(244,228,188,0.5)', fontSize: 10 }}
+                    angle={-35}
+                    textAnchor="end"
+                    interval={0}
+                  />
+                  <RechartsComponents.YAxis tick={{ fill: 'rgba(244,228,188,0.4)', fontSize: 10 }} />
+                  <RechartsComponents.Tooltip contentStyle={chartTooltipStyle} cursor={{ fill: 'rgba(212,175,55,0.05)' }} />
+                  <RechartsComponents.Bar dataKey="checkins" name="Check-ins" fill="rgba(212,175,55,0.6)" radius={[2, 2, 0, 0]} />
+                  <RechartsComponents.Bar dataKey="scored" name="Scored" fill="rgba(74,222,128,0.5)" radius={[2, 2, 0, 0]} />
+                </RechartsComponents.BarChart>
+              </RechartsComponents.ResponsiveContainer>
+            )}
+          </div>
+
+          {/* Chart 3: Scan Timeline */}
+          <div className="adventure-card p-6">
+            <h3 className="font-adventure text-lg gold-engraving mb-1">Scan Activity Timeline</h3>
+            <p className="text-[10px] text-muted-foreground/50 uppercase tracking-widest font-adventure mb-6">Number of scans per hour during the event</p>
+            {scanTimeline.length === 0 ? (
+              <p className="text-center text-sm italic opacity-30 py-8">No scan data yet.</p>
+            ) : (
+              <RechartsComponents.ResponsiveContainer width="100%" height={220}>
+                <RechartsComponents.LineChart data={scanTimeline} margin={{ top: 4, right: 16, left: 0, bottom: 20 }}>
+                  <RechartsComponents.CartesianGrid strokeDasharray="3 3" stroke="rgba(212,175,55,0.1)" />
+                  <RechartsComponents.XAxis dataKey="hour" tick={{ fill: 'rgba(244,228,188,0.5)', fontSize: 10 }} />
+                  <RechartsComponents.YAxis tick={{ fill: 'rgba(244,228,188,0.4)', fontSize: 10 }} />
+                  <RechartsComponents.Tooltip contentStyle={chartTooltipStyle} />
+                  <RechartsComponents.Line
+                    type="monotone"
+                    dataKey="scans"
+                    name="Scans"
+                    stroke="rgba(212,175,55,0.8)"
+                    strokeWidth={2}
+                    dot={{ fill: 'rgba(212,175,55,0.8)', r: 3 }}
+                    activeDot={{ r: 5 }}
+                  />
+                </RechartsComponents.LineChart>
+              </RechartsComponents.ResponsiveContainer>
+            )}
+          </div>
+        </div>
+      )}
     </motion.div>
   );
 }

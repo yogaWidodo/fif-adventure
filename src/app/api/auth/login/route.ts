@@ -78,6 +78,17 @@ export async function POST(request: NextRequest) {
 
   // Return session tokens + user info
   // Set sb-access-token as HttpOnly cookie so API routes can read it server-side
+  // Also fetch event timer state so client can block login if event hasn't started
+  let eventTimerState: string | null = null;
+  if (userRecord.event_id) {
+    const { data: eventData } = await supabaseAdmin
+      .from('events')
+      .select('timer_state')
+      .eq('id', userRecord.event_id)
+      .single();
+    eventTimerState = eventData?.timer_state ?? null;
+  }
+
   const response = Response.json({
     session: {
       access_token: authData.session.access_token,
@@ -92,6 +103,7 @@ export async function POST(request: NextRequest) {
       team_id: userRecord.team_id ?? null,
       event_id: userRecord.event_id ?? null,
     },
+    eventTimerState,
   });
 
   const isProduction = process.env.NODE_ENV === 'production';

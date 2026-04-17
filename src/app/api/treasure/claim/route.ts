@@ -1,8 +1,8 @@
 // Requirements: 5.3, 5.4, 6.3, 9.3
 
 import { createClient } from '@supabase/supabase-js';
-import { cookies } from 'next/headers';
 import type { NextRequest } from 'next/server';
+import { getAccessToken } from '@/lib/serverAuth';
 
 interface ClaimResult {
   success: boolean;
@@ -35,8 +35,7 @@ export async function POST(request: NextRequest): Promise<Response> {
   }
 
   // ── 2. Validate session from cookie ───────────────────────────────────────
-  const cookieStore = await cookies();
-  const accessToken = cookieStore.get('sb-access-token')?.value;
+  const accessToken = await getAccessToken(request);
 
   if (!accessToken) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 });

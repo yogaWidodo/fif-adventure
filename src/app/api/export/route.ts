@@ -1,8 +1,8 @@
 // Requirements: 11.1, 11.2, 11.3, 11.4
 
 import { createClient } from '@supabase/supabase-js';
-import { cookies } from 'next/headers';
 import type { NextRequest } from 'next/server';
+import { getAccessToken } from '@/lib/serverAuth';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,8 +38,7 @@ export function buildCsv(rows: (string | number | null | undefined)[][]): string
 
 export async function GET(request: NextRequest): Promise<Response> {
   // ── 1. Validate session ────────────────────────────────────────────────────
-  const cookieStore = await cookies();
-  const accessToken = cookieStore.get('sb-access-token')?.value;
+  const accessToken = await getAccessToken(request);
 
   if (!accessToken) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 });

@@ -8,7 +8,6 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import AuthGuard from '@/components/AuthGuard';
-import ExpeditionTimer from '@/components/ExpeditionTimer';
 import MapPanel from '@/components/MapPanel';
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
@@ -114,8 +113,6 @@ export default function MemberPortal() {
           style={{ backgroundImage: 'url("/images/jungle_hq_bg.png")', filter: 'brightness(0.15) blur(2px)' }}
         />
         <div className="fixed inset-0 z-10 jungle-overlay opacity-5 pointer-events-none" />
-
-        <ExpeditionTimer eventId={user?.event_id} />
 
         <div className="relative z-20 w-full max-w-2xl px-4 pt-8 space-y-6">
 

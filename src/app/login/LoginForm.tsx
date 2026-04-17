@@ -26,6 +26,19 @@ export default function LoginForm() {
     const result = await login(nama, npk, noUnik);
 
     if (result.success && result.role) {
+      // Admin always goes to /admin — ignore redirect param
+      if (result.role === 'admin') {
+        router.push('/admin');
+        return;
+      }
+
+      // For non-admin: check event timer state
+      if (result.eventTimerState === 'idle') {
+        setError('The expedition has not started yet. Please wait for the event to begin.');
+        setIsSubmitting(false);
+        return;
+      }
+
       router.push(redirect ?? getRoleRedirect(result.role));
     } else {
       setError('Credentials rejected. The ancient archives do not recognize you.');

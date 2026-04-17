@@ -59,7 +59,6 @@ export default function ExpeditionTimer({ onExpired }: ExpeditionTimerProps) {
 
     if (timerState === 'running') {
       if (timerRemainingSeconds === null || timerStartedAt === null) {
-        // Not enough data yet — show null (loading)
         setTimeLeft(null);
         return;
       }
@@ -79,7 +78,6 @@ export default function ExpeditionTimer({ onExpired }: ExpeditionTimerProps) {
           setIsExpired(true);
           onExpired?.();
 
-          // Write timer_state = 'ended' to Supabase
           if (eventId) {
             supabase
               .from('events')
@@ -94,7 +92,6 @@ export default function ExpeditionTimer({ onExpired }: ExpeditionTimerProps) {
         }
       };
 
-      // Run immediately, then every second
       tick();
       const interval = setInterval(tick, 1000);
       return () => clearInterval(interval);
@@ -106,9 +103,14 @@ export default function ExpeditionTimer({ onExpired }: ExpeditionTimerProps) {
 
   return (
     <motion.div
+      drag
+      dragMomentum={false}
+      dragElastic={0}
       initial={{ y: -50, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
-      className="fixed top-6 right-6 z-[100] flex items-center gap-4"
+      whileDrag={{ scale: 1.03, cursor: 'grabbing' }}
+      style={{ cursor: 'grab' }}
+      className="fixed top-6 right-6 z-[100] flex items-center gap-4 select-none"
     >
       <div
         className={`adventure-card px-6 py-3 border-primary/40 backdrop-blur-xl flex items-center gap-4 shadow-[0_10px_40px_rgba(0,0,0,0.5)] transition-colors duration-1000 ${

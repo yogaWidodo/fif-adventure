@@ -135,7 +135,7 @@ export default function AdminDashboard() {
         <div className="absolute inset-0 z-10 jungle-overlay opacity-10 pointer-events-none" />
 
         {/* Sidebar */}
-        <aside className="relative z-20 w-72 bg-card/40 backdrop-blur-xl border-r border-primary/20 p-8 flex flex-col shadow-2xl overflow-y-auto">
+        <aside className="relative z-20 w-72 bg-card border-r border-primary/20 p-8 flex flex-col shadow-2xl overflow-y-auto">
           <div className="flex items-center gap-4 mb-10 px-2 group cursor-pointer">
             <div className="bg-primary/20 p-2 rounded-lg border border-primary/30">
               <Trophy className="text-primary w-8 h-8 transition-transform group-hover:rotate-12 torch-glow" />
@@ -202,6 +202,13 @@ function EventControlTab({
   const [saving, setSaving] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [error, setError] = useState('');
+  const [isSaved, setIsSaved] = useState(false);
+  const [isHovering, setIsHovering] = useState(false);
+
+  // Reset "Saved" state when any input changes
+  useEffect(() => {
+    setIsSaved(false);
+  }, [durationMinutes, gachaProb, mapUrl]);
 
   // Fetch from settings
   useEffect(() => {
@@ -227,6 +234,7 @@ function EventControlTab({
       for (const item of updates) {
         await supabase.from('settings').upsert(item);
       }
+      setIsSaved(true);
       onUpdate();
     } catch {
       setError('Gagal menyimpan settings');
@@ -385,8 +393,25 @@ function EventControlTab({
               </div>
             </div>
             {error && <p className="text-red-400 text-xs mt-4">{error}</p>}
-            <button onClick={handleUpdateSettings} disabled={saving} className="mt-8 w-full bg-primary/20 py-3 font-adventure text-primary border border-primary/40 hover:bg-primary/30 tracking-widest uppercase text-xs">
-              {saving ? 'Saving...' : 'Save Parameters'}
+            <button 
+              onClick={handleUpdateSettings} 
+              onMouseEnter={() => setIsHovering(true)}
+              onMouseLeave={() => setIsHovering(false)}
+              disabled={saving} 
+              className={`mt-8 w-full py-3 font-adventure border tracking-widest uppercase text-xs transition-all duration-300 ${
+                isSaved && !isHovering 
+                  ? 'bg-green-500/20 text-green-400 border-green-500/40' 
+                  : 'bg-primary/20 text-primary border-primary/40 hover:bg-primary/30'
+              }`}
+            >
+              {saving 
+                ? 'Saving...' 
+                : isHovering 
+                  ? 'Edit Parameter' 
+                  : isSaved 
+                    ? 'Saved' 
+                    : 'Save Parameters'
+              }
             </button>
           </div>
         </div>
@@ -1135,7 +1160,7 @@ function AdventureModal({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="absolute inset-0 bg-black/80 backdrop-blur-md"
+            className="absolute inset-0 bg-black/90"
           />
           <motion.div
             initial={{ opacity: 0, scale: 0.9, y: 20 }}

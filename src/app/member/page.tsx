@@ -133,7 +133,7 @@ export default function MemberPortal() {
         {/* Background */}
         <div
           className="fixed inset-0 z-0 bg-cover bg-center"
-          style={{ backgroundImage: 'url("/images/jungle_hq_bg.png")', filter: 'brightness(0.15) blur(2px)' }}
+          style={{ backgroundImage: 'url("/images/jungle_hq_bg.png")', filter: 'brightness(0.15)' }}
         />
         <div className="fixed inset-0 z-10 jungle-overlay opacity-5 pointer-events-none" />
 
@@ -145,7 +145,7 @@ export default function MemberPortal() {
             animate={{ opacity: 1, y: 0 }}
             className="text-center mb-2"
           >
-            <div className="inline-flex p-4 rounded-full bg-primary/10 border border-primary/20 backdrop-blur-md mb-4">
+            <div className="inline-flex p-4 rounded-full bg-primary/10 border border-primary/20 mb-4">
               <Compass className="w-10 h-10 text-primary torch-glow" />
             </div>
             <h1 className="font-adventure text-4xl gold-engraving tracking-widest">Expedition Log</h1>
@@ -468,7 +468,7 @@ export default function MemberPortal() {
         <nav className="fixed bottom-6 left-4 right-4 z-30 flex justify-center">
           <button
             onClick={logout}
-            className="adventure-card px-8 py-3 bg-card/60 backdrop-blur-xl border-red-500/20 font-adventure text-xs tracking-widest uppercase text-red-400/60 hover:text-red-400 transition-colors flex items-center gap-2"
+            className="adventure-card px-8 py-3 bg-card/90 border-red-500/20 font-adventure text-xs tracking-widest uppercase text-red-400/60 hover:text-red-400 transition-colors flex items-center gap-2"
           >
             <LogOut className="w-4 h-4" /> Leave Expedition
           </button>

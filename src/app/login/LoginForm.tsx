@@ -46,7 +46,7 @@ export default function LoginForm() {
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       {/* NPK Field */}
-      <div className="adventure-card p-6 bg-card/40 border-primary/10 backdrop-blur-xl">
+      <div className="adventure-card p-6 bg-card/90 border-primary/10">
         <div className="flex items-center gap-3 mb-4">
           <Hash className="w-4 h-4 text-primary" />
           <label htmlFor="npk" className="text-[10px] uppercase tracking-widest font-adventure text-primary">
@@ -66,7 +66,7 @@ export default function LoginForm() {
       </div>
 
       {/* Birth Date Field */}
-      <div className="adventure-card p-6 bg-card/40 border-primary/10 backdrop-blur-xl">
+      <div className="adventure-card p-6 bg-card/90 border-primary/10">
         <div className="flex items-center gap-3 mb-4">
           <Calendar className="w-4 h-4 text-primary" />
           <label htmlFor="birthDate" className="text-[10px] uppercase tracking-widest font-adventure text-primary">

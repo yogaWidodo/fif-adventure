@@ -261,7 +261,7 @@ export default function ActivityDashboard({
               className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[300] w-full max-w-sm px-4"
             >
               <div
-                className={`flex items-start gap-3 p-4 border rounded-sm backdrop-blur-sm shadow-xl
+                className={`flex items-start gap-3 p-4 border rounded-sm shadow-xl
                   ${toast.type === 'success'
                     ? 'bg-green-900/80 border-green-500/40'
                     : 'bg-red-900/80 border-red-500/40'

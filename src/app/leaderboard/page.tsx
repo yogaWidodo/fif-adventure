@@ -132,7 +132,7 @@ export default function LeaderboardPage() {
               initial={{ y: -50, opacity: 0, x: '-50%' }}
               animate={{ y: 0, opacity: 1, x: '-50%' }}
               exit={{ y: -50, opacity: 0, x: '-50%' }}
-              className="fixed top-8 left-1/2 adventure-card p-6 flex items-center gap-6 bg-accent/20 z-50 border-accent/40 backdrop-blur-xl shadow-[0_0_50px_rgba(230,126,34,0.3)]"
+              className="fixed top-8 left-1/2 adventure-card p-6 flex items-center gap-6 bg-accent/30 z-50 border-accent/40 shadow-lg"
             >
               <div className="bg-accent p-3 rounded-none torch-glow">
                 <Flame className="w-6 h-6 text-white" />
@@ -151,7 +151,7 @@ export default function LeaderboardPage() {
         </AnimatePresence>
 
         {/* Leaderboard Table */}
-        <div className="adventure-card border-primary/20 bg-card/60 backdrop-blur-md shadow-2xl overflow-hidden">
+        <div className="adventure-card border-primary/20 bg-card/90 shadow-2xl overflow-hidden">
           <div className="grid grid-cols-12 gap-4 px-8 py-5 border-b border-primary/20 bg-primary/5">
             <div className="col-span-2 font-adventure text-[10px] uppercase tracking-[0.3em] text-primary">Rank</div>
             <div className="col-span-7 font-adventure text-[10px] uppercase tracking-[0.3em] text-primary">Expedition Group</div>

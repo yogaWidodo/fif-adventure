@@ -25,8 +25,7 @@ export default function PauseModal(): React.JSX.Element | null {
         transition={{ duration: 0.4, ease: 'easeInOut' }}
         className="fixed inset-0 z-[200] flex items-center justify-center"
         style={{
-          background: 'rgba(5, 12, 8, 0.85)',
-          backdropFilter: 'blur(8px)',
+          background: 'rgba(5, 12, 8, 0.95)',
         }}
       >
         <motion.div

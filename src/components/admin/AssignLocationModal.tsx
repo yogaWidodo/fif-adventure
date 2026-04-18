@@ -137,13 +137,13 @@ export default function AssignLocationModal({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={!isLoading ? onClose : undefined}
-            className="absolute inset-0 bg-black/80 backdrop-blur-md"
+            className="absolute inset-0 bg-black/90"
           />
           <motion.div
             initial={{ opacity: 0, scale: 0.9, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.9, y: 20 }}
-            className="relative w-full max-w-lg bg-card/95 backdrop-blur-xl border border-primary/30 p-8 max-h-[90vh] overflow-y-auto"
+            className="relative w-full max-w-lg bg-card border border-primary/30 p-8 max-h-[90vh] overflow-y-auto"
           >
             {!isLoading && (
               <button

@@ -19,7 +19,7 @@ export default function Home() {
     <div className="relative min-h-screen flex flex-col items-center justify-center overflow-hidden bg-black selection:bg-primary selection:text-primary-foreground">
       {/* Background Image with Overlay */}
       <div
-        className="absolute inset-0 z-0 bg-cover bg-center transition-transform duration-[20s] animate-pulse"
+        className="absolute inset-0 z-0 bg-cover bg-center"
         style={{
           backgroundImage: 'url("/images/expedition_map_bg.png")',
           filter: 'brightness(0.3) contrast(1.2)'
@@ -37,7 +37,7 @@ export default function Home() {
           transition={{ duration: 0.8 }}
           className="mb-8"
         >
-          <div className="inline-flex items-center justify-center p-4 mb-6 rounded-full bg-primary/10 border border-primary/20 backdrop-blur-md">
+          <div className="inline-flex items-center justify-center p-4 mb-6 rounded-full bg-primary/10 border border-primary/20">
             <Compass className="w-12 h-12 text-primary torch-glow" />
           </div>
           <h1 className="text-5xl md:text-7xl font-adventure mb-4 tracking-[0.2em] gold-engraving uppercase">
@@ -52,7 +52,7 @@ export default function Home() {
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ delay: 0.5, duration: 0.5 }}
-          className="flex flex-col sm:flex-row gap-6 mt-12 bg-black/40 p-8 backdrop-blur-md border border-white/5 rounded-none"
+          className="flex flex-col sm:flex-row gap-6 mt-12 bg-black/60 p-8 border border-white/5 rounded-none"
         >
           {!userRole ? (
             <Link href="/login">
@@ -77,7 +77,7 @@ export default function Home() {
           )}
 
           <Link href="/leaderboard">
-            <button className="px-10 py-5 border-2 border-primary/40 text-primary rounded-none font-adventure text-lg tracking-widest backdrop-blur-md transition-all hover:border-primary hover:bg-primary/10 hover:text-white uppercase group">
+            <button className="px-10 py-5 border-2 border-primary/40 text-primary rounded-none font-adventure text-lg tracking-widest transition-all hover:border-primary hover:bg-primary/10 hover:text-white uppercase group">
               <span className="flex items-center gap-3">
                 <MapIcon className="w-6 h-6 group-hover:rotate-12 transition-transform" />
                 Hall Of Records              

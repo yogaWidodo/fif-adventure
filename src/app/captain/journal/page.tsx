@@ -63,7 +63,7 @@ export default function TeamJournal() {
         {/* Immersive Background */}
         <div 
           className="fixed inset-0 z-0 bg-cover bg-center opacity-20"
-          style={{ backgroundImage: 'url("/images/expedition_map_bg.png")', filter: 'brightness(0.3) blur(4px)' }}
+          style={{ backgroundImage: 'url("/images/expedition_map_bg.png")', filter: 'brightness(0.3)' }}
         />
         <div className="fixed inset-0 z-10 jungle-overlay opacity-5 pointer-events-none" />
 
@@ -71,7 +71,7 @@ export default function TeamJournal() {
           <motion.div
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="bg-primary/20 p-4 rounded-full w-fit mx-auto mb-6 border border-primary/20 backdrop-blur-md"
+            className="bg-primary/20 p-4 rounded-full w-fit mx-auto mb-6 border border-primary/20"
           >
             <Book className="text-primary w-10 h-10 torch-glow" />
           </motion.div>
@@ -84,7 +84,7 @@ export default function TeamJournal() {
           <motion.div 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="adventure-card p-10 bg-card/60 backdrop-blur-xl border-primary/20"
+            className="adventure-card p-10 bg-card/90 border-primary/20"
           >
             <div className="flex justify-between items-end mb-8">
               <div>

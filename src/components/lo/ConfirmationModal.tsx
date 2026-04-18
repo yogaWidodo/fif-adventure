@@ -38,8 +38,7 @@ export default function ConfirmationModal({
           transition={{ duration: 0.2 }}
           className="fixed inset-0 z-[300] flex items-center justify-center p-4"
           style={{
-            background: 'rgba(5, 12, 8, 0.85)',
-            backdropFilter: 'blur(8px)',
+            background: 'rgba(5, 12, 8, 0.95)',
           }}
           onClick={(e) => {
             // Close on backdrop click only if not submitting

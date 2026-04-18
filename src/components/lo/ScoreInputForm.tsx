@@ -95,7 +95,7 @@ export default function ScoreInputForm({
     scoreInput !== '' && !isNaN(scoreNum) && isScoreValid(scoreNum, maxPoints);
 
   return (
-    <div className="adventure-card border-primary/20 bg-card/60 backdrop-blur-md overflow-hidden">
+    <div className="adventure-card border-primary/20 bg-card/90 overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between px-6 py-4 border-b border-primary/20 bg-primary/5">
         <div className="flex items-center gap-3">
@@ -226,7 +226,7 @@ export default function ScoreInputForm({
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 20 }}
-            className={`mx-6 mb-6 p-4 flex items-start gap-3 border rounded-sm backdrop-blur-sm
+            className={`mx-6 mb-6 p-4 flex items-start gap-3 border rounded-sm
               ${toast.type === 'success'
                 ? 'bg-green-900/30 border-green-500/30'
                 : 'bg-red-900/30 border-red-500/30'

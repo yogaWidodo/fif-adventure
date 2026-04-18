@@ -18,10 +18,7 @@ export default function CaptainPortal() {
   const [expeditionOver, setExpeditionOver] = useState(false);
   const [showQR, setShowQR] = useState(false);
 
-  // Sync expeditionOver with timer context
-  useEffect(() => {
-    if (isExpired) setExpeditionOver(true);
-  }, [isExpired]);
+  // Expedition state is now handled globally via FinishedModal in layout.tsx
 
   return (
     <AuthGuard allowedRoles={['admin', 'captain', 'vice_captain']}>
@@ -40,7 +37,7 @@ export default function CaptainPortal() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 z-[95] bg-black/80 backdrop-blur-md flex items-center justify-center p-6"
+              className="fixed inset-0 z-[95] bg-black/95 flex items-center justify-center p-6"
               onClick={() => setShowQR(false)}
             >
               <motion.div
@@ -75,42 +72,13 @@ export default function CaptainPortal() {
           )}
         </AnimatePresence>
 
-        {/* Expedition Over Overlay */}
-        <AnimatePresence>
-          {expeditionOver && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="fixed inset-0 z-[90] bg-black/80 backdrop-blur-md flex flex-col items-center justify-center text-center p-8"
-            >
-              <motion.div
-                initial={{ scale: 0.8, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                transition={{ delay: 0.2 }}
-                className="adventure-card p-12 max-w-md border-gray-500/30"
-              >
-                <div className="bg-gray-800/60 p-5 rounded-full w-fit mx-auto mb-6 border border-gray-600/30">
-                  <Skull className="text-gray-400 w-12 h-12" />
-                </div>
-                <h2 className="font-adventure text-4xl text-gray-300 mb-4">Expedition Over</h2>
-                <p className="text-muted-foreground italic text-sm mb-8 opacity-70">
-                  "The sands of time have run out. Your expedition has come to an end."
-                </p>
-                <Link href="/leaderboard">
-                  <button className="w-full bg-primary/20 hover:bg-primary/30 border border-primary/40 text-primary font-adventure uppercase tracking-widest py-4 transition-all">
-                    View Final Rankings
-                  </button>
-                </Link>
-              </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+
 
         <header className="relative z-20 mb-12 text-center max-w-lg">
           <motion.div
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="bg-primary/20 p-5 rounded-full w-fit mx-auto mb-6 border border-primary/20 backdrop-blur-md"
+            className="bg-primary/20 p-5 rounded-full w-fit mx-auto mb-6 border border-primary/20"
           >
             <Compass className="text-primary w-12 h-12 torch-glow" />
           </motion.div>
@@ -192,7 +160,7 @@ export default function CaptainPortal() {
           </Link>
 
           <div className="col-span-full mt-6">
-            <div className="adventure-card p-6 bg-red-900/10 border-red-500/20 flex items-center gap-6 backdrop-blur-sm">
+            <div className="adventure-card p-6 bg-red-900/10 border-red-500/20 flex items-center gap-6">
               <div className="bg-red-500/20 p-3 rounded-full border border-red-500/30">
                 <ShieldAlert className="w-6 h-6 text-red-500" />
               </div>

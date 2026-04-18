@@ -90,7 +90,7 @@ export default function TeamQueueList({
   };
 
   return (
-    <div className="adventure-card border-primary/20 bg-card/60 backdrop-blur-md overflow-hidden">
+    <div className="adventure-card border-primary/20 bg-card/90 overflow-hidden">
       {/* Header */}
       <div className="flex items-center gap-3 px-6 py-4 border-b border-primary/20 bg-primary/5">
         <Users className="w-4 h-4 text-primary" />
@@ -128,7 +128,7 @@ export default function TeamQueueList({
               exit={{ opacity: 0 }}
               className="flex flex-col items-center justify-center p-16 opacity-40"
             >
-              <Compass className="w-8 h-8 text-primary animate-spin-slow mb-3" />
+              <Compass className="w-8 h-8 text-primary mb-3" />
               <p className="font-adventure text-xs tracking-widest italic">
                 Scanning the field...
               </p>

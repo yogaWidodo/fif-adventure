@@ -312,7 +312,7 @@ export default function ScanModal({
           exit={{ opacity: 0 }}
           transition={{ duration: 0.2 }}
           className="fixed inset-0 z-[200] flex items-center justify-center p-4"
-          style={{ background: 'rgba(5, 12, 8, 0.92)', backdropFilter: 'blur(10px)' }}
+          style={{ background: 'rgba(5, 12, 8, 0.95)' }}
           onClick={(e) => { if (e.target === e.currentTarget) handleClose(); }}
         >
           <motion.div

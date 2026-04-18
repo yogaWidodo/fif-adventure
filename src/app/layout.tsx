@@ -5,6 +5,7 @@ import { AuthProvider } from "@/context/AuthContext";
 import { TimerProvider } from "@/context/TimerContext";
 import ExpeditionTimer from "@/components/ExpeditionTimer";
 import PauseModal from "@/components/PauseModal";
+import FinishedModal from "@/components/FinishedModal";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -29,6 +30,7 @@ export default function RootLayout({
             <div className="fixed inset-0 z-0 jungle-overlay opacity-5 pointer-events-none" />
             <ExpeditionTimer />
             <PauseModal />
+            <FinishedModal />
             {children}
           </TimerProvider>
         </AuthProvider>

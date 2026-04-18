@@ -85,10 +85,12 @@
 
 @keyframes torch-flicker {
   0%, 100% { 
-    filter: brightness(1) drop-shadow(0 0 10px rgba(230, 126, 34, 0.4)); 
+    opacity: 1;
+    transform: scale(1);
   }
   50% { 
-    filter: brightness(1.2) drop-shadow(0 0 25px rgba(230, 126, 34, 0.6)); 
+    opacity: 0.8;
+    transform: scale(1.05);
   }
 }
 
@@ -102,8 +104,7 @@ body {
   color: var(--foreground);
   font-family: var(--font-content);
   background-image: 
-    radial-gradient(circle at 50% 50%, rgba(20, 40, 30, 0.8) 0%, rgba(10, 20, 15, 1) 100%),
-    url("https://www.transparenttextures.com/patterns/dark-leather.png");
+    radial-gradient(circle at 50% 50%, rgba(20, 40, 30, 0.8) 0%, rgba(10, 20, 15, 1) 100%);
   min-height: 100vh;
   margin: 0;
   overflow-x: hidden;
@@ -116,20 +117,17 @@ h1, h2, h3, h4, .font-adventure {
 }
 
 .adventure-card {
-  background: linear-gradient(135deg, rgba(28, 46, 38, 0.9), rgba(15, 25, 20, 1));
-  backdrop-filter: blur(12px);
+  background: linear-gradient(135deg, rgba(28, 46, 38, 0.95), rgba(15, 25, 20, 1));
   border: 1.5px solid rgba(212, 175, 55, 0.3);
-  box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 1);
+  box-shadow: 0 4px 20px -5px rgba(0, 0, 0, 0.8);
   border-radius: 8px;
   position: relative;
   overflow: hidden;
-  transition: all 0.3s ease;
+  transition: border-color 0.3s ease;
 }
 
 .adventure-card:hover {
   border-color: var(--primary);
-  transform: translateY(-4px);
-  box-shadow: 0 15px 50px -5px rgba(0, 0, 0, 1);
 }
 
 .gold-engraving {

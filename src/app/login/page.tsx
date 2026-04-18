@@ -11,7 +11,7 @@ export default function LoginPage() {
       {/* Background */}
       <div
         className="fixed inset-0 z-0 bg-cover bg-center opacity-30"
-        style={{ backgroundImage: 'url("/images/expedition_map_bg.png")', filter: 'brightness(0.2) blur(4px)' }}
+        style={{ backgroundImage: 'url("/images/expedition_map_bg.png")', filter: 'brightness(0.2)' }}
       />
 
       <main className="relative z-20 w-full max-w-md">
@@ -19,7 +19,7 @@ export default function LoginPage() {
           <motion.div
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="inline-flex p-4 rounded-full bg-primary/10 border border-primary/20 backdrop-blur-md mb-6"
+            className="inline-flex p-4 rounded-full bg-primary/10 border border-primary/20 mb-6"
           >
             <Compass className="w-12 h-12 text-primary torch-glow" />
           </motion.div>

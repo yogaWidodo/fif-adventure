@@ -193,7 +193,7 @@ export default function CaptainScanner() {
         {/* Immersive Background */}
         <div
           className="fixed inset-0 z-0 bg-cover bg-center opacity-40 grayscale-[0.5]"
-          style={{ backgroundImage: 'url("/images/jungle_hq_bg.png")', filter: 'brightness(0.3) blur(2px)' }}
+          style={{ backgroundImage: 'url("/images/jungle_hq_bg.png")', filter: 'brightness(0.3)' }}
         />
         <div className="fixed inset-0 z-10 jungle-overlay opacity-10 pointer-events-none" />
 
@@ -201,7 +201,7 @@ export default function CaptainScanner() {
           <motion.div
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="inline-flex items-center justify-center p-5 mb-6 rounded-full bg-primary/10 border border-primary/20 backdrop-blur-md"
+            className="inline-flex items-center justify-center p-5 mb-6 rounded-full bg-primary/10 border border-primary/20"
           >
             <Camera className="text-primary w-10 h-10 torch-glow" />
           </motion.div>
@@ -261,7 +261,7 @@ export default function CaptainScanner() {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="absolute inset-0 z-50 bg-black/90 backdrop-blur-md flex flex-col items-center justify-center p-10 text-center"
+                className="absolute inset-0 z-50 bg-black/95 flex flex-col items-center justify-center p-10 text-center"
               >
                 {isProcessing ? (
                   <>
@@ -310,7 +310,7 @@ export default function CaptainScanner() {
         </div>
 
         {/* Bottom Tool Bar */}
-        <nav className="fixed bottom-8 left-6 right-6 z-30 flex justify-between items-center px-10 py-6 bg-card/40 backdrop-blur-xl border border-primary/20 adventure-card shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">
+        <nav className="fixed bottom-8 left-6 right-6 z-30 flex justify-between items-center px-10 py-6 bg-card/90 border border-primary/20 adventure-card shadow-lg">
           <NavItem icon={<Trophy className="w-6 h-6" />} label="Prestige" value={`${user?.team_id ? '—' : '0'}`} />
           <div className="h-10 w-px bg-primary/10" />
           <NavItem icon={<Flame className="w-6 h-6" />} label="Scanner" value="Active" active />

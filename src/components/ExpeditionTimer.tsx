@@ -114,19 +114,17 @@ export default function ExpeditionTimer({ onExpired }: ExpeditionTimerProps) {
         }
       }, 1000);
 
-      // Re-sync with server every 30 seconds (anti-drift per Req. 4.0)
+      // Re-sync with server every 60 seconds (anti-drift) — only when running
       const resyncInterval = setInterval(async () => {
         const serverRemaining = await fetchServerRemaining();
         if (serverRemaining !== null) {
           const drift = Math.abs(localRemainingRef.current - serverRemaining);
           if (drift > 2) {
-            // Drift > 2 seconds — correct local value
-            console.debug(`[ExpeditionTimer] Correcting drift: local=${localRemainingRef.current}, server=${serverRemaining}, diff=${drift}`);
             localRemainingRef.current = serverRemaining;
             setTimeLeft(secondsToHMS(serverRemaining));
           }
         }
-      }, 30_000);
+      }, 60_000);
 
       return () => {
         clearInterval(tickInterval);
@@ -144,7 +142,7 @@ export default function ExpeditionTimer({ onExpired }: ExpeditionTimerProps) {
         animate={{ y: 0, opacity: 1 }}
         className="fixed top-6 right-6 z-[100] select-none transform-gpu will-change-transform"
       >
-        <div className="adventure-card px-5 py-3 border-primary/20 backdrop-blur-md bg-black/40 flex items-center gap-3 shadow-[0_10px_40px_rgba(0,0,0,0.5)]">
+        <div className="adventure-card px-5 py-3 border-primary/20 bg-black/80 flex items-center gap-3 shadow-lg">
           <HourglassIcon className="w-4 h-4 text-primary/50" />
           <span className="font-adventure text-[10px] uppercase tracking-widest text-[#f4e4bc]/50">
             Event Belum Dimulai
@@ -167,7 +165,7 @@ export default function ExpeditionTimer({ onExpired }: ExpeditionTimerProps) {
         style={{ cursor: 'grab' }}
         className="fixed top-6 right-6 z-[100] flex items-center gap-4 select-none transform-gpu will-change-transform"
       >
-        <div className="adventure-card px-6 py-3 border-amber-500/40 backdrop-blur-md flex items-center gap-4 shadow-[0_10px_40px_rgba(0,0,0,0.5)] bg-amber-950/40">
+        <div className="adventure-card px-6 py-3 border-amber-500/40 flex items-center gap-4 shadow-lg bg-amber-950/80">
           <motion.div
             animate={{ opacity: [1, 0.4, 1] }}
             transition={{ repeat: Infinity, duration: 1.5 }}
@@ -204,14 +202,14 @@ export default function ExpeditionTimer({ onExpired }: ExpeditionTimerProps) {
       className="fixed top-6 right-6 z-[100] flex items-center gap-4 select-none transform-gpu will-change-transform"
     >
       <div
-        className={`adventure-card px-6 py-3 border-primary/40 backdrop-blur-md flex items-center gap-4 shadow-[0_10px_40px_rgba(0,0,0,0.5)] transition-colors duration-1000 ${
-          isExpiredLocally ? 'border-gray-500/60 bg-gray-900/60' :
-          loomingState ? 'border-red-500/60 bg-red-900/40' : 'bg-black/40'
+        className={`adventure-card px-6 py-3 border-primary/40 flex items-center gap-4 shadow-lg transition-colors duration-1000 ${
+          isExpiredLocally ? 'border-gray-500/60 bg-gray-900/80' :
+          loomingState ? 'border-red-500/60 bg-red-900/80' : 'bg-black/80'
         }`}
       >
         <div className="relative">
           <Clock
-            className={`w-5 h-5 ${isExpiredLocally ? 'text-gray-500' : loomingState ? 'text-red-500' : 'text-primary'} ${loomingState && !isExpiredLocally ? 'animate-pulse' : ''}`}
+            className={`w-5 h-5 ${isExpiredLocally ? 'text-gray-500' : loomingState ? 'text-red-500' : 'text-primary'}`}
           />
           {!loomingState && !isExpiredLocally && <Flame className="absolute -top-1 -right-1 w-2 h-2 text-accent torch-glow" />}
         </div>

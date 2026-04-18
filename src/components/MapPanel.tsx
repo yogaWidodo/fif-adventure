@@ -100,7 +100,7 @@ export default function MapPanel({
                   />
                   {/* Hover overlay */}
                   <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
-                    <div className="opacity-0 group-hover:opacity-100 transition-opacity bg-black/60 backdrop-blur-sm px-4 py-2 flex items-center gap-2 border border-primary/30">
+                    <div className="opacity-0 group-hover:opacity-100 transition-opacity bg-black/80 px-4 py-2 flex items-center gap-2 border border-primary/30">
                       <ZoomIn className="w-4 h-4 text-primary" />
                       <span className="font-adventure text-xs text-primary uppercase tracking-widest">View Full Map</span>
                     </div>
@@ -119,7 +119,7 @@ export default function MapPanel({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-md flex items-center justify-center p-4"
+            className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center p-4"
             onClick={() => setIsLightboxOpen(false)}
           >
             <motion.div

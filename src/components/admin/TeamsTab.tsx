@@ -54,7 +54,7 @@ function AdventureModal({
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         onClick={onClose}
-        className="absolute inset-0 bg-black/80 backdrop-blur-md"
+        className="absolute inset-0 bg-black/90"
       />
       <motion.div
         initial={{ opacity: 0, scale: 0.9, y: 20 }}
@@ -404,7 +404,7 @@ export default function TeamsTab() {
                 initial={{ opacity: 0, y: 16 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: idx * 0.04 }}
-                className="flex-shrink-0 w-64 bg-card/40 backdrop-blur-sm border border-primary/20 flex flex-col"
+                className="flex-shrink-0 w-64 bg-card border border-primary/20 flex flex-col"
               >
                 {/* Column header */}
                 <div className="p-4 border-b border-primary/15 bg-primary/5">

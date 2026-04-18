@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import {
   Users, Trophy, MapPin, CheckCircle2, Circle,
-  Compass, Flame, LogOut, Map, Crown, Shield, Gem,
+  Compass, Flame, LogOut, Map, Crown, Shield, Gem, ScrollText, Lock,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import AuthGuard from '@/components/AuthGuard';
@@ -30,15 +30,20 @@ interface Registration {
   created_at: string;
 }
 
-interface TreasureHunt {
+interface HintWithTreasure {
   id: string;
-  title: string;
-  points: number;
+  treasure_hunt_id: string;
+  received_at: string;
+  treasure_hunts: {
+    id: string;
+    name: string;
+    hint_text: string;
+    points: number;
+  }[] | null;
 }
 
 interface TreasureHuntClaim {
   treasure_hunt_id: string;
-  created_at: string;
 }
 
 interface TeamData {
@@ -62,7 +67,7 @@ export default function MemberPortal() {
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [registrations, setRegistrations] = useState<Registration[]>([]);
-  const [treasureHunts, setTreasureHunts] = useState<TreasureHunt[]>([]);
+  const [hints, setHints] = useState<HintWithTreasure[]>([]);
   const [claims, setClaims] = useState<TreasureHuntClaim[]>([]);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -78,13 +83,18 @@ export default function MemberPortal() {
   const fetchAll = async (teamId: string) => {
     setLoading(true);
 
-    const [teamRes, membersRes, actRes, regRes, thRes, claimRes, lbRes] = await Promise.all([
+    const [teamRes, membersRes, actRes, regRes, hintsRes, claimRes, lbRes] = await Promise.all([
       supabase.from('teams').select('id, name, slogan, total_points').eq('id', teamId).maybeSingle(),
       supabase.from('users').select('id, name, role').eq('team_id', teamId).order('role'),
       supabase.from('activities').select('id, name, type, max_points').order('name'),
       supabase.from('activity_registrations').select('activity_id, created_at').eq('team_id', teamId),
-      supabase.from('treasure_hunts').select('id, title, points').order('title'),
-      supabase.from('treasure_hunt_claims').select('treasure_hunt_id, created_at').eq('team_id', teamId),
+      // Only fetch hints this team received from gacha
+      supabase
+        .from('treasure_hunt_hints')
+        .select('id, treasure_hunt_id, received_at, treasure_hunts(id, name, hint_text, points)')
+        .eq('team_id', teamId)
+        .order('received_at', { ascending: false }),
+      supabase.from('treasure_hunt_claims').select('treasure_hunt_id').eq('team_id', teamId),
       fetch('/api/leaderboard').then(r => r.ok ? r.json() : []),
     ]);
 
@@ -92,18 +102,20 @@ export default function MemberPortal() {
     setMembers((membersRes.data ?? []) as TeamMember[]);
     setActivities(actRes.data ?? []);
     setRegistrations(regRes.data ?? []);
-    setTreasureHunts(thRes.data ?? []);
-    setClaims(claimRes.data ?? []);
+    setHints((hintsRes.data ?? []) as HintWithTreasure[]);
+    setClaims((claimRes.data ?? []) as TreasureHuntClaim[]);
     setLeaderboard(Array.isArray(lbRes) ? lbRes : []);
     setLoading(false);
   };
 
   const isActivityDone = (id: string) => registrations.some(r => r.activity_id === id);
-  const isTreasureClaimed = (id: string) => claims.some(c => c.treasure_hunt_id === id);
 
   const completedCount = activities.filter(a => isActivityDone(a.id)).length;
   const progress = activities.length > 0 ? (completedCount / activities.length) * 100 : 0;
-  const claimedTreasuresCount = treasureHunts.filter(t => isTreasureClaimed(t.id)).length;
+  const claimedHintsCount = hints.filter(h => {
+    const th = h.treasure_hunts?.[0];
+    return th && claims.some(c => c.treasure_hunt_id === th.id);
+  }).length;
   const myRank = leaderboard.find(t => t.id === user?.team_id)?.rank ?? null;
 
   const roleLabel = (role: string) => {
@@ -301,57 +313,80 @@ export default function MemberPortal() {
                 <MapPanel title="Expedition Map" subtitle="TSC Adventure Grounds" collapsible />
               </motion.div>
 
-              {/* ── Treasure Hunt ── */}
-              {treasureHunts.length > 0 && (
-                <motion.div
-                  initial={{ opacity: 0, y: 16 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.45 }}
-                  className="adventure-card overflow-hidden"
-                >
-                  <div className="flex items-center gap-3 px-5 py-4 border-b border-primary/10">
-                    <Gem className="w-4 h-4 text-primary" />
-                    <span className="font-adventure text-sm tracking-widest text-primary uppercase">Treasure Hunt</span>
-                    <span className="ml-auto text-[10px] font-adventure opacity-40">
-                      {claimedTreasuresCount}/{treasureHunts.length} claimed
-                    </span>
-                  </div>
-                  <div className="p-4 grid gap-3">
-                    {treasureHunts.map((th, i) => {
-                      const claimed = isTreasureClaimed(th.id);
+              {/* ── Treasure Hunt Hints ── */}
+              <motion.div
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.45 }}
+                className="adventure-card overflow-hidden"
+              >
+                <div className="flex items-center gap-3 px-5 py-4 border-b border-primary/10">
+                  <Gem className="w-4 h-4 text-primary" />
+                  <span className="font-adventure text-sm tracking-widest text-primary uppercase">Treasure Hunt Hints</span>
+                  <span className="ml-auto text-[10px] font-adventure opacity-40">
+                    {claimedHintsCount}/{hints.length} claimed
+                  </span>
+                </div>
+                <div className="p-4 grid gap-3">
+                  {hints.length === 0 ? (
+                    <div className="py-8 text-center">
+                      <Lock className="w-6 h-6 text-foreground/20 mx-auto mb-2" />
+                      <p className="text-xs italic opacity-30">Belum ada hint. Selesaikan wahana untuk memutar gacha!</p>
+                    </div>
+                  ) : (
+                    hints.map((hint, i) => {
+                      const th = hint.treasure_hunts?.[0];
+                      if (!th) return null;
+                      const claimed = claims.some(c => c.treasure_hunt_id === th.id);
                       return (
                         <motion.div
-                          key={th.id}
+                          key={hint.id}
                           initial={{ opacity: 0, x: -8 }}
                           animate={{ opacity: 1, x: 0 }}
                           transition={{ delay: 0.45 + i * 0.04 }}
-                          className={`flex items-start gap-4 p-4 border-l-4 transition-all ${
+                          className={`p-4 border-l-4 transition-all ${
                             claimed
-                              ? 'border-l-primary bg-primary/5'
-                              : 'border-l-white/5 opacity-60'
+                              ? 'border-l-green-500 bg-green-500/5'
+                              : 'border-l-primary bg-primary/5'
                           }`}
                         >
-                          {claimed
-                            ? <CheckCircle2 className="w-5 h-5 text-primary flex-shrink-0 mt-0.5" />
-                            : <Gem className="w-5 h-5 text-foreground/20 flex-shrink-0 mt-0.5" />
-                          }
-                          <div className="flex-1 min-w-0">
-                            <p className="font-adventure text-sm tracking-tight truncate">{th.title}</p>
-                            <p className="text-[10px] uppercase font-adventure opacity-40 tracking-widest mt-0.5">
-                              {th.points} pts
-                            </p>
+                          <div className="flex items-start gap-3">
+                            {claimed
+                              ? <CheckCircle2 className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
+                              : <ScrollText className="w-5 h-5 text-primary flex-shrink-0 mt-0.5" />
+                            }
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-1">
+                                <p className="font-adventure text-sm tracking-tight truncate">{th.name}</p>
+                                <span className={`text-[8px] font-mono px-1.5 py-0.5 uppercase flex-shrink-0 ${
+                                  claimed ? 'bg-green-500/20 text-green-400' : 'bg-primary/20 text-primary'
+                                }`}>
+                                  {claimed ? 'CLAIMED' : 'ACTIVE'}
+                                </span>
+                              </div>
+                              {/* Show the hint clue */}
+                              <div className="bg-white/5 border border-primary/10 p-2.5 rounded-sm mb-1.5">
+                                <p className="text-xs text-foreground/60 italic leading-relaxed">
+                                  💡 {th.hint_text}
+                                </p>
+                              </div>
+                              <p className="text-[10px] uppercase font-adventure opacity-40 tracking-widest">
+                                {th.points} pts · diterima {new Date(hint.received_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+                              </p>
+                            </div>
                           </div>
                           {claimed && (
-                            <span className="text-[9px] font-adventure uppercase tracking-widest text-primary opacity-60 flex-shrink-0">
-                              Claimed
-                            </span>
+                            <div className="flex items-center gap-2 mt-2 pt-2 border-t border-green-500/10 ml-8">
+                              <Gem className="w-3 h-3 text-green-500" />
+                              <span className="text-[9px] font-adventure uppercase tracking-widest text-green-400">Treasure Secured · +{th.points} pts</span>
+                            </div>
                           )}
                         </motion.div>
                       );
-                    })}
-                  </div>
-                </motion.div>
-              )}
+                    })
+                  )}
+                </div>
+              </motion.div>
 
               {/* ── Leaderboard (top 5) ── */}
               <motion.div

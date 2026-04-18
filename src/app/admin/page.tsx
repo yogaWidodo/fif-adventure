@@ -516,7 +516,7 @@ function ChallengesTab() {
     const { data } = await supabase
       .from('activities')
       .select('*')
-      .like('type', 'challenge_%')
+      .in('type', ['challenge_regular', 'challenge_popup', 'challenge_additional'])
       .order('created_at', { ascending: false });
     setActivities(data || []);
     setLoading(false);

@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { motion } from 'framer-motion';
-import { Book, Compass, Trophy, MapPin, CheckCircle2, Circle, Flame, Gem } from 'lucide-react';
+import { Book, Compass, Trophy, MapPin, CheckCircle2, Circle, Flame, Gem, ScrollText, Lock } from 'lucide-react';
 import AuthGuard from '@/components/AuthGuard';
 import { useAuth } from '@/context/AuthContext';
 
@@ -11,7 +11,7 @@ export default function TeamJournal() {
   const { user } = useAuth();
   const [team, setTeam] = useState<any>(null);
   const [activities, setActivities] = useState<any[]>([]);
-  const [treasures, setTreasures] = useState<any[]>([]);
+  const [hints, setHints] = useState<any[]>([]);
   const [registrations, setRegistrations] = useState<any[]>([]);
   const [claims, setClaims] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -23,17 +23,22 @@ export default function TeamJournal() {
   const fetchJournalData = async (teamId: string) => {
     setLoading(true);
 
-    const [teamRes, activitiesRes, treasuresRes, regRes, claimRes] = await Promise.all([
+    const [teamRes, activitiesRes, hintsRes, regRes, claimRes] = await Promise.all([
       supabase.from('teams').select('*').eq('id', teamId).maybeSingle(),
       supabase.from('activities').select('*').order('name'),
-      supabase.from('treasure_hunts').select('*').order('title'),
+      // Only fetch hints this team has received from gacha — joined with treasure_hunts for details
+      supabase
+        .from('treasure_hunt_hints')
+        .select('id, treasure_hunt_id, received_at, treasure_hunts(id, name, hint_text, points)')
+        .eq('team_id', teamId)
+        .order('received_at', { ascending: false }),
       supabase.from('activity_registrations').select('*').eq('team_id', teamId),
       supabase.from('treasure_hunt_claims').select('*').eq('team_id', teamId),
     ]);
 
     setTeam(teamRes.data);
     setActivities(activitiesRes.data || []);
-    setTreasures(treasuresRes.data || []);
+    setHints(hintsRes.data || []);
     setRegistrations(regRes.data || []);
     setClaims(claimRes.data || []);
     setLoading(false);
@@ -46,8 +51,11 @@ export default function TeamJournal() {
   const completedMain = activities.filter(a => isActivityDone(a.id)).length;
   const progress = totalMain > 0 ? (completedMain / totalMain) * 100 : 0;
 
-  const totalTreasures = treasures.length;
-  const completedTreasures = treasures.filter(t => isTreasureClaimed(t.id)).length;
+  const totalHints = hints.length;
+  const claimedHints = hints.filter(h => {
+    const th = h.treasure_hunts as any;
+    return th && claims.some((c: any) => c.treasure_hunt_id === th.id);
+  }).length;
 
   return (
     <AuthGuard allowedRoles={['admin', 'captain', 'vice_captain']}>
@@ -156,49 +164,82 @@ export default function TeamJournal() {
             )}
           </div>
 
-          {/* Treasure Hunt Section */}
-          {!loading && treasures.length > 0 && (
+          {/* Treasure Hunt Hints Section — only hints received from gacha */}
+          {!loading && hints.length > 0 && (
             <div className="space-y-4">
               <div className="flex items-center gap-4 mb-6">
                 <span className="h-px w-8 bg-primary/40" />
-                <h3 className="font-adventure text-sm text-primary tracking-widest uppercase">Treasure Hunt</h3>
-                <span className="text-[10px] font-adventure text-primary/50">{completedTreasures}/{totalTreasures} claimed</span>
+                <h3 className="font-adventure text-sm text-primary tracking-widest uppercase">Treasure Hunt Hints</h3>
+                <span className="text-[10px] font-adventure text-primary/50">{claimedHints}/{totalHints} claimed</span>
               </div>
               <div className="grid gap-4">
-                {treasures.map((th, idx) => {
-                  const claimed = isTreasureClaimed(th.id);
+                {hints.map((hint, idx) => {
+                  const th = hint.treasure_hunts as any;
+                  if (!th) return null;
+                  const claimed = claims.some((c: any) => c.treasure_hunt_id === th.id);
                   return (
                     <motion.div
-                      key={th.id}
+                      key={hint.id}
                       initial={{ opacity: 0, x: -10 }}
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: idx * 0.05 }}
-                      className={`parchment p-5 flex items-center justify-between border-l-[6px] transition-all ${
-                        claimed ? 'border-l-primary opacity-100 shadow-lg' : 'border-l-stone-400/20 opacity-50'
+                      className={`parchment p-5 border-l-[6px] transition-all ${
+                        claimed ? 'border-l-green-600 opacity-100 shadow-lg' : 'border-l-primary opacity-90'
                       }`}
                     >
-                      <div className="flex items-center gap-4">
+                      <div className="flex items-start gap-4">
                         {claimed ? (
-                          <CheckCircle2 className="w-6 h-6 text-primary" />
+                          <CheckCircle2 className="w-6 h-6 text-green-600 flex-shrink-0 mt-0.5" />
                         ) : (
-                          <Gem className="w-6 h-6 text-stone-400/30" />
+                          <ScrollText className="w-6 h-6 text-[#8b4513]/70 flex-shrink-0 mt-0.5" />
                         )}
-                        <div>
-                          <h4 className="font-adventure text-lg tracking-tight leading-none text-[#2b1d0e] mb-1">{th.title}</h4>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-2">
+                            <h4 className="font-adventure text-lg tracking-tight leading-none text-[#2b1d0e]">{th.name}</h4>
+                            <span className={`text-[8px] font-mono px-2 py-0.5 uppercase ${
+                              claimed 
+                                ? 'bg-green-800/20 text-green-800' 
+                                : 'bg-amber-800/20 text-amber-800'
+                            }`}>
+                              {claimed ? 'CLAIMED' : 'ACTIVE'}
+                            </span>
+                          </div>
+                          {/* Show the hint text — this is the secret clue! */}
+                          <div className="bg-[#2b1d0e]/10 border border-[#8b4513]/20 p-3 rounded-sm mb-2">
+                            <p className="text-sm text-[#2b1d0e]/80 font-content italic leading-relaxed">
+                              💡 {th.hint_text}
+                            </p>
+                          </div>
                           <p className="text-[10px] uppercase font-adventure text-[#8b4513]/60 italic tracking-tighter">
-                            treasure • {th.points} Pts
+                            treasure • {th.points} Pts • diterima {new Date(hint.received_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
                           </p>
                         </div>
                       </div>
                       {claimed && (
-                        <div className="flex flex-col items-end">
-                          <p className="text-[8px] font-mono text-[#8b4513]/40">CLAIMED</p>
-                          <Gem className="w-4 h-4 text-[#8b4513]/60" />
+                        <div className="flex items-center gap-2 mt-3 pt-3 border-t border-[#8b4513]/10">
+                          <Gem className="w-4 h-4 text-green-700" />
+                          <span className="text-[10px] font-adventure text-green-800 uppercase tracking-widest">Treasure Secured • +{th.points} pts</span>
                         </div>
                       )}
                     </motion.div>
                   );
                 })}
+              </div>
+            </div>
+          )}
+
+          {/* No hints yet message */}
+          {!loading && hints.length === 0 && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-4 mb-6">
+                <span className="h-px w-8 bg-primary/40" />
+                <h3 className="font-adventure text-sm text-primary tracking-widest uppercase">Treasure Hunt Hints</h3>
+              </div>
+              <div className="parchment p-8 text-center">
+                <Lock className="w-8 h-8 text-[#8b4513]/30 mx-auto mb-3" />
+                <p className="font-adventure text-sm text-[#2b1d0e]/50 italic">
+                  Belum ada hint. Selesaikan wahana untuk memutar gacha!
+                </p>
               </div>
             </div>
           )}

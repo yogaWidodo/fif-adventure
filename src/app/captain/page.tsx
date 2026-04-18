@@ -176,6 +176,21 @@ export default function CaptainPortal() {
             </motion.button>
           )}
 
+          {/* Captain's Journal — progress + treasure hunt hints */}
+          <Link href="/captain/journal">
+            <motion.button
+              whileHover={{ scale: 1.05, translateY: -5 }}
+              whileTap={{ scale: 0.95 }}
+              className="w-full adventure-card p-10 flex flex-col items-center justify-center text-center group border-primary/20 hover:border-primary transition-all shadow-[0_0_40px_rgba(0,0,0,0.5)]"
+            >
+              <div className="bg-primary/10 p-4 rounded-lg mb-6 group-hover:bg-primary/20 transition-colors">
+                <BookOpen className="w-10 h-10 text-primary" />
+              </div>
+              <h3 className="font-adventure text-2xl gold-engraving mb-2">Captain's Journal</h3>
+              <p className="text-[10px] uppercase font-adventure tracking-widest text-foreground/40 italic">Progress & Treasure Hunt Hints</p>
+            </motion.button>
+          </Link>
+
           <div className="col-span-full mt-6">
             <div className="adventure-card p-6 bg-red-900/10 border-red-500/20 flex items-center gap-6 backdrop-blur-sm">
               <div className="bg-red-500/20 p-3 rounded-full border border-red-500/30">

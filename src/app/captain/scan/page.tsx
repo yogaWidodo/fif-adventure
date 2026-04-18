@@ -1,16 +1,10 @@
 'use client';
 
-import { useState } from 'react';
-import dynamic from 'next/dynamic';
+import { useState, useEffect, useRef, useCallback, useId } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Camera, CheckCircle2, Trophy, Navigation, Compass, Flame, ShieldAlert } from 'lucide-react';
+import { Camera, CameraOff, CheckCircle2, Trophy, Navigation, Compass, Flame, ShieldAlert, Loader2 } from 'lucide-react';
 import AuthGuard from '@/components/AuthGuard';
 import { useAuth } from '@/context/AuthContext';
-
-const Scanner = dynamic(
-  () => import('@yudiel/react-qr-scanner').then((mod) => mod.Scanner),
-  { ssr: false }
-);
 
 interface ScanSuccess {
   type: 'wahana' | 'challenge' | 'treasure';
@@ -22,29 +16,100 @@ interface ScanSuccess {
 
 export default function CaptainScanner() {
   const { user } = useAuth();
-  const [scanResult, setScanResult] = useState<string | null>(null);
+  const reactId = useId();
+  const scannerId = `captain-scanner-${reactId.replace(/:/g, '')}`;
+
   const [isProcessing, setIsProcessing] = useState(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [cameraReady, setCameraReady] = useState(false);
   const [lastScanMessage, setLastScanMessage] = useState<{ type: 'success' | 'error', text: string, scanSuccess?: ScanSuccess } | null>(null);
 
-  const handleScan = async (result: string) => {
-    if (isProcessing || result === scanResult) return;
+  const scannerRef = useRef<import('html5-qrcode').Html5Qrcode | null>(null);
+  const isScanningRef = useRef(false);
+  const processingRef = useRef(false);
 
+  // ── Camera control (same pattern as LO ScanModal) ──────────────────────────
+
+  const stopCamera = useCallback(async () => {
+    if (!scannerRef.current) return;
+    try {
+      if (isScanningRef.current) {
+        await scannerRef.current.stop();
+        isScanningRef.current = false;
+      }
+      scannerRef.current.clear();
+    } catch {
+      // ignore — camera may already be stopped
+    }
+    scannerRef.current = null;
+    setCameraReady(false);
+  }, []);
+
+  const startCamera = useCallback(async () => {
+    // Don't start if already running
+    if (scannerRef.current) return;
+
+    const { Html5Qrcode } = await import('html5-qrcode');
+    const scanner = new Html5Qrcode(scannerId);
+    scannerRef.current = scanner;
+
+    try {
+      await scanner.start(
+        { facingMode: 'environment' },
+        { fps: 10, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0 },
+        (decodedText) => {
+          if (!processingRef.current) {
+            processingRef.current = true;
+            handleScan(decodedText);
+          }
+        },
+        () => { /* scan failure per frame — ignored */ }
+      );
+      isScanningRef.current = true;
+      setCameraError(null);
+      setCameraReady(true);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const lower = msg.toLowerCase();
+      if (lower.includes('permission') || lower.includes('denied') || lower.includes('notallowed')) {
+        setCameraError('Akses kamera ditolak. Izinkan akses kamera di pengaturan browser, lalu muat ulang halaman.');
+      } else if (lower.includes('notfound') || lower.includes('no camera') || lower.includes('devicenotfound')) {
+        setCameraError('Kamera tidak ditemukan. Pastikan perangkat Anda memiliki kamera.');
+      } else {
+        setCameraError(`Kamera tidak dapat diakses: ${msg}`);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scannerId]);
+
+  // ── Lifecycle ──────────────────────────────────────────────────────────────
+
+  useEffect(() => {
+    const timer = setTimeout(() => startCamera(), 300);
+    return () => {
+      clearTimeout(timer);
+      stopCamera();
+    };
+  }, [startCamera, stopCamera]);
+
+  // ── Scan handler ───────────────────────────────────────────────────────────
+
+  const handleScan = async (result: string) => {
     setIsProcessing(true);
-    setScanResult(result);
 
     const teamId = user?.team_id;
 
     if (!teamId) {
       setLastScanMessage({ type: 'error', text: 'No team assigned to your account. Contact your administrator.' });
       setIsProcessing(false);
-      setTimeout(() => {
-        setScanResult(null);
-        setLastScanMessage(null);
-      }, 5000);
+      restartAfterDelay();
       return;
     }
 
     try {
+      // Stop camera during processing
+      await stopCamera();
+
       const barcodeType = result.startsWith('fif-treasure-') ? 'treasure' : 'other';
 
       if (barcodeType === 'treasure') {
@@ -52,7 +117,8 @@ export default function CaptainScanner() {
         const treasureHuntId = result.replace('fif-treasure-', '');
 
         // Get auth token for the API
-        const { data: { session } } = await (await import('@/lib/supabase')).supabase.auth.getSession();
+        const { supabase } = await import('@/lib/supabase');
+        const { data: { session } } = await supabase.auth.getSession();
         const token = session?.access_token;
 
         const response = await fetch('/api/treasure/claim', {
@@ -109,11 +175,16 @@ export default function CaptainScanner() {
       setLastScanMessage({ type: 'error', text: message });
     } finally {
       setIsProcessing(false);
-      setTimeout(() => {
-        setScanResult(null);
-        setLastScanMessage(null);
-      }, 5000);
+      restartAfterDelay();
     }
+  };
+
+  const restartAfterDelay = () => {
+    setTimeout(() => {
+      setLastScanMessage(null);
+      processingRef.current = false;
+      startCamera();
+    }, 4000);
   };
 
   return (
@@ -140,31 +211,48 @@ export default function CaptainScanner() {
 
         {/* Scanner Window with Stone/Gold Frame */}
         <div className="relative z-20 w-full max-w-sm aspect-square overflow-hidden adventure-card border-[3px] border-primary/30 shadow-[0_0_60px_rgba(212,175,55,0.2)]">
-          <div className="absolute inset-0 bg-black/40" />
+          {/* html5-qrcode mounts the camera feed into this div */}
+          <div id={scannerId} className="w-full h-full" />
 
-          <Scanner
-            onScan={(detectedCodes) => {
-              if (detectedCodes.length > 0) {
-                handleScan(detectedCodes[0].rawValue);
-              }
-            }}
-            onError={(error) => console.error(error)}
-            scanDelay={500}
-          />
+          {/* Camera error state */}
+          {cameraError && (
+            <div className="absolute inset-0 z-40 bg-black/95 flex flex-col items-center justify-center p-8 text-center">
+              <CameraOff className="w-12 h-12 text-red-400 mb-4" />
+              <p className="text-sm text-red-300 font-content mb-4">{cameraError}</p>
+              <button
+                onClick={() => { setCameraError(null); startCamera(); }}
+                className="px-6 py-2 bg-primary/20 border border-primary/40 text-primary font-adventure text-sm uppercase tracking-widest hover:bg-primary/30 transition-colors"
+              >
+                Coba Lagi
+              </button>
+            </div>
+          )}
+
+          {/* Loading state before camera is ready */}
+          {!cameraReady && !cameraError && (
+            <div className="absolute inset-0 z-40 bg-black/90 flex flex-col items-center justify-center">
+              <Loader2 className="w-10 h-10 text-primary animate-spin mb-4" />
+              <p className="font-adventure text-sm text-primary/60 uppercase tracking-widest">Activating Lens...</p>
+            </div>
+          )}
 
           {/* Scanning Deco Overlay */}
-          <div className="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-primary/5 to-transparent pointer-events-none" />
-          <motion.div
-            animate={{ top: ['10%', '90%', '10%'] }}
-            transition={{ duration: 4, repeat: Infinity, ease: "linear" }}
-            className="absolute left-4 right-4 h-0.5 bg-primary/40 shadow-[0_0_15px_var(--primary)] z-30"
-          />
+          {cameraReady && !isProcessing && !lastScanMessage && (
+            <>
+              <div className="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-primary/5 to-transparent pointer-events-none z-30" />
+              <motion.div
+                animate={{ top: ['10%', '90%', '10%'] }}
+                transition={{ duration: 4, repeat: Infinity, ease: "linear" }}
+                className="absolute left-4 right-4 h-0.5 bg-primary/40 shadow-[0_0_15px_var(--primary)] z-30"
+              />
+            </>
+          )}
 
           {/* Corner Brackets */}
-          <div className="absolute top-6 left-6 w-8 h-8 border-t-2 border-l-2 border-primary/60" />
-          <div className="absolute top-6 right-6 w-8 h-8 border-t-2 border-r-2 border-primary/60" />
-          <div className="absolute bottom-6 left-6 w-8 h-8 border-b-2 border-l-2 border-primary/60" />
-          <div className="absolute bottom-6 right-6 w-8 h-8 border-b-2 border-r-2 border-primary/60" />
+          <div className="absolute top-6 left-6 w-8 h-8 border-t-2 border-l-2 border-primary/60 z-30 pointer-events-none" />
+          <div className="absolute top-6 right-6 w-8 h-8 border-t-2 border-r-2 border-primary/60 z-30 pointer-events-none" />
+          <div className="absolute bottom-6 left-6 w-8 h-8 border-b-2 border-l-2 border-primary/60 z-30 pointer-events-none" />
+          <div className="absolute bottom-6 right-6 w-8 h-8 border-b-2 border-r-2 border-primary/60 z-30 pointer-events-none" />
 
           {/* Scan Status Overlay */}
           <AnimatePresence>
@@ -223,9 +311,9 @@ export default function CaptainScanner() {
 
         {/* Bottom Tool Bar */}
         <nav className="fixed bottom-8 left-6 right-6 z-30 flex justify-between items-center px-10 py-6 bg-card/40 backdrop-blur-xl border border-primary/20 adventure-card shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">
-          <NavItem icon={<Trophy className="w-6 h-6" />} label="Prestige" value="12,540" />
+          <NavItem icon={<Trophy className="w-6 h-6" />} label="Prestige" value={`${user?.team_id ? '—' : '0'}`} />
           <div className="h-10 w-px bg-primary/10" />
-          <NavItem icon={<Flame className="w-6 h-6" />} label="Relics" value="3 / 12" active />
+          <NavItem icon={<Flame className="w-6 h-6" />} label="Scanner" value="Active" active />
           <div className="h-10 w-px bg-primary/10" />
           <NavItem icon={<Navigation className="w-6 h-6" />} label="Status" value="Tracking" />
         </nav>

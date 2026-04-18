@@ -27,7 +27,7 @@ interface Activity {
 
 interface Registration {
   activity_id: string;
-  created_at: string;
+  checked_in_at: string;
 }
 
 interface HintWithTreasure {

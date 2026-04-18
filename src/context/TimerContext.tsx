@@ -3,21 +3,22 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
-import type { TimerState } from '@/lib/timerUtils';
+
+export type EventStatus = 'idle' | 'running' | 'paused' | 'finished';
 
 interface TimerContextValue {
-  timerState: TimerState;
-  timerRemainingSeconds: number | null;
-  timerStartedAt: string | null;
-  eventId: string | null;
+  status: EventStatus;
+  startedAt: string | null;
+  elapsedSeconds: number;
+  durationMinutes: number;
   isExpired: boolean;
 }
 
 const defaultValue: TimerContextValue = {
-  timerState: 'idle',
-  timerRemainingSeconds: null,
-  timerStartedAt: null,
-  eventId: null,
+  status: 'idle',
+  startedAt: null,
+  elapsedSeconds: 0,
+  durationMinutes: 0,
   isExpired: false,
 };
 
@@ -25,113 +26,77 @@ const TimerContext = createContext<TimerContextValue>(defaultValue);
 
 export function TimerProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
-  const [timerState, setTimerState] = useState<TimerState>('idle');
-  const [timerRemainingSeconds, setTimerRemainingSeconds] = useState<number | null>(null);
-  const [timerStartedAt, setTimerStartedAt] = useState<string | null>(null);
-  const [eventId, setEventId] = useState<string | null>(null);
+  const [status, setStatus] = useState<EventStatus>('idle');
+  const [startedAt, setStartedAt] = useState<string | null>(null);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [durationMinutes, setDurationMinutes] = useState(0);
   const [isExpired, setIsExpired] = useState(false);
 
   useEffect(() => {
-    // Admin users always stay idle — no subscription
-    if (!user || user.role === 'admin') {
-      setTimerState('idle');
-      setTimerRemainingSeconds(null);
-      setTimerStartedAt(null);
-      setEventId(null);
+    // We want the timer to be global, but only active for logged-in users
+    if (!user) {
+      setStatus('idle');
+      setStartedAt(null);
+      setElapsedSeconds(0);
+      setDurationMinutes(0);
+      setIsExpired(false);
       return;
     }
 
-    // If user has no event_id in cached auth, fetch it fresh from the database.
-    // This handles the case where event_id was assigned after the user last logged in.
-    const resolveEventId = async (): Promise<string | null> => {
-      if (user.event_id) return user.event_id;
+    const fetchSettings = async () => {
       const { data } = await supabase
-        .from('users')
-        .select('event_id')
-        .eq('id', user.id)
-        .maybeSingle();
-      return data?.event_id ?? null;
+        .from('settings')
+        .select('key, value');
+      
+      if (data) {
+        const s = data.find(item => item.key === 'event_status')?.value as EventStatus;
+        const start = data.find(item => item.key === 'event_started_at')?.value;
+        const elapsed = parseInt(data.find(item => item.key === 'event_elapsed_seconds')?.value || '0');
+        const duration = parseInt(data.find(item => item.key === 'event_duration_minutes')?.value || '0');
+        
+        setStatus(s ?? 'idle');
+        setStartedAt(start ?? null);
+        setElapsedSeconds(elapsed);
+        setDurationMinutes(duration);
+        setIsExpired(s === 'finished');
+      }
     };
 
-    let channelRef: ReturnType<typeof supabase.channel> | null = null;
-    let cancelled = false;
+    fetchSettings();
 
-    resolveEventId().then((event_id) => {
-      if (cancelled) return;
+    // Subscribe to all settings changes since we only have a few global keys
+    const channel = supabase
+      .channel('global-settings')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'settings' },
+        (payload) => {
+          const newItem = payload.new as { key: string; value: string };
+          if (!newItem) return;
 
-      if (!event_id) {
-        setTimerState('idle');
-        setTimerRemainingSeconds(null);
-        setTimerStartedAt(null);
-        setEventId(null);
-        return;
-      }
-
-      setEventId(event_id);
-
-      // Fetch initial timer state from the database
-      supabase
-        .from('events')
-        .select('timer_state, timer_remaining_seconds, timer_started_at')
-        .eq('id', event_id)
-        .maybeSingle()
-        .then(({ data, error }) => {
-          if (cancelled) return;
-          if (error) {
-            console.error('TimerContext: failed to fetch initial event state', error);
-            return;
+          if (newItem.key === 'event_status') {
+            const newStatus = newItem.value as EventStatus;
+            setStatus(newStatus);
+            setIsExpired(newStatus === 'finished');
+          } else if (newItem.key === 'event_started_at') {
+            setStartedAt(newItem.value);
+          } else if (newItem.key === 'event_elapsed_seconds') {
+            setElapsedSeconds(parseInt(newItem.value || '0'));
+          } else if (newItem.key === 'event_duration_minutes') {
+            setDurationMinutes(parseInt(newItem.value || '0'));
           }
-          if (data) {
-            const newState = (data.timer_state as TimerState) ?? 'idle';
-            setTimerState(newState);
-            setTimerRemainingSeconds(data.timer_remaining_seconds ?? null);
-            setTimerStartedAt(data.timer_started_at ?? null);
-            setIsExpired(newState === 'ended');
-          }
-        });
-
-      // Subscribe to Realtime changes for this event row
-      channelRef = supabase
-        .channel(`timer-${event_id}`)
-        .on(
-          'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'events',
-            filter: `id=eq.${event_id}`,
-          },
-          (payload) => {
-            const row = payload.new as {
-              timer_state?: string;
-              timer_remaining_seconds?: number | null;
-              timer_started_at?: string | null;
-              id?: string;
-            };
-
-            if (row) {
-              const newState = (row.timer_state as TimerState) ?? 'idle';
-              setTimerState(newState);
-              setTimerRemainingSeconds(row.timer_remaining_seconds ?? null);
-              setTimerStartedAt(row.timer_started_at ?? null);
-              setIsExpired(newState === 'ended');
-            }
-          },
-        )
-        .subscribe();
-    });
+        }
+      )
+      .subscribe();
 
     return () => {
-      cancelled = true;
-      if (channelRef) {
-        supabase.removeChannel(channelRef);
-      }
+      supabase.removeChannel(channel);
     };
   }, [user]);
 
   return (
     <TimerContext.Provider
-      value={{ timerState, timerRemainingSeconds, timerStartedAt, eventId, isExpired }}
+      value={{ status, startedAt, elapsedSeconds, durationMinutes, isExpired }}
     >
       {children}
     </TimerContext.Provider>

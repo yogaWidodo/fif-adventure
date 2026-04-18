@@ -5,7 +5,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import { useEffect } from 'react';
 import { getRoleRedirect } from '@/lib/auth';
 
-type AllowedRole = 'admin' | 'kaptain' | 'cocaptain' | 'lo' | 'member';
+type AllowedRole = 'admin' | 'captain' | 'vice_captain' | 'lo' | 'member';
 
 interface AuthGuardProps {
   children: React.ReactNode;

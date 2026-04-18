@@ -24,13 +24,11 @@ export async function PATCH(
   const { id } = await params;
 
   let body: {
-    nama?: unknown;
+    name?: unknown;
     npk?: unknown;
     role?: unknown;
-    event_id?: unknown;
     team_id?: unknown;
-    no_unik?: unknown;
-    assigned_location_id?: unknown;
+    birth_date?: unknown;
   };
   try {
     body = await request.json();
@@ -43,7 +41,7 @@ export async function PATCH(
   // Fetch current user record
   const { data: currentUser, error: fetchError } = await supabaseAdmin
     .from('users')
-    .select('id, auth_id, npk, nama, role')
+    .select('id, auth_id, npk, name, role')
     .eq('id', id)
     .single();
 
@@ -54,11 +52,11 @@ export async function PATCH(
   // Build update payload — only include fields that were sent
   const updates: Record<string, unknown> = {};
 
-  if (typeof body.nama === 'string') {
-    if (!body.nama.trim()) {
-      return Response.json({ error: 'nama cannot be empty' }, { status: 400 });
+  if (typeof body.name === 'string') {
+    if (!body.name.trim()) {
+      return Response.json({ error: 'name cannot be empty' }, { status: 400 });
     }
-    updates.nama = body.nama.trim();
+    updates.name = body.name.trim();
   }
 
   if (typeof body.role === 'string') {
@@ -68,45 +66,17 @@ export async function PATCH(
     updates.role = body.role;
   }
 
-  // event_id can be null (unassign from event)
-  if ('event_id' in body) {
-    updates.event_id = typeof body.event_id === 'string' && body.event_id ? body.event_id : null;
-  }
-
-  // team_id + no_unik for team assignment (both must be updated together)
+  // team_id for team assignment
   if ('team_id' in body) {
     updates.team_id = typeof body.team_id === 'string' && body.team_id ? body.team_id : null;
   }
-  if ('no_unik' in body) {
-    updates.no_unik = typeof body.no_unik === 'string' && body.no_unik ? body.no_unik : null;
-  }
 
-  // assigned_location_id: assign LO to a location (UUID) or unassign (null)
-  if ('assigned_location_id' in body) {
-    if (body.assigned_location_id === null || body.assigned_location_id === undefined) {
-      // Unassign — set to NULL
-      updates.assigned_location_id = null;
-    } else if (typeof body.assigned_location_id === 'string' && body.assigned_location_id) {
-      // Validate that the location exists
-      const { data: location, error: locationError } = await supabaseAdmin
-        .from('locations')
-        .select('id')
-        .eq('id', body.assigned_location_id)
-        .maybeSingle();
-
-      if (locationError) {
-        console.error('[PATCH /api/users] location lookup failed:', locationError.message);
-        return Response.json({ error: 'Failed to validate location' }, { status: 500 });
-      }
-
-      if (!location) {
-        return Response.json({ error: 'Lokasi tidak ditemukan' }, { status: 404 });
-      }
-
-      updates.assigned_location_id = body.assigned_location_id;
-    } else {
-      return Response.json({ error: 'assigned_location_id must be a UUID string or null' }, { status: 400 });
+  // birth_date for user authentication/updates
+  if (typeof body.birth_date === 'string') {
+    if (!body.birth_date.trim()) {
+      return Response.json({ error: 'birth_date cannot be empty' }, { status: 400 });
     }
+    updates.birth_date = body.birth_date.trim();
   }
 
   // Handle npk change — requires updating Supabase Auth email + password
@@ -151,12 +121,46 @@ export async function PATCH(
 
   if (updateError) {
     console.error('[PATCH /api/users] update failed:', updateError.message);
-    // Check for unique constraint violation on (team_id, no_unik)
-    if (updateError.code === '23505') {
-      return Response.json({ error: 'no_unik sudah digunakan di tim tersebut' }, { status: 409 });
-    }
     return Response.json({ error: 'Failed to update user' }, { status: 500 });
   }
 
   return Response.json({ user: updatedUser });
+}
+
+// DELETE /api/users/[id] — soft-delete (Req. 4.1: preserve historical log)
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+  const supabaseAdmin = getAdminClient();
+
+  const { data: currentUser, error: fetchError } = await supabaseAdmin
+    .from('users')
+    .select('id, auth_id, role')
+    .eq('id', id)
+    .is('deleted_at', null)
+    .single();
+
+  if (fetchError || !currentUser) {
+    return Response.json({ error: 'User not found' }, { status: 404 });
+  }
+
+  // Clear lo_assignments if role = lo before soft-deleting
+  if (currentUser.role === 'lo') {
+    await supabaseAdmin.from('lo_assignments').delete().eq('lo_id', id);
+  }
+
+  // Soft-delete: set deleted_at instead of hard DELETE
+  const { error: deleteError } = await supabaseAdmin
+    .from('users')
+    .update({ deleted_at: new Date().toISOString() })
+    .eq('id', id);
+
+  if (deleteError) {
+    console.error('[DELETE /api/users] soft-delete failed:', deleteError.message);
+    return Response.json({ error: 'Failed to delete user' }, { status: 500 });
+  }
+
+  return Response.json({ success: true });
 }

@@ -1,6 +1,5 @@
 /**
- * User Management utility functions for FIF Adventure
- * Requirements: 2.3, 3.4, 4.3, 4.4, 4.8, 4.9, 4.11, 4.12, 7.3
+ * User Management utility functions for FIF Adventure V2
  */
 
 import { type Role, isValidRole } from './auth';
@@ -8,11 +7,11 @@ import { type Role, isValidRole } from './auth';
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface ParsedUserRow {
-  nama: string;
+  name: string;
   npk: string;
   role: string;        // raw string from CSV; validated separately
   team_name: string;   // empty string if not filled
-  no_unik: string;     // empty string if not filled
+  birth_date: string;  // Required DDMMYYYY from CSV
 }
 
 export interface ParseUserCSVResult {
@@ -39,14 +38,13 @@ export interface UploadReport {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const REQUIRED_CSV_COLUMNS = ['nama', 'npk', 'role'] as const;
-const OPTIONAL_CSV_COLUMNS = ['team_name', 'no_unik'] as const;
+const REQUIRED_CSV_COLUMNS = ['name', 'npk', 'role', 'birth_date'] as const;
+const OPTIONAL_CSV_COLUMNS = ['team_name'] as const;
 
 // ─── Functions ────────────────────────────────────────────────────────────────
 
 /**
  * Construct Supabase Auth email from npk.
- * Requirements: 2.3, 3.4, 7.3
  */
 export function buildAuthEmail(npk: string): string {
   return `${npk.toLowerCase()}@fif.internal`;
@@ -55,32 +53,25 @@ export function buildAuthEmail(npk: string): string {
 /**
  * Validate a single parsed CSV row before processing.
  * Returns null if valid, error string if invalid.
- * Requirements: 4.9, 4.11, 4.12
  */
 export function validateUserRow(row: ParsedUserRow): string | null {
-  // Check: nama empty or whitespace-only
-  if (!row.nama || row.nama.trim() === '') {
-    return 'nama dan npk wajib diisi';
+  if (!row.name || row.name.trim() === '') {
+    return 'name dan npk wajib diisi';
   }
-  // Check: npk empty or whitespace-only
   if (!row.npk || row.npk.trim() === '') {
-    return 'nama dan npk wajib diisi';
+    return 'name dan npk wajib diisi';
   }
-  // Check: role invalid
   if (!isValidRole(row.role)) {
     return `role '${row.role}' tidak valid`;
   }
-  // Check: team_name filled but no_unik empty
-  if (row.team_name.trim() !== '' && row.no_unik.trim() === '') {
-    return 'no_unik wajib diisi jika team_name diisi';
+  if (!row.birth_date || !/^\d{8}$/.test(row.birth_date)) {
+    return 'birth_date wajib diisi dengan format DDMMYYYY (8 digit angka)';
   }
   return null;
 }
 
 /**
- * Parse CSV with columns: nama, npk, role (required), team_name, no_unik (optional).
- * Columns team_name and no_unik default to empty string if absent or empty per row.
- * Requirements: 4.3, 4.4
+ * Parse CSV with columns: name, npk, role, birth_date (required), team_name (optional).
  */
 export function parseUserCSV(content: string): ParseUserCSVResult {
   const rows: ParsedUserRow[] = [];
@@ -111,20 +102,20 @@ export function parseUserCSV(content: string): ParseUserCSVResult {
   // Build column index map
   const colIndex: Record<string, number> = {};
   for (const col of [...REQUIRED_CSV_COLUMNS, ...OPTIONAL_CSV_COLUMNS]) {
-    colIndex[col] = headers.indexOf(col); // -1 if optional column absent
+    colIndex[col] = headers.indexOf(col);
   }
 
   // Parse data rows
   for (let i = 1; i < lines.length; i++) {
     const values = lines[i].split(',').map((v) => v.trim());
 
-    const nama = values[colIndex['nama']] ?? '';
+    const name = values[colIndex['name']] ?? '';
     const npk = values[colIndex['npk']] ?? '';
     const role = values[colIndex['role']] ?? '';
+    const birth_date = values[colIndex['birth_date']] ?? '';
     const team_name = colIndex['team_name'] >= 0 ? (values[colIndex['team_name']] ?? '') : '';
-    const no_unik = colIndex['no_unik'] >= 0 ? (values[colIndex['no_unik']] ?? '') : '';
 
-    rows.push({ nama, npk, role, team_name, no_unik });
+    rows.push({ name, npk, role, team_name, birth_date });
   }
 
   return { rows, errors };
@@ -132,9 +123,6 @@ export function parseUserCSV(content: string): ParseUserCSVResult {
 
 /**
  * Build UploadReport from array of RowResult.
- * Invariant: totalRows === usersCreated + usersSkipped + failed
- * (assigned rows are counted separately and don't affect the invariant)
- * Requirements: 4.8
  */
 export function buildUploadReport(results: RowResult[], totalRows: number): UploadReport {
   let usersCreated = 0;

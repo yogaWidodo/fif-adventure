@@ -6,15 +6,15 @@ import { Users, Clock, CheckCircle2, Circle, Compass } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
 interface TeamQueueEntry {
-  scan_id: string;
+  registration_id: string;
   team_id: string;
   team_name: string;
-  scanned_at: string;
+  created_at: string;
   has_score: boolean;
 }
 
 interface TeamQueueListProps {
-  wahanaId: string;
+  activityId: string;
   /** Called when the list is refreshed — passes the current entries */
   onQueueLoaded?: (entries: TeamQueueEntry[]) => void;
   /** Refresh trigger: increment this value to force a re-fetch */
@@ -25,7 +25,7 @@ interface TeamQueueListProps {
 }
 
 export default function TeamQueueList({
-  wahanaId,
+  activityId,
   onQueueLoaded,
   refreshTrigger = 0,
   selectedTeamId,
@@ -37,44 +37,44 @@ export default function TeamQueueList({
   const fetchQueue = useCallback(async () => {
     setLoading(true);
 
-    // Query scans joined with teams, then check score_logs for each team
-    const { data: scans, error: scansError } = await supabase
-      .from('scans')
+    // Query activity_registrations joined with teams, then check score_logs for each team
+    const { data: registrations, error: registrationsError } = await supabase
+      .from('activity_registrations')
       .select(`
         id,
         team_id,
-        scanned_at,
+        created_at,
         teams ( name )
       `)
-      .eq('location_id', wahanaId)
-      .order('scanned_at', { ascending: true });
+      .eq('activity_id', activityId)
+      .order('created_at', { ascending: true });
 
-    if (scansError || !scans) {
+    if (registrationsError || !registrations) {
       setLoading(false);
       return;
     }
 
-    // Fetch score_logs for this wahana to determine which teams already have scores
+    // Fetch score_logs for this activity to determine which teams already have scores
     const { data: scoreLogs } = await supabase
       .from('score_logs')
       .select('team_id')
-      .eq('location_id', wahanaId);
+      .eq('activity_id', activityId);
 
     const scoredTeamIds = new Set((scoreLogs ?? []).map((s) => s.team_id));
 
-    const queue: TeamQueueEntry[] = scans.map((scan) => ({
-      scan_id: scan.id,
-      team_id: scan.team_id,
+    const queue: TeamQueueEntry[] = registrations.map((reg) => ({
+      registration_id: reg.id,
+      team_id: reg.team_id,
       // @ts-expect-error — Supabase join returns nested object
-      team_name: scan.teams?.name ?? 'Unknown Team',
-      scanned_at: scan.scanned_at,
-      has_score: scoredTeamIds.has(scan.team_id),
+      team_name: reg.teams?.name ?? 'Unknown Team',
+      created_at: reg.created_at,
+      has_score: scoredTeamIds.has(reg.team_id),
     }));
 
     setEntries(queue);
     onQueueLoaded?.(queue);
     setLoading(false);
-  }, [wahanaId, onQueueLoaded]);
+  }, [activityId, onQueueLoaded]);
 
   useEffect(() => {
     fetchQueue();
@@ -151,7 +151,7 @@ export default function TeamQueueList({
               const isSelected = selectedTeamId === entry.team_id;
               return (
                 <motion.button
-                  key={entry.scan_id}
+                  key={entry.registration_id}
                   initial={{ opacity: 0, x: -10 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: idx * 0.04 }}
@@ -182,7 +182,7 @@ export default function TeamQueueList({
                   <div className="col-span-4 flex items-center gap-1.5">
                     <Clock className="w-3 h-3 text-primary/40 flex-shrink-0" />
                     <span className="text-[11px] font-mono text-muted-foreground">
-                      {formatTime(entry.scanned_at)}
+                      {formatTime(entry.created_at)}
                     </span>
                   </div>
 

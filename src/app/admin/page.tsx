@@ -43,97 +43,95 @@ interface TeamWithDetails {
   name: string;
   slogan?: string;
   total_points: number;
-  captain_id?: string;
-  event_id: string;
   created_at: string;
   member_count?: number;
   captain_name?: string;
 }
 
-interface Member {
+interface UserSummary {
   id: string;
-  nama: string;
+  name: string;
   npk: string;
   role: string;
-  no_unik: string | null;
+  birth_date: string | null;
   team_id?: string;
 }
 
-interface Location {
+interface Activity {
   id: string;
   name: string;
   description?: string;
-  type: 'wahana' | 'challenge' | 'treasure';
-  challenge_type?: 'regular' | 'popup' | 'additional';
-  points: number;
-  barcode_data: string;
-  hint?: string;
-  quota?: number;
-  is_active: boolean;
-  event_id: string;
+  type: 'wahana' | 'challenge_regular' | 'challenge_popup' | 'challenge_additional';
+  max_points: number;
   created_at: string;
+}
+
+interface TreasureHunt {
+  id: string;
+  name: string;
+  hint_text: string;
+  points: number;
+  quota: number;
+  remaining_quota: number;
 }
 
 interface ScoreLogEntry {
   id: string;
   team_id: string;
-  location_id: string;
-  score: number;
-  lo_user_id: string;
+  activity_id: string;
+  points_awarded: number;
+  lo_id: string;
   created_at: string;
   team_name?: string;
-  location_name?: string;
+  activity_name?: string;
   lo_name?: string;
 }
 
-interface Event {
-  id: string;
-  name: string;
-  is_active: boolean;
-  start_time?: string;
-  end_time?: string;
-  // Timer control columns
-  duration_seconds: number | null;
-  timer_state: 'idle' | 'running' | 'paused' | 'ended';
-  timer_started_at: string | null;
-  timer_remaining_seconds: number | null;
-}
-
-interface EventListItem {
-  id: string;
-  name: string;
-  is_active: boolean;
-  start_time: string | null;
-  end_time: string | null;
+interface TimerStatus {
+  status: 'idle' | 'running' | 'paused' | 'finished';
+  durationMinutes: number;
+  elapsedSeconds: number;
+  startedAt: string | null;
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function AdminDashboard() {
   const { logout } = useAuth();
-  const [activeTab, setActiveTab] = useState('events');
-  const [activeEvent, setActiveEvent] = useState<Event | null>(null);
+  const [activeTab, setActiveTab] = useState('timer'); // Default to Timer control
+  const [timerStatus, setTimerStatus] = useState<TimerStatus | null>(null);
 
-  // Fetch active event on mount
-  useEffect(() => {
-    const fetchActiveEvent = async () => {
-      const { data } = await supabase
-        .from('events')
-        .select('*')
-        .eq('is_active', true)
-        .limit(1)
-        .single();
-      if (data) setActiveEvent(data);
-    };
-    fetchActiveEvent();
+  // Fetch global event settings on mount
+  const fetchSettings = useCallback(async () => {
+    try {
+      const { data } = await supabase.from('settings').select('*');
+      if (data) {
+        const s: Record<string, string> = Object.fromEntries(data.map(item => [item.key, item.value]));
+        setTimerStatus({
+          status: (s.event_status as any) || 'idle',
+          durationMinutes: parseInt(s.event_duration_minutes || '0', 10),
+          elapsedSeconds: parseInt(s.event_elapsed_seconds || '0', 10),
+          startedAt: s.event_started_at || null,
+        });
+      }
+    } catch (e) {
+      console.error('[AdminDashboard] settings fetch error:', e);
+    }
   }, []);
+
+  useEffect(() => {
+    fetchSettings();
+    // Poll settings every 10s or use real-time
+    const interval = setInterval(fetchSettings, 30000);
+    return () => clearInterval(interval);
+  }, [fetchSettings]);
 
   return (
     <AuthGuard allowedRoles={['admin']}>
       <div className="relative flex h-screen bg-black overflow-hidden font-content selection:bg-primary selection:text-primary-foreground">
         {/* Immersive Background */}
         <div
-          className="absolute inset-0 z-0 bg-cover bg-center opacity-40 blur-[2px]"
+          className="absolute inset-0 z-0 bg-cover bg-center opacity-40"
           style={{ backgroundImage: 'url("/images/jungle_hq_bg.png")' }}
         />
         <div className="absolute inset-0 z-0 bg-gradient-to-r from-black via-transparent to-black opacity-80" />
@@ -155,7 +153,7 @@ export default function AdminDashboard() {
             <div className="pb-2">
               <p className="text-[10px] uppercase tracking-widest text-foreground/30 font-adventure px-4 mb-2">Management</p>
             </div>
-            <SidebarLink icon={<Database className="w-5 h-5" />} label="Events" active={activeTab === 'events'} onClick={() => setActiveTab('events')} />
+            <SidebarLink icon={<Flame className="w-5 h-5" />} label="Event Control" active={activeTab === 'timer'} onClick={() => setActiveTab('timer')} />
             <SidebarLink icon={<Users className="w-5 h-5" />} label="Teams" active={activeTab === 'teams'} onClick={() => setActiveTab('teams')} />
             <SidebarLink icon={<UserCog className="w-5 h-5" />} label="Users" active={activeTab === 'users'} onClick={() => setActiveTab('users')} />
             <SidebarLink icon={<MapIcon className="w-5 h-5" />} label="Wahana" active={activeTab === 'wahana'} onClick={() => setActiveTab('wahana')} />
@@ -170,7 +168,6 @@ export default function AdminDashboard() {
           </nav>
 
           <div className="mt-auto pt-8 border-t border-primary/10">
-            <SidebarLink icon={<Settings className="w-5 h-5" />} label="Settings" active={false} onClick={() => {}} />
             <SidebarLink icon={<LogOut className="w-5 h-5 text-accent" />} label="Abort Mission" active={false} onClick={logout} />
           </div>
         </aside>
@@ -178,14 +175,14 @@ export default function AdminDashboard() {
         {/* Main Content */}
         <main className="relative z-20 flex-1 overflow-y-auto">
           <AnimatePresence mode="wait">
-            {activeTab === 'events' && <EventsTab key="events" onEventChange={setActiveEvent} />}
-            {activeTab === 'teams' && <TeamsTabComponent key="teams" activeEvent={activeEvent} />}
-            {activeTab === 'users' && <UsersTab key="users" activeEvent={activeEvent} />}
-            {activeTab === 'wahana' && <WahanaTab key="wahana" activeEvent={activeEvent} />}
-            {activeTab === 'challenges' && <ChallengesTab key="challenges" activeEvent={activeEvent} />}
-            {activeTab === 'treasure' && <TreasureTab key="treasure" activeEvent={activeEvent} />}
+            {activeTab === 'timer' && <EventControlTab key="timer" status={timerStatus} onUpdate={fetchSettings} />}
+            {activeTab === 'teams' && <TeamsTabComponent key="teams" />}
+            {activeTab === 'users' && <UsersTab key="users" />}
+            {activeTab === 'wahana' && <WahanaTab key="wahana" />}
+            {activeTab === 'challenges' && <ChallengesTab key="challenges" />}
+            {activeTab === 'treasure' && <TreasureTab key="treasure" />}
             {activeTab === 'analytics' && <AnalyticsTab key="analytics" />}
-            {activeTab === 'audit' && <AuditTab key="audit" activeEvent={activeEvent} />}
+            {activeTab === 'audit' && <AuditTab key="audit" />}
           </AnimatePresence>
         </main>
       </div>
@@ -193,454 +190,174 @@ export default function AdminDashboard() {
   );
 }
 
-// ─── Events Tab ───────────────────────────────────────────────────────────────
+// ─── Event Control Tab ───────────────────────────────────────────────────────
 
-function EventsTab({ onEventChange }: { onEventChange: (e: Event | null) => void }) {
-  const [events, setEvents] = useState<Event[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
-  const [newName, setNewName] = useState('');
-  const [newDurationHours, setNewDurationHours] = useState('');
-  const [newDurationMinutes, setNewDurationMinutes] = useState('');
+function EventControlTab({
+  status,
+  onUpdate,
+}: {
+  status: TimerStatus | null;
+  onUpdate: () => void;
+}) {
+  const [durationMinutes, setDurationMinutes] = useState(status?.durationMinutes || 480);
+  const [gachaProb, setGachaProb] = useState('0.3');
   const [saving, setSaving] = useState(false);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [error, setError] = useState('');
 
-  // Duration input state per event (keyed by event id)
-  const [durationHours, setDurationHours] = useState<Record<string, string>>({});
-  const [durationMinutes, setDurationMinutes] = useState<Record<string, string>>({});
-  const [durationErrors, setDurationErrors] = useState<Record<string, string>>({});
-
-  // Live countdown state per event (keyed by event id)
-  const [liveRemaining, setLiveRemaining] = useState<Record<string, number>>({});
-
-  // Timer action error per event
-  const [timerActionError, setTimerActionError] = useState<Record<string, string>>({});
-
-  const fetchEvents = useCallback(async () => {
-    setLoading(true);
-    const { data } = await supabase.from('events').select('*').order('created_at', { ascending: false });
-    const evts: Event[] = (data || []).map((e: any) => ({
-      ...e,
-      duration_seconds: e.duration_seconds ?? null,
-      timer_state: e.timer_state ?? 'idle',
-      timer_started_at: e.timer_started_at ?? null,
-      timer_remaining_seconds: e.timer_remaining_seconds ?? null,
-    }));
-    setEvents(evts);
-    // Pre-populate duration inputs from existing duration_seconds (only if not already set by user)
-    setDurationHours(prev => {
-      const next = { ...prev };
-      evts.forEach(ev => {
-        if (ev.duration_seconds != null && !(ev.id in prev)) {
-          next[ev.id] = String(Math.floor(ev.duration_seconds / 3600));
-        }
-      });
-      return next;
+  // Fetch gacha probability from settings
+  useEffect(() => {
+    supabase.from('settings').select('*').eq('key', 'gacha_probability').single().then(({ data }) => {
+      if (data) setGachaProb(data.value);
     });
-    setDurationMinutes(prev => {
-      const next = { ...prev };
-      evts.forEach(ev => {
-        if (ev.duration_seconds != null && !(ev.id in prev)) {
-          next[ev.id] = String(Math.floor((ev.duration_seconds % 3600) / 60));
-        }
-      });
-      return next;
-    });
-    setLoading(false);
   }, []);
 
-  useEffect(() => { fetchEvents(); }, [fetchEvents]);
-
-  // Live countdown ticker for running events
-  useEffect(() => {
-    const runningEvents = events.filter(
-      e => e.timer_state === 'running' && e.timer_remaining_seconds != null && e.timer_started_at != null
-    );
-    if (runningEvents.length === 0) return;
-
-    const interval = setInterval(() => {
-      const now = new Date();
-      const updates: Record<string, number> = {};
-      runningEvents.forEach(ev => {
-        const remaining = computeRemaining(ev.timer_remaining_seconds!, ev.timer_started_at!, now);
-        updates[ev.id] = remaining;
-        if (remaining === 0) {
-          supabase.from('events').update({ timer_state: 'ended' }).eq('id', ev.id).then(() => fetchEvents());
-        }
-      });
-      setLiveRemaining(prev => ({ ...prev, ...updates }));
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [events, fetchEvents]);
-
-  const handleCreate = async () => {
-    if (!newName) return;
+  const handleUpdateSettings = async () => {
     setSaving(true);
     setError('');
-
-    const h = parseInt(newDurationHours || '0', 10);
-    const m = parseInt(newDurationMinutes || '0', 10);
-    const durationResult = validateDuration(h, m);
-    if (!durationResult.valid) {
-      setError(durationResult.error!);
+    try {
+      const updates = [
+        { key: 'event_duration_minutes', value: String(durationMinutes) },
+        { key: 'gacha_probability', value: gachaProb },
+      ];
+      for (const item of updates) {
+        await supabase.from('settings').upsert(item);
+      }
+      onUpdate();
+    } catch {
+      setError('Gagal menyimpan settings');
+    } finally {
       setSaving(false);
-      return;
-    }
-
-    const { error: err } = await supabase.from('events').insert({
-      name: newName,
-      duration_seconds: durationResult.duration_seconds,
-    });
-    if (err) { setError(err.message); } else {
-      setShowModal(false);
-      setNewName('');
-      setNewDurationHours('');
-      setNewDurationMinutes('');
-      fetchEvents();
-    }
-    setSaving(false);
-  };
-
-  const toggleActive = async (event: Event) => {
-    await supabase.from('events').update({ is_active: false }).neq('id', event.id);
-    if (!event.is_active) {
-      await supabase.from('events').update({ is_active: true }).eq('id', event.id);
-      onEventChange({ ...event, is_active: true });
-    } else {
-      await supabase.from('events').update({ is_active: false }).eq('id', event.id);
-      onEventChange(null);
-    }
-    fetchEvents();
-  };
-
-  const handleSetDuration = async (event: Event) => {
-    const h = parseInt(durationHours[event.id] || '0', 10);
-    const m = parseInt(durationMinutes[event.id] || '0', 10);
-    const result = validateDuration(h, m);
-    if (!result.valid) {
-      setDurationErrors(prev => ({ ...prev, [event.id]: result.error! }));
-      return;
-    }
-    setDurationErrors(prev => ({ ...prev, [event.id]: '' }));
-    const { error: err } = await supabase
-      .from('events')
-      .update({ duration_seconds: result.duration_seconds })
-      .eq('id', event.id);
-    if (err) {
-      setDurationErrors(prev => ({ ...prev, [event.id]: err.message }));
-    } else {
-      fetchEvents();
     }
   };
 
-  const handleTimerAction = async (event: Event, action: 'start' | 'pause' | 'resume' | 'reset') => {
-    if (!isTransitionAllowed(event.timer_state, action)) return;
-    setTimerActionError(prev => ({ ...prev, [event.id]: '' }));
-
-    const now = new Date();
-    let payload;
-    if (action === 'start') {
-      if (event.duration_seconds == null) return;
-      payload = buildStartPayload(event.duration_seconds, now);
-    } else if (action === 'pause') {
-      payload = buildPausePayload(event.timer_remaining_seconds!, event.timer_started_at!, now);
-    } else if (action === 'resume') {
-      payload = buildResumePayload(now);
-    } else {
-      payload = buildResetPayload();
-    }
-
-    const { error: err } = await supabase.from('events').update(payload).eq('id', event.id);
-    if (err) {
-      setTimerActionError(prev => ({ ...prev, [event.id]: err.message }));
-    } else {
-      fetchEvents();
+  const handleTimerAction = async (action: 'start' | 'pause' | 'resume' | 'reset') => {
+    setActionLoading(action);
+    setError('');
+    try {
+      const res = await fetch(`/api/admin/timer/${action}`, { method: 'POST' });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || `Gagal ${action} timer`);
+      }
+      onUpdate();
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setActionLoading(null);
     }
   };
 
-  const formatSeconds = (secs: number): string => {
-    const h = Math.floor(secs / 3600);
-    const m = Math.floor((secs % 3600) / 60);
-    const s = secs % 60;
-    return [h, m, s].map(v => String(v).padStart(2, '0')).join(':');
-  };
+  const [localElapsed, setLocalElapsed] = useState(0);
 
-  const activeEvents = events.filter(e => e.is_active);
-  const inactiveEvents = events.filter(e => !e.is_active);
+  // Compute live elapsed time for UI ticking without writing to DB
+  useEffect(() => {
+    if (!status) return;
+
+    const compute = () => {
+      if (status.status === 'running' && status.startedAt) {
+        const timeSinceStart = Math.floor((Date.now() - new Date(status.startedAt).getTime()) / 1000);
+        return status.elapsedSeconds + timeSinceStart;
+      }
+      return status.elapsedSeconds;
+    };
+
+    setLocalElapsed(compute());
+
+    if (status.status === 'running') {
+      const interval = setInterval(() => {
+        setLocalElapsed(compute());
+      }, 1000);
+      return () => clearInterval(interval);
+    }
+  }, [status]);
+
+  if (!status) return <LoadingState />;
+
+  const formatTime = (totalSeconds: number) => {
+    const hrs = Math.floor(totalSeconds / 3600);
+    const mins = Math.floor((totalSeconds % 3600) / 60);
+    const secs = totalSeconds % 60;
+    return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
 
   return (
-    <TabLayout
-      title="Events"
-      subtitle="Manage expedition sessions"
-      onAdd={() => setShowModal(true)}
-    >
-      {loading ? <LoadingState /> : events.length === 0 ? <EmptyState tab="events" /> : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          {/* Left column — Archived (inactive) events */}
-          <div>
-            <p className="text-[10px] uppercase tracking-[0.4em] text-foreground/40 font-adventure mb-4 flex items-center gap-2">
-              <span className="h-px w-6 bg-foreground/20" />
-              Archived
-            </p>
-            {inactiveEvents.length === 0 ? (
-              <p className="text-[11px] text-muted-foreground/30 italic">No archived events.</p>
-            ) : (
-              <div className="space-y-4">
-                {inactiveEvents.map((event, idx) => (
-                  <motion.div
-                    key={event.id}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: idx * 0.05 }}
-                    className="adventure-card p-5 group"
-                  >
-                    <div className="flex justify-between items-center">
-                      <div className="flex items-center gap-3">
-                        <div className="p-2 rounded-lg border bg-foreground/5 border-foreground/10">
-                          <Flame className="w-4 h-4 text-muted-foreground opacity-30" />
-                        </div>
-                        <div>
-                          <h3 className="font-adventure text-base text-foreground/70 group-hover:text-foreground transition-colors">{event.name}</h3>
-                          <span className="text-[9px] font-mono opacity-20">{event.id.slice(0, 8)}</span>
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => toggleActive(event)}
-                        className="text-[10px] font-adventure uppercase tracking-widest hover:text-primary underline underline-offset-4 transition-all"
-                      >
-                        Activate
-                      </button>
-                    </div>
-                  </motion.div>
-                ))}
-              </div>
-            )}
+    <div className="p-10 space-y-8">
+      <header>
+        <h2 className="text-4xl font-adventure gold-engraving">Event Control</h2>
+        <p className="text-muted-foreground text-sm italic">Pusat komando waktu dan probabilitas</p>
+      </header>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        {/* Timer Panel */}
+        <div className="adventure-card p-8 flex flex-col items-center justify-center text-center space-y-6">
+          <div className="space-y-2">
+            <p className="text-[10px] uppercase tracking-[0.3em] text-primary/60 font-adventure">Timer Status</p>
+            <h3 className={`text-5xl font-adventure tracking-tighter ${status.status === 'running' ? 'text-green-400' : 'text-primary'}`}>
+              {status.status.toUpperCase()}
+            </h3>
           </div>
 
-          {/* Right column — Active events with full timer controls */}
-          <div>
-            <p className="text-[10px] uppercase tracking-[0.4em] text-primary/60 font-adventure mb-4 flex items-center gap-2">
-              <span className="h-px w-6 bg-primary/40" />
-              Active
-            </p>
-            {activeEvents.length === 0 ? (
-              <p className="text-[11px] text-muted-foreground/30 italic">No active events. Activate one from the left.</p>
-            ) : (
-              <div className="space-y-6">
-                {activeEvents.map((event, idx) => {
-                  const state = event.timer_state;
-                  const remaining = state === 'running'
-                    ? (liveRemaining[event.id] ?? computeRemaining(
-                        event.timer_remaining_seconds ?? 0,
-                        event.timer_started_at ?? new Date().toISOString(),
-                        new Date()
-                      ))
-                    : (event.timer_remaining_seconds ?? 0);
+          <div className="py-4 border-y border-primary/10 w-full">
+            <p className="text-[10px] uppercase font-adventure text-foreground/40 mb-1">Elapsed Time</p>
+            <p className="text-6xl font-mono tracking-tight text-foreground/90">{formatTime(localElapsed)}</p>
+          </div>
 
-                  return (
-                    <motion.div
-                      key={event.id}
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: idx * 0.05 }}
-                      className="adventure-card p-6 group"
-                    >
-                      {/* Header */}
-                      <div className="flex justify-between items-start mb-4">
-                        <div className="flex items-center gap-3">
-                          <div className="p-2 rounded-lg border bg-primary/20 border-primary/40">
-                            <Flame className="w-5 h-5 text-primary torch-glow" />
-                          </div>
-                          <div>
-                            <h3 className="font-adventure text-lg text-foreground group-hover:text-primary transition-colors">{event.name}</h3>
-                            <span className="text-[9px] font-mono opacity-30">{event.id.slice(0, 8)}</span>
-                          </div>
-                        </div>
-                        {/* Timer state badge */}
-                        {state === 'idle' && (
-                          <span className="text-[10px] font-adventure uppercase tracking-widest text-muted-foreground/50 bg-foreground/5 border border-foreground/10 px-2 py-1">● Idle</span>
-                        )}
-                        {state === 'running' && (
-                          <span className="text-[10px] font-adventure uppercase tracking-widest text-green-400 bg-green-900/20 border border-green-500/30 px-2 py-1">● Running</span>
-                        )}
-                        {state === 'paused' && (
-                          <span className="text-[10px] font-adventure uppercase tracking-widest text-amber-400 bg-amber-900/20 border border-amber-500/30 px-2 py-1">⏸ Paused</span>
-                        )}
-                        {state === 'ended' && (
-                          <span className="text-[10px] font-adventure uppercase tracking-widest text-red-400 bg-red-900/20 border border-red-500/30 px-2 py-1">■ Ended</span>
-                        )}
-                      </div>
-
-                      {/* Countdown display */}
-                      {(state === 'running' || state === 'paused') && (
-                        <div className="mb-4 text-center">
-                          <p className={`font-adventure text-3xl tracking-widest ${state === 'running' ? 'text-green-400' : 'text-amber-400'}`}>
-                            {formatSeconds(remaining)}
-                          </p>
-                        </div>
-                      )}
-                      {state === 'ended' && (
-                        <div className="mb-4 text-center">
-                          <p className="font-adventure text-3xl tracking-widest text-red-400">00:00:00</p>
-                        </div>
-                      )}
-
-                      {/* Duration input */}
-                      <div className="border border-primary/10 rounded p-4 bg-primary/5 mb-4 space-y-3">
-                        <p className="text-[10px] uppercase tracking-widest font-adventure text-primary/60">Set Duration</p>
-                        <div className="flex items-center gap-3">
-                          <div className="flex-1">
-                            <label className="block text-[9px] uppercase tracking-widest font-adventure text-foreground/40 mb-1">Hours</label>
-                            <input
-                              type="number"
-                              min={0}
-                              value={durationHours[event.id] ?? ''}
-                              onChange={e => setDurationHours(prev => ({ ...prev, [event.id]: e.target.value }))}
-                              className="w-full bg-transparent border-b border-primary/30 py-1.5 text-sm text-foreground focus:outline-none focus:border-primary transition-colors text-center"
-                              placeholder="0"
-                            />
-                          </div>
-                          <span className="text-primary/40 font-adventure text-lg mt-4">:</span>
-                          <div className="flex-1">
-                            <label className="block text-[9px] uppercase tracking-widest font-adventure text-foreground/40 mb-1">Minutes</label>
-                            <input
-                              type="number"
-                              min={0}
-                              max={59}
-                              value={durationMinutes[event.id] ?? ''}
-                              onChange={e => setDurationMinutes(prev => ({ ...prev, [event.id]: e.target.value }))}
-                              className="w-full bg-transparent border-b border-primary/30 py-1.5 text-sm text-foreground focus:outline-none focus:border-primary transition-colors text-center"
-                              placeholder="0"
-                            />
-                          </div>
-                          <button
-                            onClick={() => handleSetDuration(event)}
-                            className="mt-4 flex items-center gap-1 bg-primary/20 hover:bg-primary/30 border border-primary/40 text-primary text-[10px] font-adventure uppercase tracking-widest px-3 py-2 transition-all"
-                          >
-                            <Save className="w-3 h-3" />
-                            Set
-                          </button>
-                        </div>
-                        {durationErrors[event.id] && (
-                          <p className="text-red-400 text-[10px]">{durationErrors[event.id]}</p>
-                        )}
-                        {event.duration_seconds != null && (
-                          <p className="text-[10px] text-primary/50 font-adventure">
-                            Current: {formatSeconds(event.duration_seconds)}
-                          </p>
-                        )}
-                      </div>
-
-                      {/* Timer control buttons */}
-                      <div className="flex flex-wrap gap-2 mb-3">
-                        {state === 'idle' && (
-                          <button
-                            onClick={() => handleTimerAction(event, 'start')}
-                            disabled={event.duration_seconds == null}
-                            className="flex items-center gap-2 bg-green-900/30 hover:bg-green-900/50 border border-green-500/40 text-green-400 text-[10px] font-adventure uppercase tracking-widest px-4 py-2 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
-                          >
-                            <Play className="w-3 h-3" />
-                            Start Timer
-                          </button>
-                        )}
-                        {state === 'running' && (
-                          <button
-                            onClick={() => handleTimerAction(event, 'pause')}
-                            className="flex items-center gap-2 bg-red-900/30 hover:bg-red-900/50 border border-red-500/40 text-red-400 text-[10px] font-adventure uppercase tracking-widest px-4 py-2 transition-all"
-                          >
-                            <Pause className="w-3 h-3" />
-                            Pause
-                          </button>
-                        )}
-                        {state === 'paused' && (
-                          <button
-                            onClick={() => handleTimerAction(event, 'resume')}
-                            className="flex items-center gap-2 bg-amber-900/30 hover:bg-amber-900/50 border border-amber-500/40 text-amber-400 text-[10px] font-adventure uppercase tracking-widest px-4 py-2 transition-all"
-                          >
-                            <Play className="w-3 h-3" />
-                            Resume
-                          </button>
-                        )}
-                        {state === 'ended' && (
-                          <span className="flex items-center gap-2 bg-red-900/20 border border-red-500/20 text-red-400/60 text-[10px] font-adventure uppercase tracking-widest px-4 py-2">
-                            <Square className="w-3 h-3" />
-                            Expedition Ended
-                          </span>
-                        )}
-                        {/* Reset button — shown for running, paused, ended */}
-                        {(state === 'running' || state === 'paused' || state === 'ended') && (
-                          <button
-                            onClick={() => handleTimerAction(event, 'reset')}
-                            className="flex items-center gap-2 bg-foreground/5 hover:bg-foreground/10 border border-foreground/20 text-foreground/50 hover:text-foreground text-[10px] font-adventure uppercase tracking-widest px-4 py-2 transition-all"
-                          >
-                            <RotateCcw className="w-3 h-3" />
-                            Reset
-                          </button>
-                        )}
-                      </div>
-
-                      {timerActionError[event.id] && (
-                        <p className="text-red-400 text-[10px] mb-3">{timerActionError[event.id]}</p>
-                      )}
-
-                      <div className="flex justify-between items-center pt-4 border-t border-primary/5">
-                        <span className="text-[10px] uppercase font-adventure text-primary">● Active</span>
-                        <button
-                          onClick={() => toggleActive(event)}
-                          className="text-[10px] font-adventure uppercase tracking-widest hover:text-primary underline underline-offset-4 transition-all"
-                        >
-                          Deactivate
-                        </button>
-                      </div>
-                    </motion.div>
-                  );
-                })}
-              </div>
+          <div className="flex gap-4 w-full justify-center">
+            {status.status === 'idle' && (
+              <button onClick={() => handleTimerAction('start')} disabled={!!actionLoading} className="bg-primary/20 border border-primary/40 px-8 py-3 font-adventure text-primary hover:bg-primary/30 flex items-center gap-2">
+                <Play className="w-4 h-4" /> START EXPEDITION
+              </button>
+            )}
+            {status.status === 'running' && (
+              <button onClick={() => handleTimerAction('pause')} disabled={!!actionLoading} className="bg-amber-900/20 border border-amber-500/40 px-8 py-3 font-adventure text-amber-400 hover:bg-amber-900/30 flex items-center gap-2">
+                <Pause className="w-4 h-4" /> PAUSE
+              </button>
+            )}
+            {status.status === 'paused' && (
+              <button onClick={() => handleTimerAction('resume')} disabled={!!actionLoading} className="bg-green-900/20 border border-green-500/40 px-8 py-3 font-adventure text-green-400 hover:bg-green-900/30 flex items-center gap-2">
+                <Play className="w-4 h-4" /> RESUME
+              </button>
+            )}
+            {(status.status === 'paused' || status.status === 'finished' || status.status === 'running') && (
+              <button onClick={() => handleTimerAction('reset')} disabled={!!actionLoading} className="border border-red-500/40 px-8 py-3 font-adventure text-red-400 hover:bg-red-500/10 flex items-center gap-2">
+                <RotateCcw className="w-4 h-4" /> RESET
+              </button>
             )}
           </div>
         </div>
-      )}
 
-      <AdventureModal show={showModal} onClose={() => { setShowModal(false); setError(''); }} title="New Event">
-        <div className="space-y-5">
-          <ModalField label="Event Name" value={newName} onChange={setNewName} placeholder="e.g. FIF Adventure 2025" />
+        {/* Settings Panel */}
+        <div className="adventure-card p-8 space-y-8">
           <div>
-            <label className="block text-[10px] uppercase tracking-widest font-adventure text-[#2b1d0e]/60 mb-2">Duration</label>
-            <div className="flex items-center gap-3">
-              <div className="flex-1">
-                <label className="block text-[9px] uppercase tracking-widest font-adventure text-[#2b1d0e]/40 mb-1">Hours</label>
-                <input
-                  type="number" min={0} value={newDurationHours}
-                  onChange={e => setNewDurationHours(e.target.value)}
-                  placeholder="0"
-                  className="w-full bg-transparent border-b-2 border-[#2b1d0e]/20 p-2 font-adventure text-[#2b1d0e] focus:outline-none focus:border-[#8b4513] transition-colors text-center"
-                />
+            <h4 className="font-adventure text-primary text-sm uppercase tracking-widest mb-4">Event Parameters</h4>
+            <div className="space-y-6">
+              <div>
+                <label className="block text-[10px] uppercase text-foreground/40 font-adventure mb-2">Duration (Minutes)</label>
+                <input type="number" value={durationMinutes} onChange={e => setDurationMinutes(parseInt(e.target.value))} className="w-full bg-transparent border-b border-primary/20 py-2 font-mono text-xl focus:outline-none focus:border-primary" />
               </div>
-              <span className="text-[#2b1d0e]/40 font-adventure text-lg mt-4">:</span>
-              <div className="flex-1">
-                <label className="block text-[9px] uppercase tracking-widest font-adventure text-[#2b1d0e]/40 mb-1">Minutes</label>
-                <input
-                  type="number" min={0} max={59} value={newDurationMinutes}
-                  onChange={e => setNewDurationMinutes(e.target.value)}
-                  placeholder="0"
-                  className="w-full bg-transparent border-b-2 border-[#2b1d0e]/20 p-2 font-adventure text-[#2b1d0e] focus:outline-none focus:border-[#8b4513] transition-colors text-center"
-                />
+              <div>
+                <label className="block text-[10px] uppercase text-foreground/40 font-adventure mb-2">Treasure Hunt Probability (0.0 - 1.0)</label>
+                <input type="text" value={gachaProb} onChange={e => setGachaProb(e.target.value)} className="w-full bg-transparent border-b border-primary/20 py-2 font-mono text-xl focus:outline-none focus:border-primary" />
               </div>
             </div>
+            {error && <p className="text-red-400 text-xs mt-4">{error}</p>}
+            <button onClick={handleUpdateSettings} disabled={saving} className="mt-8 w-full bg-primary/20 py-3 font-adventure text-primary border border-primary/40 hover:bg-primary/30 tracking-widest uppercase text-xs">
+              {saving ? 'Saving...' : 'Save Parameters'}
+            </button>
           </div>
-          {error && <p className="text-red-500 text-xs">{error}</p>}
-          <ModalSubmit label="Create Event" onClick={handleCreate} disabled={!newName || saving} loading={saving} />
         </div>
-      </AdventureModal>
-    </TabLayout>
+      </div>
+    </div>
   );
 }
 
 // ─── Wahana Tab ───────────────────────────────────────────────────────────────
 
-function WahanaTab({ activeEvent }: { activeEvent: Event | null }) {
-  const [wahanas, setWahanas] = useState<Location[]>([]);
+// ─── Wahana Tab ───────────────────────────────────────────────────────────────
+
+function WahanaTab() {
+  const [activities, setActivities] = useState<Activity[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [newName, setNewName] = useState('');
@@ -649,114 +366,71 @@ function WahanaTab({ activeEvent }: { activeEvent: Event | null }) {
   const [saving, setSaving] = useState(false);
   const [expandedQR, setExpandedQR] = useState<string | null>(null);
 
-  const fetchWahanas = useCallback(async () => {
+  const fetchWahana = useCallback(async () => {
     setLoading(true);
-    let query = supabase
-      .from('locations')
+    const { data } = await supabase
+      .from('activities')
       .select('*')
       .eq('type', 'wahana')
       .order('created_at', { ascending: false });
-    if (activeEvent) query = query.eq('event_id', activeEvent.id);
-    const { data } = await query;
-    setWahanas(data || []);
+    setActivities(data || []);
     setLoading(false);
-  }, [activeEvent]);
+  }, []);
 
-  useEffect(() => { fetchWahanas(); }, [fetchWahanas]);
+  useEffect(() => { fetchWahana(); }, [fetchWahana]);
 
   const handleCreate = async () => {
     if (!newName || !newPoints) return;
     setSaving(true);
-
-    // Generate a UUID for the barcode
-    const id = crypto.randomUUID();
-    const barcodeData = generateBarcodeData('wahana', id);
-
-    const payload: Record<string, unknown> = {
+    const { error } = await supabase.from('activities').insert({
       name: newName,
       description: newDesc || null,
-      points: parseInt(newPoints, 10),
+      max_points: parseInt(newPoints, 10),
       type: 'wahana',
-      barcode_data: barcodeData,
-      is_active: true,
-    };
-    if (activeEvent) payload.event_id = activeEvent.id;
-
-    const { error } = await supabase.from('locations').insert(payload);
+    });
     if (!error) {
       setShowModal(false);
       setNewName(''); setNewDesc(''); setNewPoints('');
-      fetchWahanas();
+      fetchWahana();
     }
     setSaving(false);
   };
 
-  const toggleActive = async (loc: Location) => {
-    await supabase.from('locations').update({ is_active: !loc.is_active }).eq('id', loc.id);
-    fetchWahanas();
-  };
-
   return (
-    <TabLayout
-      title="Wahana"
-      subtitle="Manage game stations and QR codes"
-      onAdd={() => setShowModal(true)}
-    >
-      {loading ? <LoadingState /> : wahanas.length === 0 ? <EmptyState tab="wahana" /> : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-          {wahanas.map((loc, idx) => (
+    <TabLayout title="Wahana" subtitle="Atraksi utama ekspedisi" onAdd={() => setShowModal(true)}>
+      {loading ? <LoadingState /> : activities.length === 0 ? <EmptyState tab="wahana" /> : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {activities.map((act, idx) => (
             <motion.div
-              key={loc.id}
+              key={act.id}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: idx * 0.05 }}
               className="adventure-card p-6 group"
             >
               <div className="flex justify-between items-start mb-4">
-                <div className={`p-2 rounded-lg border ${loc.is_active ? 'bg-primary/20 border-primary/40' : 'bg-foreground/5 border-foreground/10'}`}>
-                  <MapIcon className={`w-5 h-5 ${loc.is_active ? 'text-primary' : 'text-muted-foreground opacity-30'}`} />
+                <div className="p-2 rounded-lg border bg-primary/20 border-primary/40">
+                  <MapIcon className="w-5 h-5 text-primary" />
                 </div>
-                <span className="text-[10px] font-adventure text-primary bg-primary/10 px-2 py-0.5">{loc.points} pts</span>
+                <span className="text-[10px] font-adventure text-primary bg-primary/10 px-2 py-0.5">{act.max_points} MAX PTS</span>
               </div>
+              <h3 className="font-adventure text-lg text-foreground mb-1 group-hover:text-primary transition-colors">{act.name}</h3>
+              <p className="text-xs text-muted-foreground/60 mb-4 line-clamp-2">{act.description}</p>
 
-              <h3 className="font-adventure text-lg text-foreground mb-1 group-hover:text-primary transition-colors">{loc.name}</h3>
-              {loc.description && (
-                <p className="text-xs text-muted-foreground/60 mb-3 line-clamp-2">{loc.description}</p>
-              )}
-
-              {/* QR Code toggle */}
-              <button
-                onClick={() => setExpandedQR(expandedQR === loc.id ? null : loc.id)}
-                className="flex items-center gap-2 text-[10px] font-adventure uppercase tracking-widest text-primary/60 hover:text-primary transition-colors mb-3"
-              >
+              <button onClick={() => setExpandedQR(expandedQR === act.id ? null : act.id)} className="flex items-center gap-2 text-[10px] font-adventure uppercase tracking-widest text-primary/60 hover:text-primary transition-colors">
                 <QrCode className="w-3 h-3" />
-                {expandedQR === loc.id ? 'Hide QR' : 'Show QR'}
+                {expandedQR === act.id ? 'Hide QR' : 'Show QR'}
               </button>
 
               <AnimatePresence>
-                {expandedQR === loc.id && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: 'auto' }}
-                    exit={{ opacity: 0, height: 0 }}
-                    className="overflow-hidden mb-4 flex justify-center"
-                  >
-                    <QRCodeDisplay barcodeData={loc.barcode_data} label={loc.name} size={120} />
+                {expandedQR === act.id && (
+                  <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden mt-4 flex flex-col items-center">
+                    <div className="bg-white p-3 rounded-xl mb-2">
+                       <QRCodeDisplay barcodeData={act.id} label={act.name} size={150} />
+                    </div>
                   </motion.div>
                 )}
               </AnimatePresence>
-
-              <div className="flex justify-between items-center pt-4 border-t border-primary/5">
-                <span className={`text-[10px] uppercase font-adventure ${loc.is_active ? 'text-primary' : 'text-muted-foreground/40'}`}>
-                  {loc.is_active ? '● Active' : '○ Inactive'}
-                </span>
-                <button
-                  onClick={() => toggleActive(loc)}
-                  className="text-[10px] font-adventure uppercase tracking-widest hover:text-primary underline underline-offset-4 transition-all"
-                >
-                  {loc.is_active ? 'Deactivate' : 'Activate'}
-                </button>
-              </div>
             </motion.div>
           ))}
         </div>
@@ -765,8 +439,8 @@ function WahanaTab({ activeEvent }: { activeEvent: Event | null }) {
       <AdventureModal show={showModal} onClose={() => setShowModal(false)} title="New Wahana">
         <div className="space-y-5">
           <ModalField label="Wahana Name" value={newName} onChange={setNewName} placeholder="e.g. Temple of Doom" />
-          <ModalField label="Description (optional)" value={newDesc} onChange={setNewDesc} placeholder="Describe this station..." />
-          <ModalField label="Points" value={newPoints} onChange={setNewPoints} placeholder="e.g. 100" type="number" />
+          <ModalField label="Description" value={newDesc} onChange={setNewDesc} placeholder="What happens here?" />
+          <ModalField label="Max Points" value={newPoints} onChange={setNewPoints} placeholder="e.g. 100" type="number" />
           <ModalSubmit label="Establish Wahana" onClick={handleCreate} disabled={!newName || !newPoints || saving} loading={saving} />
         </div>
       </AdventureModal>
@@ -778,203 +452,122 @@ function WahanaTab({ activeEvent }: { activeEvent: Event | null }) {
 
 const CHALLENGE_LIMITS = { regular: 6, popup: 2, additional: 3 };
 
-function ChallengesTab({ activeEvent }: { activeEvent: Event | null }) {
-  const [challenges, setChallenges] = useState<Location[]>([]);
+// ─── Challenges Tab ──────────────────────────────────────────────────────────
+
+function ChallengesTab() {
+  const [activities, setActivities] = useState<Activity[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [newName, setNewName] = useState('');
   const [newDesc, setNewDesc] = useState('');
   const [newPoints, setNewPoints] = useState('');
-  const [newType, setNewType] = useState<'regular' | 'popup' | 'additional'>('regular');
+  const [newType, setNewType] = useState<Activity['type']>('challenge_regular');
   const [saving, setSaving] = useState(false);
   const [expandedQR, setExpandedQR] = useState<string | null>(null);
-  const [limitError, setLimitError] = useState('');
-  const [allEvents, setAllEvents] = useState<EventListItem[]>([]);
-  const [newEventId, setNewEventId] = useState<string | null>(null);
 
   const fetchChallenges = useCallback(async () => {
     setLoading(true);
-    let query = supabase
-      .from('locations')
+    const { data } = await supabase
+      .from('activities')
       .select('*')
-      .eq('type', 'challenge')
+      .like('type', 'challenge_%')
       .order('created_at', { ascending: false });
-    if (activeEvent) query = query.eq('event_id', activeEvent.id);
-    const { data } = await query;
-    setChallenges(data || []);
+    setActivities(data || []);
     setLoading(false);
-  }, [activeEvent]);
+  }, []);
 
   useEffect(() => { fetchChallenges(); }, [fetchChallenges]);
 
-  useEffect(() => {
-    if (!showModal) return;
-    supabase.from('events').select('id, name, is_active, start_time, end_time')
-      .order('created_at', { ascending: false })
-      .then(({ data }) => setAllEvents(data || []));
-    setNewEventId(activeEvent?.id ?? null);
-  }, [showModal, activeEvent]);
-
   const handleCreate = async () => {
     if (!newName || !newPoints) return;
-    setLimitError('');
-
-    // Validate limits
-    const typeCount = challenges.filter(c => c.challenge_type === newType && c.is_active).length;
-    const limit = CHALLENGE_LIMITS[newType];
-    if (typeCount >= limit) {
-      setLimitError(`Maximum ${limit} ${newType} challenges allowed per event.`);
-      return;
-    }
-
     setSaving(true);
-    const id = crypto.randomUUID();
-    const barcodeData = generateBarcodeData('challenge', id);
-
-    const payload: Record<string, unknown> = {
+    const { error } = await supabase.from('activities').insert({
       name: newName,
       description: newDesc || null,
-      points: parseInt(newPoints, 10),
-      type: 'challenge',
-      challenge_type: newType,
-      barcode_data: barcodeData,
-      is_active: true,
-    };
-    if (newEventId) payload.event_id = newEventId;
-
-    const { error } = await supabase.from('locations').insert(payload);
+      max_points: parseInt(newPoints, 10),
+      type: newType,
+    });
     if (!error) {
       setShowModal(false);
-      setNewName(''); setNewDesc(''); setNewPoints(''); setNewType('regular');
+      setNewName(''); setNewDesc(''); setNewPoints('');
       fetchChallenges();
     }
     setSaving(false);
   };
 
-  const toggleActive = async (loc: Location) => {
-    await supabase.from('locations').update({ is_active: !loc.is_active }).eq('id', loc.id);
-    fetchChallenges();
-  };
-
-  const typeColor = (type?: string) => {
-    if (type === 'regular') return 'bg-blue-500/20 text-blue-300';
-    if (type === 'popup') return 'bg-orange-500/20 text-orange-300';
-    if (type === 'additional') return 'bg-purple-500/20 text-purple-300';
+  const typeColor = (type: string) => {
+    if (type === 'challenge_regular') return 'bg-blue-500/20 text-blue-300';
+    if (type === 'challenge_popup') return 'bg-orange-500/20 text-orange-300';
+    if (type === 'challenge_additional') return 'bg-purple-500/20 text-purple-300';
     return 'bg-foreground/10 text-foreground/60';
   };
 
-  const counts = {
-    regular: challenges.filter(c => c.challenge_type === 'regular' && c.is_active).length,
-    popup: challenges.filter(c => c.challenge_type === 'popup' && c.is_active).length,
-    additional: challenges.filter(c => c.challenge_type === 'additional' && c.is_active).length,
-  };
-
   return (
-    <TabLayout
-      title="Challenges"
-      subtitle="Manage challenges and their QR codes"
-      onAdd={() => setShowModal(true)}
-      extraActions={
-        <div className="flex gap-3 text-[10px] font-adventure uppercase tracking-widest text-muted-foreground/50">
-          <span>Regular: {counts.regular}/{CHALLENGE_LIMITS.regular}</span>
-          <span>Pop-up: {counts.popup}/{CHALLENGE_LIMITS.popup}</span>
-          <span>Additional: {counts.additional}/{CHALLENGE_LIMITS.additional}</span>
-        </div>
-      }
-    >
-      {loading ? <LoadingState /> : challenges.length === 0 ? <EmptyState tab="challenges" /> : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-          {challenges.map((loc, idx) => (
+    <TabLayout title="Challenges" subtitle="Misi sampingan berhadiah" onAdd={() => setShowModal(true)}>
+      {loading ? <LoadingState /> : activities.length === 0 ? <EmptyState tab="challenges" /> : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {activities.map((act, idx) => (
             <motion.div
-              key={loc.id}
+              key={act.id}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: idx * 0.05 }}
               className="adventure-card p-6 group"
             >
               <div className="flex justify-between items-start mb-4">
-                <div className={`p-2 rounded-lg border ${loc.is_active ? 'bg-primary/20 border-primary/40' : 'bg-foreground/5 border-foreground/10'}`}>
-                  <Sword className={`w-5 h-5 ${loc.is_active ? 'text-primary' : 'text-muted-foreground opacity-30'}`} />
+                <div className="p-2 rounded-lg border bg-primary/20 border-primary/40">
+                  <Sword className="w-5 h-5 text-primary" />
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className={`text-[9px] font-adventure uppercase px-2 py-0.5 ${typeColor(loc.challenge_type)}`}>
-                    {loc.challenge_type}
+                   <span className={`text-[9px] font-adventure uppercase px-2 py-0.5 ${typeColor(act.type)}`}>
+                    {act.type.replace('challenge_', '')}
                   </span>
-                  <span className="text-[10px] font-adventure text-primary bg-primary/10 px-2 py-0.5">{loc.points} pts</span>
+                  <span className="text-[10px] font-adventure text-primary bg-primary/10 px-2 py-0.5">{act.max_points} MAX PTS</span>
                 </div>
               </div>
+              <h3 className="font-adventure text-lg text-foreground mb-1 group-hover:text-primary transition-colors">{act.name}</h3>
+              <p className="text-xs text-muted-foreground/60 mb-4 line-clamp-2">{act.description}</p>
 
-              <h3 className="font-adventure text-lg text-foreground mb-1 group-hover:text-primary transition-colors">{loc.name}</h3>
-              {loc.description && (
-                <p className="text-xs text-muted-foreground/60 mb-3 line-clamp-2">{loc.description}</p>
-              )}
-
-              <button
-                onClick={() => setExpandedQR(expandedQR === loc.id ? null : loc.id)}
-                className="flex items-center gap-2 text-[10px] font-adventure uppercase tracking-widest text-primary/60 hover:text-primary transition-colors mb-3"
-              >
+              <button onClick={() => setExpandedQR(expandedQR === act.id ? null : act.id)} className="flex items-center gap-2 text-[10px] font-adventure uppercase tracking-widest text-primary/60 hover:text-primary transition-colors">
                 <QrCode className="w-3 h-3" />
-                {expandedQR === loc.id ? 'Hide QR' : 'Show QR'}
+                {expandedQR === act.id ? 'Hide QR' : 'Show QR'}
               </button>
 
               <AnimatePresence>
-                {expandedQR === loc.id && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: 'auto' }}
-                    exit={{ opacity: 0, height: 0 }}
-                    className="overflow-hidden mb-4 flex justify-center"
-                  >
-                    <QRCodeDisplay barcodeData={loc.barcode_data} label={loc.name} size={120} />
+                {expandedQR === act.id && (
+                  <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden mt-4 flex flex-col items-center">
+                    <div className="bg-white p-3 rounded-xl mb-2">
+                       <QRCodeDisplay barcodeData={act.id} label={act.name} size={150} />
+                    </div>
                   </motion.div>
                 )}
               </AnimatePresence>
-
-              <div className="flex justify-between items-center pt-4 border-t border-primary/5">
-                <span className={`text-[10px] uppercase font-adventure ${loc.is_active ? 'text-primary' : 'text-muted-foreground/40'}`}>
-                  {loc.is_active ? '● Active' : '○ Inactive'}
-                </span>
-                <button
-                  onClick={() => toggleActive(loc)}
-                  className="text-[10px] font-adventure uppercase tracking-widest hover:text-primary underline underline-offset-4 transition-all"
-                >
-                  {loc.is_active ? 'Deactivate' : 'Activate'}
-                </button>
-              </div>
             </motion.div>
           ))}
         </div>
       )}
 
-      <AdventureModal show={showModal} onClose={() => { setShowModal(false); setNewEventId(null); }} title="New Challenge">
+      <AdventureModal show={showModal} onClose={() => setShowModal(false)} title="New Challenge">
         <div className="space-y-5">
           <ModalField label="Challenge Name" value={newName} onChange={setNewName} placeholder="e.g. Bridge of Doom" />
-          <ModalField label="Description (optional)" value={newDesc} onChange={setNewDesc} placeholder="Describe this challenge..." />
-          <ModalField label="Points" value={newPoints} onChange={setNewPoints} placeholder="e.g. 150" type="number" />
+          <ModalField label="Description" value={newDesc} onChange={setNewDesc} placeholder="Misi apa ini?" />
+          <ModalField label="Points" value={newPoints} onChange={setNewPoints} placeholder="e.g. 50" type="number" />
           <div>
             <label className="block text-[10px] uppercase tracking-widest font-adventure text-[#2b1d0e]/60 mb-2">Challenge Type</label>
-            <div className="flex gap-3">
-              {(['regular', 'popup', 'additional'] as const).map(t => (
+            <div className="flex gap-2">
+              {(['challenge_regular', 'challenge_popup', 'challenge_additional'] as const).map(t => (
                 <button
                   key={t}
                   onClick={() => setNewType(t)}
-                  className={`flex-1 py-2 text-[10px] font-adventure uppercase tracking-widest border transition-all ${
-                    newType === t
-                      ? 'bg-[#8b4513] text-[#f4e4bc] border-[#8b4513]'
-                      : 'bg-transparent text-[#2b1d0e]/60 border-[#2b1d0e]/20 hover:border-[#8b4513]/40'
+                  className={`flex-1 py-2 text-[8px] font-adventure uppercase tracking-widest border transition-all ${
+                    newType === t ? 'bg-[#8b4513] text-[#f4e4bc] border-[#8b4513]' : 'bg-transparent text-[#2b1d0e]/60 border-[#2b1d0e]/20'
                   }`}
                 >
-                  {t}
+                  {t.replace('challenge_', '')}
                 </button>
               ))}
             </div>
           </div>
-          <EventSelector
-            events={allEvents}
-            value={newEventId}
-            onChange={setNewEventId}
-          />
-          {limitError && <p className="text-red-600 text-xs">{limitError}</p>}
           <ModalSubmit label="Create Challenge" onClick={handleCreate} disabled={!newName || !newPoints || saving} loading={saving} />
         </div>
       </AdventureModal>
@@ -986,12 +579,13 @@ function ChallengesTab({ activeEvent }: { activeEvent: Event | null }) {
 
 const MAX_TREASURE = 20;
 
-function TreasureTab({ activeEvent }: { activeEvent: Event | null }) {
-  const [treasures, setTreasures] = useState<Location[]>([]);
+// ─── Treasure Tab ─────────────────────────────────────────────────────────────
+
+function TreasureTab() {
+  const [treasures, setTreasures] = useState<TreasureHunt[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [newName, setNewName] = useState('');
-  const [newDesc, setNewDesc] = useState('');
   const [newPoints, setNewPoints] = useState('');
   const [newHint, setNewHint] = useState('');
   const [newQuota, setNewQuota] = useState('');
@@ -999,268 +593,126 @@ function TreasureTab({ activeEvent }: { activeEvent: Event | null }) {
   const [expandedQR, setExpandedQR] = useState<string | null>(null);
   const [expandedClaims, setExpandedClaims] = useState<string | null>(null);
   const [claimTeams, setClaimTeams] = useState<{ team_name: string }[]>([]);
-  const [editQuota, setEditQuota] = useState<{ id: string; value: string } | null>(null);
-  const [limitError, setLimitError] = useState('');
-  const [allEvents, setAllEvents] = useState<EventListItem[]>([]);
-  const [newEventId, setNewEventId] = useState<string | null>(null);
 
   const fetchTreasures = useCallback(async () => {
     setLoading(true);
-    let query = supabase
-      .from('locations')
-      .select('*')
-      .eq('type', 'treasure')
-      .order('created_at', { ascending: false });
-    if (activeEvent) query = query.eq('event_id', activeEvent.id);
-    const { data } = await query;
+    const { data } = await supabase.from('treasure_hunts').select('*').order('created_at', { ascending: false });
     setTreasures(data || []);
     setLoading(false);
-  }, [activeEvent]);
+  }, []);
 
   useEffect(() => { fetchTreasures(); }, [fetchTreasures]);
 
-  useEffect(() => {
-    if (!showModal) return;
-    supabase.from('events').select('id, name, is_active, start_time, end_time')
-      .order('created_at', { ascending: false })
-      .then(({ data }) => setAllEvents(data || []));
-    setNewEventId(activeEvent?.id ?? null);
-  }, [showModal, activeEvent]);
-
-  const fetchClaims = async (locationId: string) => {
+  const fetchClaims = async (treasureId: string) => {
     const { data } = await supabase
-      .from('scans')
+      .from('treasure_hunt_claims')
       .select('team_id, teams(name)')
-      .eq('location_id', locationId);
+      .eq('treasure_hunt_id', treasureId);
 
-    const teams = (data || []).map((s: any) => ({ team_name: s.teams?.name || 'Unknown' }));
-    setClaimTeams(teams);
-    setExpandedClaims(locationId);
+    setClaimTeams((data || []).map((s: any) => ({ team_name: s.teams?.name || 'Unknown' })));
+    setExpandedClaims(treasureId);
   };
 
   const handleCreate = async () => {
     if (!newName || !newPoints || !newQuota) return;
-    setLimitError('');
-
-    const activeTreasureCount = treasures.filter(t => t.is_active).length;
-    if (activeTreasureCount >= MAX_TREASURE) {
-      setLimitError(`Maximum ${MAX_TREASURE} active treasures allowed per event.`);
-      return;
-    }
-
     setSaving(true);
-    const id = crypto.randomUUID();
-    const barcodeData = generateBarcodeData('treasure', id);
-
-    const payload: Record<string, unknown> = {
+    const { error } = await supabase.from('treasure_hunts').insert({
       name: newName,
-      description: newDesc || null,
       points: parseInt(newPoints, 10),
-      hint: newHint || null,
+      hint_text: newHint || null,
       quota: parseInt(newQuota, 10),
-      type: 'treasure',
-      barcode_data: barcodeData,
-      is_active: true,
-    };
-    if (newEventId) payload.event_id = newEventId;
-
-    const { error } = await supabase.from('locations').insert(payload);
+      remaining_quota: parseInt(newQuota, 10),
+    });
     if (!error) {
       setShowModal(false);
-      setNewName(''); setNewDesc(''); setNewPoints(''); setNewHint(''); setNewQuota('');
+      setNewName(''); setNewPoints(''); setNewHint(''); setNewQuota('');
       fetchTreasures();
     }
     setSaving(false);
   };
 
-  const handleUpdateQuota = async (loc: Location, newQuotaVal: number) => {
-    // Validate: new quota must be >= existing claim count
-    const { count } = await supabase
-      .from('scans')
-      .select('*', { count: 'exact', head: true })
-      .eq('location_id', loc.id);
-
-    const claimCount = count || 0;
-    if (newQuotaVal < claimCount) {
-      alert(`Cannot set quota below existing claim count (${claimCount}).`);
-      return;
-    }
-
-    await supabase.from('locations').update({ quota: newQuotaVal }).eq('id', loc.id);
-    setEditQuota(null);
-    fetchTreasures();
-  };
-
-  const toggleActive = async (loc: Location) => {
-    await supabase.from('locations').update({ is_active: !loc.is_active }).eq('id', loc.id);
-    fetchTreasures();
-  };
-
-  const activeTreasureCount = treasures.filter(t => t.is_active).length;
-
   return (
-    <TabLayout
-      title="Treasure Hunt"
-      subtitle="Manage hidden treasures and claim quotas"
-      onAdd={() => setShowModal(true)}
-      extraActions={
-        <span className="text-[10px] font-adventure uppercase tracking-widest text-muted-foreground/50">
-          Active: {activeTreasureCount}/{MAX_TREASURE}
-        </span>
-      }
-    >
+    <TabLayout title="Treasure Hunt" subtitle="Harta karun tersembunyi" onAdd={() => setShowModal(true)}>
       {loading ? <LoadingState /> : treasures.length === 0 ? <EmptyState tab="treasure" /> : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-          {treasures.map((loc, idx) => (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {treasures.map((th, idx) => (
             <motion.div
-              key={loc.id}
+              key={th.id}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: idx * 0.05 }}
               className="adventure-card p-6 group"
             >
               <div className="flex justify-between items-start mb-4">
-                <div className={`p-2 rounded-lg border ${loc.is_active ? 'bg-primary/20 border-primary/40' : 'bg-foreground/5 border-foreground/10'}`}>
-                  <Gem className={`w-5 h-5 ${loc.is_active ? 'text-primary' : 'text-muted-foreground opacity-30'}`} />
+                <div className="p-2 rounded-lg border bg-primary/20 border-primary/40">
+                  <Gem className="w-5 h-5 text-primary" />
                 </div>
-                <span className="text-[10px] font-adventure text-primary bg-primary/10 px-2 py-0.5">{loc.points} pts</span>
+                <div className="text-right">
+                   <p className="text-[10px] font-adventure text-primary">{th.points} PTS</p>
+                   <p className="text-[9px] text-muted-foreground/40">{th.remaining_quota}/{th.quota} REMAINING</p>
+                </div>
               </div>
 
-              <h3 className="font-adventure text-lg text-foreground mb-1 group-hover:text-primary transition-colors">{loc.name}</h3>
-              {loc.description && (
-                <p className="text-xs text-muted-foreground/60 mb-2 line-clamp-2">{loc.description}</p>
-              )}
-              {loc.hint && (
-                <p className="text-[10px] italic text-primary/50 mb-3">Hint: {loc.hint}</p>
-              )}
+              <h3 className="font-adventure text-lg text-foreground mb-1 group-hover:text-primary transition-colors">{th.name}</h3>
+              <p className="text-[10px] italic text-primary/50 mb-4 tracking-wider">Hint: {th.hint_text}</p>
 
-              {/* Quota display + edit */}
-              <div className="flex items-center gap-2 mb-3">
-                <span className="text-[10px] text-muted-foreground/60 font-adventure uppercase tracking-wider">Quota:</span>
-                {editQuota?.id === loc.id ? (
-                  <div className="flex items-center gap-1">
-                    <input
-                      type="number"
-                      value={editQuota.value}
-                      onChange={e => setEditQuota({ id: loc.id, value: e.target.value })}
-                      className="w-16 bg-transparent border-b border-primary/40 text-sm text-foreground focus:outline-none px-1"
-                    />
-                    <button
-                      onClick={() => handleUpdateQuota(loc, parseInt(editQuota.value, 10))}
-                      className="text-primary hover:text-primary/80"
-                    >
-                      <Save className="w-3 h-3" />
-                    </button>
-                    <button onClick={() => setEditQuota(null)} className="text-muted-foreground/40 hover:text-foreground">
-                      <X className="w-3 h-3" />
-                    </button>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-1">
-                    <span className="text-sm text-foreground/80">{loc.quota}</span>
-                    <button
-                      onClick={() => setEditQuota({ id: loc.id, value: String(loc.quota) })}
-                      className="text-muted-foreground/30 hover:text-primary transition-colors"
-                    >
-                      <Edit2 className="w-3 h-3" />
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              {/* QR Code */}
-              <button
-                onClick={() => setExpandedQR(expandedQR === loc.id ? null : loc.id)}
-                className="flex items-center gap-2 text-[10px] font-adventure uppercase tracking-widest text-primary/60 hover:text-primary transition-colors mb-2"
-              >
-                <QrCode className="w-3 h-3" />
-                {expandedQR === loc.id ? 'Hide QR' : 'Show QR'}
-              </button>
-
-              <AnimatePresence>
-                {expandedQR === loc.id && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: 'auto' }}
-                    exit={{ opacity: 0, height: 0 }}
-                    className="overflow-hidden mb-3 flex justify-center"
-                  >
-                    <QRCodeDisplay barcodeData={loc.barcode_data} label={loc.name} size={120} />
-                  </motion.div>
-                )}
-              </AnimatePresence>
-
-              {/* Claims */}
-              <button
-                onClick={() => {
-                  if (expandedClaims === loc.id) { setExpandedClaims(null); }
-                  else { fetchClaims(loc.id); }
-                }}
-                className="flex items-center gap-2 text-[10px] font-adventure uppercase tracking-widest text-primary/60 hover:text-primary transition-colors mb-3"
-              >
-                <Users className="w-3 h-3" />
-                {expandedClaims === loc.id ? 'Hide Claims' : 'View Claims'}
-              </button>
-
-              <AnimatePresence>
-                {expandedClaims === loc.id && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: 'auto' }}
-                    exit={{ opacity: 0, height: 0 }}
-                    className="overflow-hidden mb-3"
-                  >
-                    {claimTeams.length === 0 ? (
-                      <p className="text-[10px] text-muted-foreground/40 italic">No claims yet.</p>
-                    ) : (
-                      <div className="space-y-1">
-                        {claimTeams.map((ct, i) => (
-                          <p key={i} className="text-[11px] text-foreground/60">• {ct.team_name}</p>
-                        ))}
-                      </div>
-                    )}
-                  </motion.div>
-                )}
-              </AnimatePresence>
-
-              <div className="flex justify-between items-center pt-4 border-t border-primary/5">
-                <span className={`text-[10px] uppercase font-adventure ${loc.is_active ? 'text-primary' : 'text-muted-foreground/40'}`}>
-                  {loc.is_active ? '● Active' : '○ Inactive'}
-                </span>
+              <div className="flex flex-col gap-2">
                 <button
-                  onClick={() => toggleActive(loc)}
-                  className="text-[10px] font-adventure uppercase tracking-widest hover:text-primary underline underline-offset-4 transition-all"
+                  onClick={() => setExpandedQR(expandedQR === th.id ? null : th.id)}
+                  className="flex items-center gap-2 text-[10px] font-adventure uppercase tracking-widest text-primary/60 hover:text-primary transition-colors"
                 >
-                  {loc.is_active ? 'Deactivate' : 'Activate'}
+                  <QrCode className="w-3 h-3" />
+                  {expandedQR === th.id ? 'Hide QR' : 'Show QR'}
+                </button>
+                <button
+                  onClick={() => expandedClaims === th.id ? setExpandedClaims(null) : fetchClaims(th.id)}
+                  className="flex items-center gap-2 text-[10px] font-adventure uppercase tracking-widest text-primary/60 hover:text-primary transition-colors"
+                >
+                  <Users className="w-3 h-3" />
+                  {expandedClaims === th.id ? 'Hide Claims' : 'View Claims'}
                 </button>
               </div>
+
+              <AnimatePresence>
+                {expandedQR === th.id && (
+                  <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden mt-4 flex flex-col items-center">
+                    <div className="bg-white p-3 rounded-xl mb-2">
+                       <QRCodeDisplay barcodeData={th.id} label={th.name} size={150} />
+                    </div>
+                  </motion.div>
+                )}
+                {expandedClaims === th.id && (
+                  <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden mt-4 space-y-1">
+                    <p className="text-[10px] uppercase font-adventure text-primary/40 border-b border-primary/10 pb-1">Claimed By:</p>
+                    {claimTeams.length === 0 ? <p className="text-[10px] italic opacity-30">No claims yet</p> : claimTeams.map((c, i) => (
+                      <p key={i} className="text-[11px] text-foreground/70">• {c.team_name}</p>
+                    ))}
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </motion.div>
           ))}
         </div>
       )}
 
-      <AdventureModal show={showModal} onClose={() => { setShowModal(false); setNewEventId(null); }} title="New Treasure">
+      <AdventureModal show={showModal} onClose={() => setShowModal(false)} title="New Treasure">
         <div className="space-y-5">
           <ModalField label="Treasure Name" value={newName} onChange={setNewName} placeholder="e.g. Golden Idol" />
-          <ModalField label="Description (optional)" value={newDesc} onChange={setNewDesc} placeholder="Describe this treasure..." />
-          <ModalField label="Points" value={newPoints} onChange={setNewPoints} placeholder="e.g. 200" type="number" />
-          <ModalField label="Hint (optional)" value={newHint} onChange={setNewHint} placeholder="e.g. Look near the ancient tree..." />
-          <ModalField label="Claim Quota" value={newQuota} onChange={setNewQuota} placeholder="e.g. 5" type="number" />
-          <EventSelector events={allEvents} value={newEventId} onChange={setNewEventId} />
-          {limitError && <p className="text-red-600 text-xs">{limitError}</p>}
-          <ModalSubmit label="Bury the Treasure" onClick={handleCreate} disabled={!newName || !newPoints || !newQuota || saving} loading={saving} />
+          <ModalField label="Points" value={newPoints} onChange={setNewPoints} placeholder="e.g. 500" type="number" />
+          <ModalField label="Hint" value={newHint} onChange={setNewHint} placeholder="Di mana dia berada?" />
+          <ModalField label="Quota" value={newQuota} onChange={setNewQuota} placeholder="e.g. 1" type="number" />
+          <ModalSubmit label="Bury Treasure" onClick={handleCreate} disabled={!newName || !newPoints || !newQuota || saving} loading={saving} />
         </div>
       </AdventureModal>
     </TabLayout>
   );
 }
-
 // ─── Analytics Tab ────────────────────────────────────────────────────────────
 
 function AnalyticsTab() {
-  const [stats, setStats] = useState({ teams: 0, events: 0, wahana: 0, scans: 0, scoreLogs: 0 });
+  const [stats, setStats] = useState({ teams: 0, activities: 0, scans: 0, scoreLogs: 0 });
   const [topTeams, setTopTeams] = useState<{ name: string; total_points: number }[]>([]);
-  const [wahanaActivity, setWahanaActivity] = useState<{ name: string; checkins: number; scored: number }[]>([]);
+  const [activityStats, setActivityStats] = useState<{ name: string; checkins: number; scored: number }[]>([]);
   const [scanTimeline, setScanTimeline] = useState<{ hour: string; scans: number }[]>([]);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
@@ -1270,30 +722,27 @@ function AnalyticsTab() {
       setLoading(true);
       const [
         { count: teamCount },
-        { count: eventCount },
         { count: scanCount },
-        { count: locCount },
+        { count: actCount },
         { count: scoreCount },
         { data: teamsData },
-        { data: locationsData },
-        { data: scansData },
+        { data: activitiesData },
+        { data: activityRegsData },
         { data: scoreLogsData },
       ] = await Promise.all([
         supabase.from('teams').select('*', { count: 'exact', head: true }),
-        supabase.from('events').select('*', { count: 'exact', head: true }),
-        supabase.from('scans').select('*', { count: 'exact', head: true }),
-        supabase.from('locations').select('*', { count: 'exact', head: true }),
+        supabase.from('activity_registrations').select('*', { count: 'exact', head: true }),
+        supabase.from('activities').select('*', { count: 'exact', head: true }),
         supabase.from('score_logs').select('*', { count: 'exact', head: true }),
         supabase.from('teams').select('name, total_points').order('total_points', { ascending: false }).limit(10),
-        supabase.from('locations').select('id, name').eq('is_active', true),
-        supabase.from('scans').select('location_id, scanned_at'),
-        supabase.from('score_logs').select('location_id'),
+        supabase.from('activities').select('id, name'),
+        supabase.from('activity_registrations').select('activity_id, created_at'),
+        supabase.from('score_logs').select('activity_id'),
       ]);
 
       setStats({
         teams: teamCount || 0,
-        events: eventCount || 0,
-        wahana: locCount || 0,
+        activities: actCount || 0,
         scans: scanCount || 0,
         scoreLogs: scoreCount || 0,
       });
@@ -1301,27 +750,27 @@ function AnalyticsTab() {
       // Top teams chart
       setTopTeams((teamsData || []).map(t => ({ name: t.name, total_points: t.total_points || 0 })));
 
-      // Wahana activity chart
-      if (locationsData && scansData && scoreLogsData) {
+      // Activity stats chart
+      if (activitiesData && activityRegsData && scoreLogsData) {
         const checkinMap: Record<string, number> = {};
         const scoreMap: Record<string, number> = {};
-        scansData.forEach(s => { checkinMap[s.location_id] = (checkinMap[s.location_id] || 0) + 1; });
-        scoreLogsData.forEach(s => { scoreMap[s.location_id] = (scoreMap[s.location_id] || 0) + 1; });
-        setWahanaActivity(
-          locationsData.map(loc => ({
-            name: loc.name.length > 12 ? loc.name.slice(0, 12) + '…' : loc.name,
-            checkins: checkinMap[loc.id] || 0,
-            scored: scoreMap[loc.id] || 0,
+        activityRegsData.forEach(s => { checkinMap[s.activity_id] = (checkinMap[s.activity_id] || 0) + 1; });
+        scoreLogsData.forEach(s => { scoreMap[s.activity_id] = (scoreMap[s.activity_id] || 0) + 1; });
+        setActivityStats(
+          activitiesData.map(act => ({
+            name: act.name.length > 12 ? act.name.slice(0, 12) + '…' : act.name,
+            checkins: checkinMap[act.id] || 0,
+            scored: scoreMap[act.id] || 0,
           }))
         );
       }
 
-      // Scan timeline — group by hour
-      if (scansData && scansData.length > 0) {
+      // Scan timeline
+      if (activityRegsData && activityRegsData.length > 0) {
         const hourMap: Record<string, number> = {};
-        scansData.forEach(s => {
-          if (s.scanned_at) {
-            const hour = new Date(s.scanned_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', hour12: false }).slice(0, 5);
+        activityRegsData.forEach(s => {
+          if (s.created_at) {
+            const hour = new Date(s.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', hour12: false }).slice(0, 5);
             hourMap[hour] = (hourMap[hour] || 0) + 1;
           }
         });
@@ -1387,10 +836,9 @@ function AnalyticsTab() {
       </header>
 
       {/* Stat cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-        <StatCard count={stats.events} label="Events" sub="Total events" />
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard count={stats.teams} label="Teams" sub="Expedition groups" />
-        <StatCard count={stats.wahana} label="Locations" sub="Active relics" />
+        <StatCard count={stats.activities} label="Activities" sub="Game stations" />
         <StatCard count={stats.scans} label="Check-ins" sub="Total scans" />
         <StatCard count={stats.scoreLogs} label="Scores Given" sub="By LO" />
       </div>
@@ -1413,14 +861,14 @@ function AnalyticsTab() {
             )}
           </div>
 
-          {/* Chart 2: Check-ins & Scores per Wahana */}
+          {/* Chart 2: Check-ins & Scores per Activity */}
           <div className="adventure-card p-6">
-            <h3 className="font-adventure text-lg gold-engraving mb-1">Activity per Location</h3>
-            <p className="text-[10px] text-muted-foreground/50 uppercase tracking-widest font-adventure mb-6">Check-ins vs scores given per wahana</p>
-            {wahanaActivity.length === 0 ? (
-              <p className="text-center text-sm italic opacity-30 py-8">No location data yet.</p>
+            <h3 className="font-adventure text-lg gold-engraving mb-1">Activity Engagement</h3>
+            <p className="text-[10px] text-muted-foreground/50 uppercase tracking-widest font-adventure mb-6">Check-ins vs scores given per activity</p>
+            {activityStats.length === 0 ? (
+              <p className="text-center text-sm italic opacity-30 py-8">No activity data yet.</p>
             ) : (
-              <WahanaActivityChart data={wahanaActivity} />
+              <WahanaActivityChart data={activityStats} />
             )}
           </div>
 
@@ -1442,50 +890,47 @@ function AnalyticsTab() {
 
 // ─── Audit Log Tab ────────────────────────────────────────────────────────────
 
-function AuditTab({ activeEvent }: { activeEvent: Event | null }) {
+function AuditTab() {
   const [logs, setLogs] = useState<ScoreLogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterTeam, setFilterTeam] = useState('');
-  const [filterLocation, setFilterLocation] = useState('');
+  const [filterActivity, setFilterActivity] = useState('');
 
   const fetchLogs = useCallback(async () => {
     setLoading(true);
 
-    let query = supabase
+    const { data } = await supabase
       .from('score_logs')
       .select(`
-        id, team_id, location_id, score, lo_user_id, created_at,
+        id, team_id, activity_id, points_awarded, lo_id, created_at,
         teams(name),
-        locations(name),
-        users(nama)
+        activities(name),
+        users(name)
       `)
       .order('created_at', { ascending: false })
       .limit(200);
 
-    const { data } = await query;
-
     const enriched: ScoreLogEntry[] = (data || []).map((row: any) => ({
       id: row.id,
       team_id: row.team_id,
-      location_id: row.location_id,
-      score: row.score,
-      lo_user_id: row.lo_user_id,
+      activity_id: row.activity_id,
+      points_awarded: row.points_awarded,
+      lo_id: row.lo_id,
       created_at: row.created_at,
       team_name: row.teams?.name,
-      location_name: row.locations?.name,
-      lo_name: row.users?.nama,
+      activity_name: row.activities?.name,
+      lo_name: row.users?.name,
     }));
 
-    // Client-side filter by team/location name
     const filtered = enriched.filter(log => {
       if (filterTeam && !log.team_name?.toLowerCase().includes(filterTeam.toLowerCase())) return false;
-      if (filterLocation && !log.location_name?.toLowerCase().includes(filterLocation.toLowerCase())) return false;
+      if (filterActivity && !log.activity_name?.toLowerCase().includes(filterActivity.toLowerCase())) return false;
       return true;
     });
 
     setLogs(filtered);
     setLoading(false);
-  }, [filterTeam, filterLocation]);
+  }, [filterTeam, filterActivity]);
 
   useEffect(() => { fetchLogs(); }, [fetchLogs]);
 
@@ -1519,12 +964,12 @@ function AuditTab({ activeEvent }: { activeEvent: Event | null }) {
             />
           </div>
           <div>
-            <label className="block text-[10px] uppercase tracking-widest font-adventure text-foreground/40 mb-1">Location</label>
+            <label className="block text-[10px] uppercase tracking-widest font-adventure text-foreground/40 mb-1">Activity</label>
             <input
               type="text"
-              value={filterLocation}
-              onChange={e => setFilterLocation(e.target.value)}
-              placeholder="Filter by location..."
+              value={filterActivity}
+              onChange={e => setFilterActivity(e.target.value)}
+              placeholder="Filter by activity..."
               className="w-full bg-transparent border-b border-primary/20 py-2 text-sm text-foreground focus:outline-none focus:border-primary/60 transition-colors placeholder:text-foreground/20"
             />
           </div>
@@ -1554,9 +999,9 @@ function AuditTab({ activeEvent }: { activeEvent: Event | null }) {
                       {new Date(log.created_at).toLocaleString('id-ID')}
                     </td>
                     <td className="px-6 py-3 text-sm text-foreground/80">{log.team_name || log.team_id.slice(0, 8)}</td>
-                    <td className="px-6 py-3 text-sm text-foreground/60">{log.location_name || log.location_id.slice(0, 8)}</td>
+                    <td className="px-6 py-3 text-sm text-foreground/60">{log.activity_name || log.activity_id.slice(0, 8)}</td>
                     <td className="px-6 py-3 text-right">
-                      <span className="font-adventure text-primary">{log.score}</span>
+                      <span className="font-adventure text-primary">{log.points_awarded}</span>
                     </td>
                     <td className="px-6 py-3 text-[11px] text-muted-foreground/50">{log.lo_name || '—'}</td>
                   </tr>

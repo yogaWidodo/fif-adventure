@@ -43,9 +43,9 @@ async function getAccessToken(): Promise<string | null> {
 
 interface ScanModalProps {
   isOpen: boolean;
-  locationId: string;
-  locationName: string;
-  locationPoints: number;
+  activityId: string;
+  activityName: string;
+  activityPoints: number;
   onClose: () => void;
   onCheckinSuccess: (teamName: string) => void;
   onScoringSuccess: (teamName: string, score: number) => void;
@@ -68,9 +68,9 @@ interface TeamInfo {
 
 export default function ScanModal({
   isOpen,
-  locationId,
-  locationName,
-  locationPoints,
+  activityId: _activityId, // prefix with _ if unused in component but kept for prop consistency
+  activityName: _activityName,
+  activityPoints,
   onClose,
   onCheckinSuccess,
   onScoringSuccess,
@@ -202,7 +202,7 @@ export default function ScanModal({
           'Content-Type': 'application/json',
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ barcode_data: team.barcodeData, location_id: locationId }),
+        body: JSON.stringify({ team_id: team.id }),
       });
 
       if (res.ok) {
@@ -235,12 +235,12 @@ export default function ScanModal({
           'Content-Type': 'application/json',
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ barcode_data: team.barcodeData, location_id: locationId }),
+        body: JSON.stringify({ team_id: team.id, points: activityPoints }),
       });
 
       if (res.ok) {
         setPhase('success');
-        setTimeout(() => onScoringSuccess(team.name, locationPoints), 800);
+        setTimeout(() => onScoringSuccess(team.name, activityPoints), 800);
       } else {
         const data = await res.json().catch(() => ({}));
         setErrorMsg(
@@ -390,7 +390,7 @@ export default function ScanModal({
                       </div>
                       <div className="text-left">
                         <p className="font-adventure text-sm text-primary tracking-wide">Give Point</p>
-                        <p className="text-[10px] text-foreground/40 font-content">{locationPoints} poin untuk tim ini</p>
+                        <p className="text-[10px] text-foreground/40 font-content">{activityPoints} poin untuk tim ini</p>
                       </div>
                     </button>
                     <button

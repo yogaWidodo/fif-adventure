@@ -22,7 +22,7 @@ interface Team {
 interface ScoreLogRecord {
   id: string;
   team_id: string;
-  location_id: string;
+  activity_id: string;
   score: number;
   lo_user_id: string;
   created_at: string;
@@ -30,7 +30,7 @@ interface ScoreLogRecord {
 
 interface ScanRecord {
   team_id: string;
-  location_id: string;
+  activity_id: string;
 }
 
 interface ScoreSubmissionResult {
@@ -39,18 +39,18 @@ interface ScoreSubmissionResult {
 }
 
 /**
- * Pure model of the /api/score POST handler + trigger logic.
+ * Pure model of the /api/lo/score POST handler + trigger logic.
  *
  * Validates:
  * 1. Score is in range [0, maxPoints]
- * 2. Team has checked in (scan record exists for team+location)
+ * 2. Team has checked in (activity_registration/scan record exists for team+activity)
  * 3. If valid, inserts a score_log and updates team total_points
  *
  * Returns the result and updated state (immutable-style).
  */
 function modelSubmitScore(
   teamId: string,
-  locationId: string,
+  activityId: string,
   score: number,
   maxPoints: number,
   loUserId: string,
@@ -73,7 +73,7 @@ function modelSubmitScore(
 
   // Check team has checked in (scan record must exist)
   const hasCheckedIn = existingScans.some(
-    (s) => s.team_id === teamId && s.location_id === locationId,
+    (s) => s.team_id === teamId && s.activity_id === activityId,
   );
 
   if (!hasCheckedIn) {
@@ -88,7 +88,7 @@ function modelSubmitScore(
   const newLog: ScoreLogRecord = {
     id: `log-${Date.now()}-${Math.random()}`,
     team_id: teamId,
-    location_id: locationId,
+    activity_id: activityId,
     score,
     lo_user_id: loUserId,
     created_at: new Date().toISOString(),
@@ -121,8 +121,8 @@ function hasCompleteScoreLogRecord(log: ScoreLogRecord): boolean {
     log.id.length > 0 &&
     typeof log.team_id === 'string' &&
     log.team_id.length > 0 &&
-    typeof log.location_id === 'string' &&
-    log.location_id.length > 0 &&
+    typeof log.activity_id === 'string' &&
+    log.activity_id.length > 0 &&
     typeof log.score === 'number' &&
     typeof log.lo_user_id === 'string' &&
     log.lo_user_id.length > 0 &&
@@ -139,8 +139,8 @@ const uuidArb = fc.uuid();
 const validScoreArb = (maxPoints: number) =>
   fc.integer({ min: 0, max: maxPoints });
 
-/** Arbitrary for a location with a defined max points value */
-const locationArb = fc.record({
+/** Arbitrary for an activity with a defined max points value */
+const activityArb = fc.record({
   id: uuidArb,
   maxPoints: fc.integer({ min: 1, max: 1000 }),
 });
@@ -154,21 +154,21 @@ describe('Property 17: Score Input Updates Total Points and Creates Audit Log', 
     fc.assert(
       fc.property(
         uuidArb,
-        locationArb,
+        activityArb,
         uuidArb,
         fc.integer({ min: 0, max: 10000 }), // initial total_points
-        (teamId, location, loUserId, initialPoints) => {
-          const score = Math.floor(Math.random() * (location.maxPoints + 1));
+        (teamId, activity, loUserId, initialPoints) => {
+          const score = Math.floor(Math.random() * (activity.maxPoints + 1));
 
           const teams: Team[] = [{ id: teamId, total_points: initialPoints }];
-          const scans: ScanRecord[] = [{ team_id: teamId, location_id: location.id }];
+          const scans: ScanRecord[] = [{ team_id: teamId, activity_id: activity.id }];
           const scoreLogs: ScoreLogRecord[] = [];
 
           const { result, updatedTeams } = modelSubmitScore(
             teamId,
-            location.id,
+            activity.id,
             score,
-            location.maxPoints,
+            activity.maxPoints,
             loUserId,
             scans,
             scoreLogs,
@@ -192,25 +192,25 @@ describe('Property 17: Score Input Updates Total Points and Creates Audit Log', 
     fc.assert(
       fc.property(
         uuidArb,
-        locationArb,
+        activityArb,
         uuidArb,
         fc.array(fc.integer({ min: 1, max: 5 }), { minLength: 2, maxLength: 5 }),
-        (teamId, location, loUserId, scoreMultipliers) => {
+        (teamId, activity, loUserId, scoreMultipliers) => {
           const scores = scoreMultipliers.map((m) =>
-            Math.min(m * 10, location.maxPoints),
+            Math.min(m * 10, activity.maxPoints),
           );
 
           const teams: Team[] = [{ id: teamId, total_points: 0 }];
-          const scans: ScanRecord[] = [{ team_id: teamId, location_id: location.id }];
+          const scans: ScanRecord[] = [{ team_id: teamId, activity_id: activity.id }];
           let scoreLogs: ScoreLogRecord[] = [];
           let currentTeams = teams;
 
           for (const score of scores) {
             const { newScoreLogs, updatedTeams } = modelSubmitScore(
               teamId,
-              location.id,
+              activity.id,
               score,
-              location.maxPoints,
+              activity.maxPoints,
               loUserId,
               scans,
               scoreLogs,
@@ -234,19 +234,19 @@ describe('Property 17: Score Input Updates Total Points and Creates Audit Log', 
     fc.assert(
       fc.property(
         uuidArb,
-        locationArb,
+        activityArb,
         uuidArb,
-        (teamId, location, loUserId) => {
-          const score = Math.floor(Math.random() * (location.maxPoints + 1));
+        (teamId, activity, loUserId) => {
+          const score = Math.floor(Math.random() * (activity.maxPoints + 1));
 
-          const scans: ScanRecord[] = [{ team_id: teamId, location_id: location.id }];
+          const scans: ScanRecord[] = [{ team_id: teamId, activity_id: activity.id }];
           const teams: Team[] = [{ id: teamId, total_points: 0 }];
 
           const { result, newScoreLogs } = modelSubmitScore(
             teamId,
-            location.id,
+            activity.id,
             score,
-            location.maxPoints,
+            activity.maxPoints,
             loUserId,
             scans,
             [],
@@ -264,24 +264,24 @@ describe('Property 17: Score Input Updates Total Points and Creates Audit Log', 
     );
   });
 
-  it('score_log record contains the correct team_id, location_id, score, and lo_user_id', () => {
+  it('score_log record contains the correct team_id, activity_id, score, and lo_user_id', () => {
     // Validates: Requirements 7.4
     fc.assert(
       fc.property(
         uuidArb,
-        locationArb,
+        activityArb,
         uuidArb,
-        (teamId, location, loUserId) => {
-          const score = Math.floor(Math.random() * (location.maxPoints + 1));
+        (teamId, activity, loUserId) => {
+          const score = Math.floor(Math.random() * (activity.maxPoints + 1));
 
-          const scans: ScanRecord[] = [{ team_id: teamId, location_id: location.id }];
+          const scans: ScanRecord[] = [{ team_id: teamId, activity_id: activity.id }];
           const teams: Team[] = [{ id: teamId, total_points: 0 }];
 
           const { newScoreLogs } = modelSubmitScore(
             teamId,
-            location.id,
+            activity.id,
             score,
-            location.maxPoints,
+            activity.maxPoints,
             loUserId,
             scans,
             [],
@@ -290,7 +290,7 @@ describe('Property 17: Score Input Updates Total Points and Creates Audit Log', 
 
           const log = newScoreLogs[0];
           expect(log.team_id).toBe(teamId);
-          expect(log.location_id).toBe(location.id);
+          expect(log.activity_id).toBe(activity.id);
           expect(log.score).toBe(score);
           expect(log.lo_user_id).toBe(loUserId);
         },
@@ -304,19 +304,19 @@ describe('Property 17: Score Input Updates Total Points and Creates Audit Log', 
     fc.assert(
       fc.property(
         uuidArb,
-        locationArb,
+        activityArb,
         uuidArb,
-        (teamId, location, loUserId) => {
-          const score = Math.floor(Math.random() * (location.maxPoints + 1));
+        (teamId, activity, loUserId) => {
+          const score = Math.floor(Math.random() * (activity.maxPoints + 1));
 
-          const scans: ScanRecord[] = [{ team_id: teamId, location_id: location.id }];
+          const scans: ScanRecord[] = [{ team_id: teamId, activity_id: activity.id }];
           const teams: Team[] = [{ id: teamId, total_points: 0 }];
 
           const { newScoreLogs } = modelSubmitScore(
             teamId,
-            location.id,
+            activity.id,
             score,
-            location.maxPoints,
+            activity.maxPoints,
             loUserId,
             scans,
             [],
@@ -338,25 +338,25 @@ describe('Property 17: Score Input Updates Total Points and Creates Audit Log', 
       fc.property(
         uuidArb,
         uuidArb,
-        locationArb,
+        activityArb,
         uuidArb,
         fc.integer({ min: 0, max: 5000 }),
-        (teamId, otherTeamId, location, loUserId, otherTeamPoints) => {
+        (teamId, otherTeamId, activity, loUserId, otherTeamPoints) => {
           fc.pre(teamId !== otherTeamId);
 
-          const score = Math.floor(Math.random() * (location.maxPoints + 1));
+          const score = Math.floor(Math.random() * (activity.maxPoints + 1));
 
           const teams: Team[] = [
             { id: teamId, total_points: 0 },
             { id: otherTeamId, total_points: otherTeamPoints },
           ];
-          const scans: ScanRecord[] = [{ team_id: teamId, location_id: location.id }];
+          const scans: ScanRecord[] = [{ team_id: teamId, activity_id: activity.id }];
 
           const { updatedTeams } = modelSubmitScore(
             teamId,
-            location.id,
+            activity.id,
             score,
-            location.maxPoints,
+            activity.maxPoints,
             loUserId,
             scans,
             [],
@@ -381,10 +381,10 @@ describe('Property 18: Score Input Requires Prior Check-In', () => {
     fc.assert(
       fc.property(
         uuidArb,
-        locationArb,
+        activityArb,
         uuidArb,
-        (teamId, location, loUserId) => {
-          const score = Math.floor(Math.random() * (location.maxPoints + 1));
+        (teamId, activity, loUserId) => {
+          const score = Math.floor(Math.random() * (activity.maxPoints + 1));
 
           // No scan records — team has NOT checked in
           const scans: ScanRecord[] = [];
@@ -392,9 +392,9 @@ describe('Property 18: Score Input Requires Prior Check-In', () => {
 
           const { result, newScoreLogs } = modelSubmitScore(
             teamId,
-            location.id,
+            activity.id,
             score,
-            location.maxPoints,
+            activity.maxPoints,
             loUserId,
             scans,
             [],
@@ -416,26 +416,26 @@ describe('Property 18: Score Input Requires Prior Check-In', () => {
     fc.assert(
       fc.property(
         uuidArb,
-        locationArb,
+        activityArb,
         uuidArb,
-        fc.array(fc.record({ team_id: uuidArb, location_id: uuidArb }), {
+        fc.array(fc.record({ team_id: uuidArb, activity_id: uuidArb }), {
           minLength: 0,
           maxLength: 5,
         }),
-        (teamId, location, loUserId, otherScans) => {
-          const score = Math.floor(Math.random() * (location.maxPoints + 1));
+        (teamId, activity, loUserId, otherScans) => {
+          const score = Math.floor(Math.random() * (activity.maxPoints + 1));
 
-          // Ensure none of the other scans match our team+location
+          // Ensure none of the other scans match our team+activity
           const scans = otherScans.filter(
-            (s) => !(s.team_id === teamId && s.location_id === location.id),
+            (s) => !(s.team_id === teamId && s.activity_id === activity.id),
           );
           const teams: Team[] = [{ id: teamId, total_points: 0 }];
 
           const { newScoreLogs } = modelSubmitScore(
             teamId,
-            location.id,
+            activity.id,
             score,
-            location.maxPoints,
+            activity.maxPoints,
             loUserId,
             scans,
             [],
@@ -454,20 +454,20 @@ describe('Property 18: Score Input Requires Prior Check-In', () => {
     fc.assert(
       fc.property(
         uuidArb,
-        locationArb,
+        activityArb,
         uuidArb,
         fc.integer({ min: 0, max: 10000 }),
-        (teamId, location, loUserId, initialPoints) => {
-          const score = Math.floor(Math.random() * (location.maxPoints + 1));
+        (teamId, activity, loUserId, initialPoints) => {
+          const score = Math.floor(Math.random() * (activity.maxPoints + 1));
 
           const scans: ScanRecord[] = []; // no check-in
           const teams: Team[] = [{ id: teamId, total_points: initialPoints }];
 
           const { result, updatedTeams } = modelSubmitScore(
             teamId,
-            location.id,
+            activity.id,
             score,
-            location.maxPoints,
+            activity.maxPoints,
             loUserId,
             scans,
             [],
@@ -485,7 +485,7 @@ describe('Property 18: Score Input Requires Prior Check-In', () => {
     );
   });
 
-  it('check-in at a different location does not satisfy check-in requirement', () => {
+  it('check-in at a different activity does not satisfy check-in requirement', () => {
     // Validates: Requirements 7.6
     fc.assert(
       fc.property(
@@ -494,20 +494,20 @@ describe('Property 18: Score Input Requires Prior Check-In', () => {
         uuidArb,
         uuidArb,
         fc.integer({ min: 1, max: 500 }),
-        (teamId, targetLocationId, otherLocationId, loUserId, maxPoints) => {
-          fc.pre(targetLocationId !== otherLocationId);
+        (teamId, targetActivityId, otherActivityId, loUserId, maxPoints) => {
+          fc.pre(targetActivityId !== otherActivityId);
 
           const score = Math.floor(Math.random() * (maxPoints + 1));
 
-          // Team checked in at a DIFFERENT location
+          // Team checked in at a DIFFERENT activity
           const scans: ScanRecord[] = [
-            { team_id: teamId, location_id: otherLocationId },
+            { team_id: teamId, activity_id: otherActivityId },
           ];
           const teams: Team[] = [{ id: teamId, total_points: 0 }];
 
           const { result, newScoreLogs } = modelSubmitScore(
             teamId,
-            targetLocationId,
+            targetActivityId,
             score,
             maxPoints,
             loUserId,
@@ -524,27 +524,27 @@ describe('Property 18: Score Input Requires Prior Check-In', () => {
     );
   });
 
-  it('score submission succeeds when team has checked in at the correct location', () => {
+  it('score submission succeeds when team has checked in at the correct activity', () => {
     // Validates: Requirements 7.6 (positive case)
     fc.assert(
       fc.property(
         uuidArb,
-        locationArb,
+        activityArb,
         uuidArb,
-        (teamId, location, loUserId) => {
-          const score = Math.floor(Math.random() * (location.maxPoints + 1));
+        (teamId, activity, loUserId) => {
+          const score = Math.floor(Math.random() * (activity.maxPoints + 1));
 
-          // Team HAS checked in at the correct location
+          // Team HAS checked in at the correct activity
           const scans: ScanRecord[] = [
-            { team_id: teamId, location_id: location.id },
+            { team_id: teamId, activity_id: activity.id },
           ];
           const teams: Team[] = [{ id: teamId, total_points: 0 }];
 
           const { result, newScoreLogs } = modelSubmitScore(
             teamId,
-            location.id,
+            activity.id,
             score,
-            location.maxPoints,
+            activity.maxPoints,
             loUserId,
             scans,
             [],
@@ -564,22 +564,22 @@ describe('Property 18: Score Input Requires Prior Check-In', () => {
     fc.assert(
       fc.property(
         uuidArb,
-        locationArb,
+        activityArb,
         uuidArb,
         fc.integer({ min: 1, max: 500 }),
-        (teamId, location, loUserId, excess) => {
-          const outOfRangeScore = location.maxPoints + excess; // always > maxPoints
+        (teamId, activity, loUserId, excess) => {
+          const outOfRangeScore = activity.maxPoints + excess; // always > maxPoints
 
           const scans: ScanRecord[] = [
-            { team_id: teamId, location_id: location.id },
+            { team_id: teamId, activity_id: activity.id },
           ];
           const teams: Team[] = [{ id: teamId, total_points: 0 }];
 
           const { result, newScoreLogs } = modelSubmitScore(
             teamId,
-            location.id,
+            activity.id,
             outOfRangeScore,
-            location.maxPoints,
+            activity.maxPoints,
             loUserId,
             scans,
             [],
@@ -599,22 +599,22 @@ describe('Property 18: Score Input Requires Prior Check-In', () => {
     fc.assert(
       fc.property(
         uuidArb,
-        locationArb,
+        activityArb,
         uuidArb,
         fc.integer({ min: 1, max: 1000 }),
-        (teamId, location, loUserId, negVal) => {
+        (teamId, activity, loUserId, negVal) => {
           const negativeScore = -negVal;
 
           const scans: ScanRecord[] = [
-            { team_id: teamId, location_id: location.id },
+            { team_id: teamId, activity_id: activity.id },
           ];
           const teams: Team[] = [{ id: teamId, total_points: 0 }];
 
           const { result, newScoreLogs } = modelSubmitScore(
             teamId,
-            location.id,
+            activity.id,
             negativeScore,
-            location.maxPoints,
+            activity.maxPoints,
             loUserId,
             scans,
             [],
@@ -638,33 +638,33 @@ describe('Combined invariant: score_logs count never increases on failed submiss
     fc.assert(
       fc.property(
         uuidArb,
-        locationArb,
+        activityArb,
         uuidArb,
         fc.array(
           fc.record({
             id: uuidArb,
             team_id: uuidArb,
-            location_id: uuidArb,
+            activity_id: uuidArb,
             score: fc.integer({ min: 0, max: 500 }),
             lo_user_id: uuidArb,
             created_at: fc.constant(new Date().toISOString()),
           }),
           { minLength: 0, maxLength: 5 },
         ),
-        (teamId, location, loUserId, existingLogs) => {
+        (teamId, activity, loUserId, existingLogs) => {
           // Use an out-of-range score to guarantee failure
-          const badScore = location.maxPoints + 1;
+          const badScore = activity.maxPoints + 1;
 
           const scans: ScanRecord[] = [
-            { team_id: teamId, location_id: location.id },
+            { team_id: teamId, activity_id: activity.id },
           ];
           const teams: Team[] = [{ id: teamId, total_points: 0 }];
 
           const { result, newScoreLogs } = modelSubmitScore(
             teamId,
-            location.id,
+            activity.id,
             badScore,
-            location.maxPoints,
+            activity.maxPoints,
             loUserId,
             scans,
             existingLogs,

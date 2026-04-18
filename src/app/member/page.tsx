@@ -14,22 +14,31 @@ import Link from 'next/link';
 
 interface TeamMember {
   id: string;
-  nama: string;
+  name: string;
   role: string;
 }
 
-interface Location {
+interface Activity {
   id: string;
   name: string;
   type: string;
-  points: number;
-  is_active: boolean;
-  hint?: string | null;
+  max_points: number;
 }
 
-interface Scan {
-  location_id: string;
-  scanned_at: string;
+interface Registration {
+  activity_id: string;
+  created_at: string;
+}
+
+interface TreasureHunt {
+  id: string;
+  title: string;
+  points: number;
+}
+
+interface TreasureHuntClaim {
+  treasure_hunt_id: string;
+  created_at: string;
 }
 
 interface TeamData {
@@ -51,8 +60,10 @@ export default function MemberPortal() {
 
   const [team, setTeam] = useState<TeamData | null>(null);
   const [members, setMembers] = useState<TeamMember[]>([]);
-  const [locations, setLocations] = useState<Location[]>([]);
-  const [scans, setScans] = useState<Scan[]>([]);
+  const [activities, setActivities] = useState<Activity[]>([]);
+  const [registrations, setRegistrations] = useState<Registration[]>([]);
+  const [treasureHunts, setTreasureHunts] = useState<TreasureHunt[]>([]);
+  const [claims, setClaims] = useState<TreasureHuntClaim[]>([]);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -67,39 +78,38 @@ export default function MemberPortal() {
   const fetchAll = async (teamId: string) => {
     setLoading(true);
 
-    const [teamRes, membersRes, locRes, scanRes, lbRes] = await Promise.all([
-      // Team info
+    const [teamRes, membersRes, actRes, regRes, thRes, claimRes, lbRes] = await Promise.all([
       supabase.from('teams').select('id, name, slogan, total_points').eq('id', teamId).maybeSingle(),
-      // Team members (all users with same team_id)
-      supabase.from('users').select('id, nama, role').eq('team_id', teamId).order('role'),
-      // All active locations for this event (wahana + challenge + treasure)
-      supabase.from('locations').select('id, name, type, points, is_active, hint').eq('is_active', true).order('type'),
-      // Scans for this team
-      supabase.from('scans').select('location_id, scanned_at').eq('team_id', teamId),
-      // Leaderboard
+      supabase.from('users').select('id, name, role').eq('team_id', teamId).order('role'),
+      supabase.from('activities').select('id, name, type, max_points').order('name'),
+      supabase.from('activity_registrations').select('activity_id, created_at').eq('team_id', teamId),
+      supabase.from('treasure_hunts').select('id, title, points').order('title'),
+      supabase.from('treasure_hunt_claims').select('treasure_hunt_id, created_at').eq('team_id', teamId),
       fetch('/api/leaderboard').then(r => r.ok ? r.json() : []),
     ]);
 
     setTeam(teamRes.data ?? null);
-    setMembers(membersRes.data ?? []);
-    setLocations(locRes.data ?? []);
-    setScans(scanRes.data ?? []);
+    setMembers((membersRes.data ?? []) as TeamMember[]);
+    setActivities(actRes.data ?? []);
+    setRegistrations(regRes.data ?? []);
+    setTreasureHunts(thRes.data ?? []);
+    setClaims(claimRes.data ?? []);
     setLeaderboard(Array.isArray(lbRes) ? lbRes : []);
     setLoading(false);
   };
 
-  const isVisited = (locId: string) => scans.some(s => s.location_id === locId);
-  const wahanaLocations = locations.filter(l => l.type === 'wahana' || l.type === 'challenge');
-  const treasureLocations = locations.filter(l => l.type === 'treasure');
-  const visitedCount = wahanaLocations.filter(l => isVisited(l.id)).length;
-  const claimedTreasures = treasureLocations.filter(l => isVisited(l.id)).length;
-  const progress = wahanaLocations.length > 0 ? (visitedCount / wahanaLocations.length) * 100 : 0;
+  const isActivityDone = (id: string) => registrations.some(r => r.activity_id === id);
+  const isTreasureClaimed = (id: string) => claims.some(c => c.treasure_hunt_id === id);
+
+  const completedCount = activities.filter(a => isActivityDone(a.id)).length;
+  const progress = activities.length > 0 ? (completedCount / activities.length) * 100 : 0;
+  const claimedTreasuresCount = treasureHunts.filter(t => isTreasureClaimed(t.id)).length;
   const myRank = leaderboard.find(t => t.id === user?.team_id)?.rank ?? null;
 
   const roleLabel = (role: string) => {
     switch (role) {
-      case 'kaptain': return { label: 'Captain', icon: <Crown className="w-3 h-3 text-primary" /> };
-      case 'cocaptain': return { label: 'Co-Captain', icon: <Shield className="w-3 h-3 text-primary/70" /> };
+      case 'captain': return { label: 'Captain', icon: <Crown className="w-3 h-3 text-primary" /> };
+      case 'vice_captain': return { label: 'Co-Captain', icon: <Shield className="w-3 h-3 text-primary/70" /> };
       default: return { label: 'Member', icon: null };
     }
   };
@@ -127,7 +137,7 @@ export default function MemberPortal() {
             </div>
             <h1 className="font-adventure text-4xl gold-engraving tracking-widest">Expedition Log</h1>
             <p className="text-muted-foreground text-xs uppercase tracking-[0.3em] font-adventure opacity-50 mt-1">
-              {user?.nama ?? 'Explorer'}
+              {user?.name ?? 'Explorer'}
             </p>
           </motion.header>
 
@@ -178,8 +188,8 @@ export default function MemberPortal() {
                 {/* Progress bar */}
                 <div className="mt-4 space-y-2">
                   <div className="flex justify-between text-[10px] font-adventure uppercase tracking-widest opacity-50">
-                    <span>Wahana Progress</span>
-                    <span>{visitedCount}/{wahanaLocations.length} — {Math.round(progress)}%</span>
+                    <span>Expedition Progress</span>
+                    <span>{completedCount}/{activities.length} — {Math.round(progress)}%</span>
                   </div>
                   <div className="h-3 bg-black/40 border border-primary/10 p-0.5">
                     <motion.div
@@ -218,9 +228,9 @@ export default function MemberPortal() {
                         className="flex items-center gap-3 px-5 py-3"
                       >
                         <div className="w-7 h-7 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center flex-shrink-0">
-                          <span className="font-adventure text-[10px] text-primary">{m.nama.charAt(0)}</span>
+                          <span className="font-adventure text-[10px] text-primary">{m.name.charAt(0)}</span>
                         </div>
-                        <span className="font-content text-sm text-foreground/80 flex-1">{m.nama}</span>
+                        <span className="font-content text-sm text-foreground/80 flex-1">{m.name}</span>
                         <div className="flex items-center gap-1">
                           {icon}
                           <span className="text-[10px] font-adventure uppercase tracking-widest opacity-40">{label}</span>
@@ -231,7 +241,7 @@ export default function MemberPortal() {
                 </div>
               </motion.div>
 
-              {/* ── Wahana Progress ── */}
+              {/* ── Activity Progress ── */}
               <motion.div
                 initial={{ opacity: 0, y: 16 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -240,39 +250,39 @@ export default function MemberPortal() {
               >
                 <div className="flex items-center gap-3 px-5 py-4 border-b border-primary/10">
                   <MapPin className="w-4 h-4 text-primary" />
-                  <span className="font-adventure text-sm tracking-widest text-primary uppercase">Wahana Status</span>
+                  <span className="font-adventure text-sm tracking-widest text-primary uppercase">Expedition Tasks</span>
                 </div>
                 <div className="p-4 grid gap-3">
-                  {wahanaLocations.length === 0 ? (
-                    <p className="text-center text-xs italic opacity-30 py-6">No locations found.</p>
+                  {activities.length === 0 ? (
+                    <p className="text-center text-xs italic opacity-30 py-6">No activities found.</p>
                   ) : (
-                    wahanaLocations.map((loc, i) => {
-                      const visited = isVisited(loc.id);
+                    activities.map((act, i) => {
+                      const done = isActivityDone(act.id);
                       return (
                         <motion.div
-                          key={loc.id}
+                          key={act.id}
                           initial={{ opacity: 0, x: -8 }}
                           animate={{ opacity: 1, x: 0 }}
                           transition={{ delay: 0.3 + i * 0.04 }}
                           className={`flex items-center gap-4 p-4 border-l-4 transition-all ${
-                            visited
+                            done
                               ? 'border-l-primary bg-primary/5'
                               : 'border-l-white/5 opacity-50'
                           }`}
                         >
-                          {visited
+                          {done
                             ? <CheckCircle2 className="w-5 h-5 text-primary flex-shrink-0" />
                             : <Circle className="w-5 h-5 text-foreground/20 flex-shrink-0" />
                           }
                           <div className="flex-1 min-w-0">
-                            <p className="font-adventure text-sm tracking-tight truncate">{loc.name}</p>
+                            <p className="font-adventure text-sm tracking-tight truncate">{act.name}</p>
                             <p className="text-[10px] uppercase font-adventure opacity-40 tracking-widest">
-                              {loc.type} · {loc.points} pts
+                              {act.type} · {act.max_points} pts
                             </p>
                           </div>
-                          {visited && (
+                          {done && (
                             <span className="text-[9px] font-adventure uppercase tracking-widest text-primary opacity-60 flex-shrink-0">
-                              Visited
+                              Completed
                             </span>
                           )}
                         </motion.div>
@@ -292,7 +302,7 @@ export default function MemberPortal() {
               </motion.div>
 
               {/* ── Treasure Hunt ── */}
-              {treasureLocations.length > 0 && (
+              {treasureHunts.length > 0 && (
                 <motion.div
                   initial={{ opacity: 0, y: 16 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -303,15 +313,15 @@ export default function MemberPortal() {
                     <Gem className="w-4 h-4 text-primary" />
                     <span className="font-adventure text-sm tracking-widest text-primary uppercase">Treasure Hunt</span>
                     <span className="ml-auto text-[10px] font-adventure opacity-40">
-                      {claimedTreasures}/{treasureLocations.length} claimed
+                      {claimedTreasuresCount}/{treasureHunts.length} claimed
                     </span>
                   </div>
                   <div className="p-4 grid gap-3">
-                    {treasureLocations.map((loc, i) => {
-                      const claimed = isVisited(loc.id);
+                    {treasureHunts.map((th, i) => {
+                      const claimed = isTreasureClaimed(th.id);
                       return (
                         <motion.div
-                          key={loc.id}
+                          key={th.id}
                           initial={{ opacity: 0, x: -8 }}
                           animate={{ opacity: 1, x: 0 }}
                           transition={{ delay: 0.45 + i * 0.04 }}
@@ -326,12 +336,9 @@ export default function MemberPortal() {
                             : <Gem className="w-5 h-5 text-foreground/20 flex-shrink-0 mt-0.5" />
                           }
                           <div className="flex-1 min-w-0">
-                            <p className="font-adventure text-sm tracking-tight truncate">{loc.name}</p>
-                            {loc.hint && !claimed && (
-                              <p className="text-[10px] italic text-primary/50 mt-0.5">Hint: {loc.hint}</p>
-                            )}
+                            <p className="font-adventure text-sm tracking-tight truncate">{th.title}</p>
                             <p className="text-[10px] uppercase font-adventure opacity-40 tracking-widest mt-0.5">
-                              {loc.points} pts
+                              {th.points} pts
                             </p>
                           </div>
                           {claimed && (

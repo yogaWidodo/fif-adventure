@@ -349,27 +349,27 @@ describe('Property 23: CSV Export Round-Trip Preserves All Records', () => {
     );
   });
 
-  it('a full score_logs-style export round-trips correctly (team_id, location_id, score, lo_user_id, created_at)', () => {
+  it('a full score_logs-style export round-trips correctly (team_id, activity_id, points_awarded, lo_id, created_at)', () => {
     // Validates: Requirements 11.2 — score_logs export schema
     fc.assert(
       fc.property(
         fc.array(
           fc.record({
             team_id: fc.uuid(),
-            location_id: fc.uuid(),
-            score: fc.integer({ min: 0, max: 1000 }),
-            lo_user_id: fc.uuid(),
+            activity_id: fc.uuid(),
+            points_awarded: fc.integer({ min: 0, max: 1000 }),
+            lo_id: fc.uuid(),
             created_at: fc.constant(new Date().toISOString()),
           }),
           { minLength: 1, maxLength: 20 },
         ),
         (logs) => {
-          const header = ['Team ID', 'Location ID', 'Score', 'LO User ID', 'Created At'];
+          const header = ['Team ID', 'Activity ID', 'Points', 'LO ID', 'Created At'];
           const dataRows = logs.map((l) => [
             l.team_id,
-            l.location_id,
-            l.score,
-            l.lo_user_id,
+            l.activity_id,
+            l.points_awarded,
+            l.lo_id,
             l.created_at,
           ]);
           const csv = buildCsv([header, ...dataRows]);
@@ -381,9 +381,9 @@ describe('Property 23: CSV Export Round-Trip Preserves All Records', () => {
           for (let i = 0; i < logs.length; i++) {
             const row = parsed[i + 1];
             expect(row[0]).toBe(logs[i].team_id);
-            expect(row[1]).toBe(logs[i].location_id);
-            expect(row[2]).toBe(String(logs[i].score));
-            expect(row[3]).toBe(logs[i].lo_user_id);
+            expect(row[1]).toBe(logs[i].activity_id);
+            expect(row[2]).toBe(String(logs[i].points_awarded));
+            expect(row[3]).toBe(logs[i].lo_id);
             expect(row[4]).toBe(logs[i].created_at);
           }
         },

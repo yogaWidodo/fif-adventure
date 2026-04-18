@@ -100,7 +100,7 @@ export async function GET(request: NextRequest): Promise<Response> {
         slogan,
         total_points,
         captain_id,
-        users!teams_captain_id_fkey ( nama )
+        users!teams_captain_id_fkey ( name )
       `)
       .order('total_points', { ascending: false });
 
@@ -112,13 +112,13 @@ export async function GET(request: NextRequest): Promise<Response> {
     const header = ['Nama Tim', 'Slogan', 'Total Poin', 'Nama Kaptain'];
     const dataRows = (teams ?? []).map((team) => {
       // Supabase foreign key join returns an array; take the first element
-      const usersArr = team.users as { nama: string }[] | null;
+      const usersArr = team.users as { name: string }[] | null;
       const captainUser = Array.isArray(usersArr) ? usersArr[0] : null;
       return [
         team.name,
         team.slogan ?? '',
         team.total_points ?? 0,
-        captainUser?.nama ?? '',
+        captainUser?.name ?? '',
       ];
     });
 
@@ -128,7 +128,7 @@ export async function GET(request: NextRequest): Promise<Response> {
     // Requirement 11.2: export team_id, location_id, score, lo_user_id, created_at
     const { data: scoreLogs, error: scoreLogsError } = await supabase
       .from('score_logs')
-      .select('team_id, location_id, score, lo_user_id, created_at')
+      .select('team_id, activity_id, points_awarded, lo_id, created_at')
       .order('created_at', { ascending: true });
 
     if (scoreLogsError) {
@@ -136,12 +136,12 @@ export async function GET(request: NextRequest): Promise<Response> {
       return Response.json({ error: 'Failed to fetch score logs data' }, { status: 500 });
     }
 
-    const header = ['Team ID', 'Location ID', 'Score', 'LO User ID', 'Created At'];
+    const header = ['Team ID', 'Activity ID', 'Points', 'LO ID', 'Created At'];
     const dataRows = (scoreLogs ?? []).map((log) => [
       log.team_id,
-      log.location_id,
-      log.score,
-      log.lo_user_id,
+      log.activity_id,
+      log.points_awarded,
+      log.lo_id,
       log.created_at,
     ]);
 

@@ -10,9 +10,10 @@ import { useAuth } from '@/context/AuthContext';
 export default function TeamJournal() {
   const { user } = useAuth();
   const [team, setTeam] = useState<any>(null);
-  const [locations, setLocations] = useState<any[]>([]);
+  const [activities, setActivities] = useState<any[]>([]);
   const [treasures, setTreasures] = useState<any[]>([]);
-  const [scans, setScans] = useState<any[]>([]);
+  const [registrations, setRegistrations] = useState<any[]>([]);
+  const [claims, setClaims] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -22,25 +23,34 @@ export default function TeamJournal() {
   const fetchJournalData = async (teamId: string) => {
     setLoading(true);
 
-    const [teamRes, locRes, scanRes] = await Promise.all([
+    const [teamRes, activitiesRes, treasuresRes, regRes, claimRes] = await Promise.all([
       supabase.from('teams').select('*').eq('id', teamId).maybeSingle(),
-      supabase.from('locations').select('*').eq('is_active', true).order('type'),
-      supabase.from('scans').select('*').eq('team_id', teamId),
+      supabase.from('activities').select('*').order('name'),
+      supabase.from('treasure_hunts').select('*').order('title'),
+      supabase.from('activity_registrations').select('*').eq('team_id', teamId),
+      supabase.from('treasure_hunt_claims').select('*').eq('team_id', teamId),
     ]);
 
     setTeam(teamRes.data);
-    setLocations((locRes.data || []).filter((l: any) => l.type !== 'treasure'));
-    setTreasures((locRes.data || []).filter((l: any) => l.type === 'treasure'));
-    setScans(scanRes.data || []);
+    setActivities(activitiesRes.data || []);
+    setTreasures(treasuresRes.data || []);
+    setRegistrations(regRes.data || []);
+    setClaims(claimRes.data || []);
     setLoading(false);
   };
 
-  const isScanned = (locId: string) => scans.some(s => s.location_id === locId);
-  const progress = locations.length > 0 ? (scans.filter(s => locations.some(l => l.id === s.location_id)).length / locations.length) * 100 : 0;
-  const claimedTreasures = treasures.filter(t => isScanned(t.id)).length;
+  const isActivityDone = (id: string) => registrations.some(r => r.activity_id === id);
+  const isTreasureClaimed = (id: string) => claims.some(c => c.treasure_hunt_id === id);
+
+  const totalMain = activities.length;
+  const completedMain = activities.filter(a => isActivityDone(a.id)).length;
+  const progress = totalMain > 0 ? (completedMain / totalMain) * 100 : 0;
+
+  const totalTreasures = treasures.length;
+  const completedTreasures = treasures.filter(t => isTreasureClaimed(t.id)).length;
 
   return (
-    <AuthGuard allowedRoles={['admin', 'kaptain', 'cocaptain']}>
+    <AuthGuard allowedRoles={['admin', 'captain', 'vice_captain']}>
       <div className="relative min-h-screen flex flex-col items-center bg-black overflow-hidden font-content p-6 pb-24">
         {/* Immersive Background */}
         <div 
@@ -95,46 +105,46 @@ export default function TeamJournal() {
                   <Flame className="absolute -right-2 -top-4 w-4 h-4 text-accent torch-glow" />
                 </motion.div>
               </div>
-              <p className="text-[10px] italic opacity-40 text-center">"{scans.length} of {locations.length} artifacts secured from the wild."</p>
+              <p className="text-[10px] italic opacity-40 text-center">"{completedMain} of {totalMain} main activities secured."</p>
             </div>
           </motion.div>
 
-          {/* Relic Checklist */}
+          {/* Activity Checklist */}
           <div className="space-y-4">
             <div className="flex items-center gap-4 mb-6">
               <span className="h-px w-8 bg-primary/40" />
-              <h3 className="font-adventure text-sm text-primary tracking-widest uppercase">Catalogue of Relics</h3>
+              <h3 className="font-adventure text-sm text-primary tracking-widest uppercase">Expedition Tasks</h3>
             </div>
 
             {loading ? (
               <div className="p-20 text-center italic opacity-30">Consulting the archives...</div>
             ) : (
               <div className="grid gap-4">
-                {locations.map((loc, idx) => (
+                {activities.map((act, idx) => (
                   <motion.div 
-                    key={loc.id}
+                    key={act.id}
                     initial={{ opacity: 0, x: -10 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: idx * 0.05 }}
                     className={`parchment p-5 flex items-center justify-between border-l-[6px] transition-all ${
-                      isScanned(loc.id) ? 'border-l-primary opacity-100 shadow-lg' : 'border-l-stone-400/20 opacity-40'
+                      isActivityDone(act.id) ? 'border-l-primary opacity-100 shadow-lg' : 'border-l-stone-400/20 opacity-40'
                     }`}
                   >
                     <div className="flex items-center gap-4">
-                      {isScanned(loc.id) ? (
+                      {isActivityDone(act.id) ? (
                         <CheckCircle2 className="w-6 h-6 text-primary" />
                       ) : (
                         <Circle className="w-6 h-6 text-stone-400/30" />
                       )}
                       <div>
-                        <h4 className="font-adventure text-lg tracking-tight leading-none text-[#2b1d0e] mb-1">{loc.name}</h4>
+                        <h4 className="font-adventure text-lg tracking-tight leading-none text-[#2b1d0e] mb-1">{act.name}</h4>
                         <p className="text-[10px] uppercase font-adventure text-[#8b4513]/60 italic tracking-tighter">
-                          {loc.type} • {loc.points} Pts
+                          {act.type} • {act.max_points} Pts Max
                         </p>
                       </div>
                     </div>
                     
-                    {isScanned(loc.id) && (
+                    {isActivityDone(act.id) && (
                       <div className="flex flex-col items-end">
                         <p className="text-[8px] font-mono text-[#8b4513]/40">SECURED</p>
                         <MapPin className="w-4 h-4 text-[#8b4513]/60" />
@@ -152,14 +162,14 @@ export default function TeamJournal() {
               <div className="flex items-center gap-4 mb-6">
                 <span className="h-px w-8 bg-primary/40" />
                 <h3 className="font-adventure text-sm text-primary tracking-widest uppercase">Treasure Hunt</h3>
-                <span className="text-[10px] font-adventure text-primary/50">{claimedTreasures}/{treasures.length} claimed</span>
+                <span className="text-[10px] font-adventure text-primary/50">{completedTreasures}/{totalTreasures} claimed</span>
               </div>
               <div className="grid gap-4">
-                {treasures.map((loc, idx) => {
-                  const claimed = isScanned(loc.id);
+                {treasures.map((th, idx) => {
+                  const claimed = isTreasureClaimed(th.id);
                   return (
                     <motion.div
-                      key={loc.id}
+                      key={th.id}
                       initial={{ opacity: 0, x: -10 }}
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: idx * 0.05 }}
@@ -174,12 +184,9 @@ export default function TeamJournal() {
                           <Gem className="w-6 h-6 text-stone-400/30" />
                         )}
                         <div>
-                          <h4 className="font-adventure text-lg tracking-tight leading-none text-[#2b1d0e] mb-1">{loc.name}</h4>
-                          {loc.hint && !claimed && (
-                            <p className="text-[10px] italic text-[#8b4513]/60 mb-1">Hint: {loc.hint}</p>
-                          )}
+                          <h4 className="font-adventure text-lg tracking-tight leading-none text-[#2b1d0e] mb-1">{th.title}</h4>
                           <p className="text-[10px] uppercase font-adventure text-[#8b4513]/60 italic tracking-tighter">
-                            treasure • {loc.points} Pts
+                            treasure • {th.points} Pts
                           </p>
                         </div>
                       </div>

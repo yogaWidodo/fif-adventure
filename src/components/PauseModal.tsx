@@ -7,11 +7,11 @@ import { useTimerContext } from '@/context/TimerContext';
 import { useAuth } from '@/context/AuthContext';
 
 export default function PauseModal(): React.JSX.Element | null {
-  const { timerState } = useTimerContext();
+  const { status } = useTimerContext();
   const { user } = useAuth();
 
   // Don't render for admins or when not paused
-  if (timerState !== 'paused' || user?.role === 'admin') {
+  if (status !== 'paused' || user?.role === 'admin') {
     return null;
   }
 

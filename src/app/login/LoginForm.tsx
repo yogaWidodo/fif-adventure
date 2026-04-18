@@ -3,13 +3,12 @@
 import { useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { User, Hash, KeyRound, ChevronRight } from 'lucide-react';
+import { Hash, Calendar, ChevronRight } from 'lucide-react';
 import { getRoleRedirect } from '@/lib/auth';
 
 export default function LoginForm() {
-  const [nama, setNama] = useState('');
   const [npk, setNpk] = useState('');
-  const [noUnik, setNoUnik] = useState('');
+  const [birthDate, setBirthDate] = useState('');
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -23,51 +22,29 @@ export default function LoginForm() {
     setIsSubmitting(true);
     setError('');
 
-    const result = await login(nama, npk, noUnik);
+    if (birthDate.length !== 8 || !/^\d{8}$/.test(birthDate)) {
+      setError('Format tanggal lahir salah (DDMMYYYY).');
+      setIsSubmitting(false);
+      return;
+    }
+
+    const result = await login(npk, birthDate);
 
     if (result.success && result.role) {
-      // Admin always goes to /admin — ignore redirect param
       if (result.role === 'admin') {
         router.push('/admin');
         return;
       }
 
-      // For non-admin: check event timer state
-      if (result.eventTimerState === 'idle') {
-        setError('The expedition has not started yet. Please wait for the event to begin.');
-        setIsSubmitting(false);
-        return;
-      }
-
       router.push(redirect ?? getRoleRedirect(result.role));
     } else {
-      setError('Credentials rejected. The ancient archives do not recognize you.');
+      setError('Kredensial tidak dikenali. Silakan periksa kembali NPK dan Tanggal Lahir Anda.');
       setIsSubmitting(false);
     }
   };
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      {/* Nama Field */}
-      <div className="adventure-card p-6 bg-card/40 border-primary/10 backdrop-blur-xl">
-        <div className="flex items-center gap-3 mb-4">
-          <User className="w-4 h-4 text-primary" />
-          <label htmlFor="nama" className="text-[10px] uppercase tracking-widest font-adventure text-primary">
-            Nama
-          </label>
-        </div>
-        <input
-          id="nama"
-          type="text"
-          value={nama}
-          onChange={(e) => { setNama(e.target.value); setError(''); }}
-          placeholder="Enter your name..."
-          required
-          autoComplete="name"
-          className="w-full bg-transparent border-b border-primary/20 p-2 font-content text-lg text-parchment placeholder:text-foreground/20 focus:outline-none focus:border-primary transition-colors"
-        />
-      </div>
-
       {/* NPK Field */}
       <div className="adventure-card p-6 bg-card/40 border-primary/10 backdrop-blur-xl">
         <div className="flex items-center gap-3 mb-4">
@@ -81,27 +58,31 @@ export default function LoginForm() {
           type="text"
           value={npk}
           onChange={(e) => { setNpk(e.target.value); setError(''); }}
-          placeholder="Enter your NPK..."
+          placeholder="Masukkan NPK..."
           required
           autoComplete="username"
           className="w-full bg-transparent border-b border-primary/20 p-2 font-content text-lg text-parchment placeholder:text-foreground/20 focus:outline-none focus:border-primary transition-colors"
         />
       </div>
 
-      {/* No Unik Field */}
+      {/* Birth Date Field */}
       <div className="adventure-card p-6 bg-card/40 border-primary/10 backdrop-blur-xl">
         <div className="flex items-center gap-3 mb-4">
-          <KeyRound className="w-4 h-4 text-primary" />
-          <label htmlFor="noUnik" className="text-[10px] uppercase tracking-widest font-adventure text-primary">
-            No Unik
+          <Calendar className="w-4 h-4 text-primary" />
+          <label htmlFor="birthDate" className="text-[10px] uppercase tracking-widest font-adventure text-primary">
+            Tanggal Lahir (DDMMYYYY)
           </label>
         </div>
         <input
-          id="noUnik"
+          id="birthDate"
           type="password"
-          value={noUnik}
-          onChange={(e) => { setNoUnik(e.target.value); setError(''); }}
-          placeholder="Enter your unique code..."
+          value={birthDate}
+          onChange={(e) => { 
+            const val = e.target.value.replace(/\D/g, '').slice(0, 8);
+            setBirthDate(val); 
+            setError(''); 
+          }}
+          placeholder="DDMMYYYY"
           required
           autoComplete="current-password"
           className="w-full bg-transparent border-b border-primary/20 p-2 font-content text-lg text-parchment placeholder:text-foreground/20 focus:outline-none focus:border-primary transition-colors"
@@ -120,7 +101,7 @@ export default function LoginForm() {
       >
         <div className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity" />
         <span className="flex items-center justify-center gap-3">
-          {isSubmitting ? 'Verifying...' : 'Proceed to Horizon'}
+          {isSubmitting ? 'Memverifikasi...' : 'Mulai Ekspedisi'}
           <ChevronRight className="w-5 h-5" />
         </span>
       </button>

@@ -60,18 +60,3 @@ export async function getAuthenticatedClient(
   return { supabase, userId: user.id };
 }
 
-/**
- * Checks if an event is currently paused.
- * Returns true if paused, false otherwise.
- */
-export async function isEventPaused(
-  supabase: SupabaseClient,
-  eventId: string
-): Promise<boolean> {
-  const { data } = await supabase
-    .from('events')
-    .select('timer_state')
-    .eq('id', eventId)
-    .single();
-  return data?.timer_state === 'paused';
-}

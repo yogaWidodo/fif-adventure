@@ -4,21 +4,20 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 
-type Role = 'admin' | 'kaptain' | 'cocaptain' | 'lo' | 'member' | null;
+type Role = 'admin' | 'captain' | 'vice_captain' | 'lo' | 'member' | null;
 
 interface User {
   id: string;
-  nama: string;
+  name: string;
   npk: string;
   role: Role;
   team_id?: string;
-  event_id?: string;
 }
 
 interface AuthContextType {
   userRole: Role;
   user: User | null;
-  login: (nama: string, npk: string, noUnik: string) => Promise<{ success: boolean; role?: Role; eventTimerState?: string }>;
+  login: (npk: string, birthDate: string) => Promise<{ success: boolean; role?: Role }>;
   logout: () => Promise<void>;
   isLoading: boolean;
 }
@@ -35,21 +34,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         const { data: { session } } = await supabase.auth.getSession();
         if (session) {
-          // Re-fetch user profile from server to prevent localStorage tampering
+          const npk = session.user.email?.split('@')[0] || '';
+          // Re-fetch user profile
           const { data: profile } = await supabase
             .from('users')
-            .select('id, nama, npk, role, team_id, event_id')
-            .eq('auth_id', session.user.id)
+            .select('id, name, npk, role, team_id')
+            .ilike('npk', npk)
             .maybeSingle();
 
           if (profile) {
             const userData: User = {
               id: profile.id,
-              nama: profile.nama,
+              name: profile.name,
               npk: profile.npk ?? '',
               role: profile.role as Role,
               team_id: profile.team_id ?? undefined,
-              event_id: profile.event_id ?? undefined,
             };
             setUser(userData);
             localStorage.setItem('fif_user', JSON.stringify(userData));
@@ -68,18 +67,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (event === 'SIGNED_OUT') {
         setUser(null);
         localStorage.removeItem('fif_user');
+        localStorage.removeItem('fif_access_token');
       }
     });
 
     return () => subscription.unsubscribe();
   }, []);
 
-  const login = async (nama: string, npk: string, noUnik: string): Promise<{ success: boolean; role?: Role; eventTimerState?: string }> => {
+  const login = async (npk: string, birthDate: string): Promise<{ success: boolean; role?: Role }> => {
     try {
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nama, npk, no_unik: noUnik }),
+        body: JSON.stringify({ npk, birth_date: birthDate }),
       });
 
       if (!response.ok) return { success: false };
@@ -101,17 +101,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const role = data.user.role as Role;
           const userData: User = {
             id: data.user.id,
-            nama: data.user.nama,
+            name: data.user.name,
             npk: data.user.npk ?? '',
             role,
             team_id: data.user.team_id ?? undefined,
-            event_id: data.user.event_id ?? undefined,
           };
           setUser(userData);
           localStorage.setItem('fif_user', JSON.stringify(userData));
-          // Store access token for API calls (fallback when cookie not available)
           localStorage.setItem('fif_access_token', data.session.access_token);
-          return { success: true, role, eventTimerState: data.eventTimerState ?? undefined };
+          return { success: true, role };
         }
       }
 
@@ -124,7 +122,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = async () => {
     try {
-      // Clear server-side cookies
       await fetch('/api/auth/logout', { method: 'POST' });
       await supabase.auth.signOut();
       setUser(null);

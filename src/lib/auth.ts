@@ -5,12 +5,12 @@
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type Role = 'admin' | 'kaptain' | 'cocaptain' | 'member' | 'lo';
+export type Role = 'admin' | 'captain' | 'vice_captain' | 'member' | 'lo';
 
 export interface MemberRecord {
-  nama: string;
+  name: string;
   npk: string;
-  no_unik: string;
+  birth_date: string;
   role: Role;
 }
 
@@ -21,9 +21,9 @@ export interface ParseCSVResult {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const VALID_ROLES: Role[] = ['admin', 'kaptain', 'cocaptain', 'member', 'lo'];
+const VALID_ROLES: Role[] = ['admin', 'captain', 'vice_captain', 'member', 'lo'];
 
-const REQUIRED_CSV_COLUMNS = ['nama', 'npk', 'no_unik', 'role'] as const;
+const REQUIRED_CSV_COLUMNS = ['name', 'npk', 'birth_date', 'role'] as const;
 
 // ─── Functions ────────────────────────────────────────────────────────────────
 
@@ -35,8 +35,8 @@ export function getRoleRedirect(role: string): string {
   switch (role) {
     case 'admin':
       return '/admin';
-    case 'kaptain':
-    case 'cocaptain':
+    case 'captain':
+    case 'vice_captain':
       return '/captain';
     case 'lo':
       return '/lo';
@@ -56,7 +56,7 @@ export function isValidRole(role: string): role is Role {
 }
 
 /**
- * Parses and validates a CSV string with columns: nama, npk, no_unik, role.
+ * Parses and validates a CSV string with columns: name, npk, birth_date, role.
  * Returns parsed records and any validation errors encountered.
  * Requirements: 2.2, 2.3
  */
@@ -104,16 +104,16 @@ export function parseTeamCSV(content: string): ParseCSVResult {
     const line = lines[i];
     const values = line.split(',').map((v) => v.trim());
 
-    const nama = values[colIndex['nama']] ?? '';
+    const name = values[colIndex['name']] ?? '';
     const npk = values[colIndex['npk']] ?? '';
-    const no_unik = values[colIndex['no_unik']] ?? '';
+    const birth_date = values[colIndex['birth_date']] ?? '';
     const roleRaw = values[colIndex['role']] ?? '';
 
     const rowErrors: string[] = [];
 
-    if (!nama) rowErrors.push('nama is required');
+    if (!name) rowErrors.push('name is required');
     if (!npk) rowErrors.push('npk is required');
-    if (!no_unik) rowErrors.push('no_unik is required');
+    if (!birth_date) rowErrors.push('birth_date is required');
     if (!roleRaw) {
       rowErrors.push('role is required');
     } else if (!isValidRole(roleRaw)) {
@@ -128,9 +128,9 @@ export function parseTeamCSV(content: string): ParseCSVResult {
     }
 
     records.push({
-      nama,
+      name,
       npk,
-      no_unik,
+      birth_date,
       role: roleRaw as Role,
     });
   }

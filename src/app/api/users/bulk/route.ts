@@ -8,14 +8,8 @@ import {
   type RowResult,
 } from '@/lib/userManagement';
 
-// Requirements: 4.5, 4.6, 4.7, 4.9, 4.10, 4.11, 4.12, 4.13
-
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
-const supabaseServiceKey =
-  process.env.SUPABASE_SERVICE_ROLE_KEY ??
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ??
-  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY ??
-  '';
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
 
 function getAdminClient() {
   return createClient(supabaseUrl, supabaseServiceKey);
@@ -23,7 +17,7 @@ function getAdminClient() {
 
 // POST /api/users/bulk — bulk import users from parsed CSV rows
 export async function POST(request: NextRequest) {
-  let body: { rows?: unknown; event_id?: unknown };
+  let body: { rows?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -35,16 +29,15 @@ export async function POST(request: NextRequest) {
   }
 
   const rows = body.rows as ParsedUserRow[];
-  const event_id = typeof body.event_id === 'string' && body.event_id ? body.event_id : null;
   const supabaseAdmin = getAdminClient();
   const results: RowResult[] = [];
 
-  // Cache team name → id to avoid redundant DB lookups within the same import
+  // Cache team name → id to avoid redundant DB lookups
   const teamCache: Record<string, string> = {};
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
-    const rowIndex = i + 1; // 1-based
+    const rowIndex = i + 1;
 
     // Validate row
     const validationError = validateUserRow(row);
@@ -54,16 +47,16 @@ export async function POST(request: NextRequest) {
     }
 
     const npk = row.npk.trim();
-    const nama = row.nama.trim();
+    const name = row.name.trim();
     const role = row.role;
     const team_name = row.team_name.trim();
-    const no_unik = row.no_unik.trim();
+    const birth_date = row.birth_date.trim();
 
     let userId: string | null = null;
     let userCreated = false;
     let teamCreated = false;
 
-    // Step 1: Check if user with this npk already exists
+    // Step 1: Check if user exists
     const { data: existingUser } = await supabaseAdmin
       .from('users')
       .select('id, auth_id')
@@ -71,14 +64,13 @@ export async function POST(request: NextRequest) {
       .maybeSingle();
 
     if (existingUser) {
-      // User already exists — skip creation
       userId = existingUser.id;
     } else {
-      // Create Supabase Auth account — password = npk
+      // Create Auth account using NPK as email and Birth Date as password
       const email = buildAuthEmail(npk);
       const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
         email,
-        password: npk,
+        password: birth_date,
         email_confirm: true,
       });
 
@@ -86,7 +78,7 @@ export async function POST(request: NextRequest) {
         results.push({
           rowIndex,
           status: 'failed',
-          reason: `Gagal membuat auth account: ${authError?.message ?? 'unknown error'}`,
+          reason: `Auth Error: ${authError?.message}`,
         });
         continue;
       }
@@ -96,23 +88,20 @@ export async function POST(request: NextRequest) {
         .from('users')
         .insert({
           auth_id: authData.user.id,
-          nama,
+          name,
           npk,
           role,
-          no_unik: null,
-          team_id: null,
-          event_id,
+          birth_date
         })
         .select('id')
         .single();
 
       if (insertError || !newUser) {
-        // Rollback auth account
         await supabaseAdmin.auth.admin.deleteUser(authData.user.id);
         results.push({
           rowIndex,
           status: 'failed',
-          reason: `Gagal menyimpan user: ${insertError?.message ?? 'unknown error'}`,
+          reason: `Insert Error: ${insertError?.message}`,
         });
         continue;
       }
@@ -121,13 +110,11 @@ export async function POST(request: NextRequest) {
       userCreated = true;
     }
 
-    // Step 2: Team assignment (if team_name is provided)
+    // Step 2: Team assignment
     if (team_name && userId) {
-      // Resolve team id (check cache first)
       let teamId = teamCache[team_name.toLowerCase()];
 
       if (!teamId) {
-        // Check if team exists
         const { data: existingTeam } = await supabaseAdmin
           .from('teams')
           .select('id')
@@ -137,7 +124,6 @@ export async function POST(request: NextRequest) {
         if (existingTeam) {
           teamId = existingTeam.id;
         } else {
-          // Create new team
           const { data: newTeam, error: teamError } = await supabaseAdmin
             .from('teams')
             .insert({ name: team_name })
@@ -148,60 +134,28 @@ export async function POST(request: NextRequest) {
             results.push({
               rowIndex,
               status: 'failed',
-              reason: `Gagal membuat tim '${team_name}': ${teamError?.message ?? 'unknown error'}`,
-              teamCreated: false,
+              reason: `Team Error: ${teamError?.message}`,
             });
             continue;
           }
-
           teamId = newTeam.id;
           teamCreated = true;
         }
-
         teamCache[team_name.toLowerCase()] = teamId;
       }
 
-      // Check no_unik uniqueness in this team
-      const { data: conflictUser } = await supabaseAdmin
-        .from('users')
-        .select('id')
-        .eq('team_id', teamId)
-        .eq('no_unik', no_unik)
-        .neq('id', userId)
-        .maybeSingle();
-
-      if (conflictUser) {
-        results.push({
-          rowIndex,
-          status: 'failed',
-          reason: `no_unik '${no_unik}' sudah digunakan di tim '${team_name}'`,
-          teamCreated,
-        });
-        continue;
-      }
-
-      // Assign user to team
+      // Update user with team and role
       const { error: assignError } = await supabaseAdmin
         .from('users')
-        .update({ team_id: teamId, no_unik, role })
+        .update({ team_id: teamId, role })
         .eq('id', userId);
 
       if (assignError) {
-        if (assignError.code === '23505') {
-          results.push({
-            rowIndex,
-            status: 'failed',
-            reason: `no_unik '${no_unik}' sudah digunakan di tim '${team_name}'`,
-            teamCreated,
-          });
-        } else {
-          results.push({
-            rowIndex,
-            status: 'failed',
-            reason: `Gagal assign ke tim: ${assignError.message}`,
-            teamCreated,
-          });
-        }
+        results.push({
+          rowIndex,
+          status: 'failed',
+          reason: `Assign Error: ${assignError.message}`,
+        });
         continue;
       }
 
@@ -211,7 +165,6 @@ export async function POST(request: NextRequest) {
         teamCreated,
       });
     } else {
-      // No team assignment
       results.push({
         rowIndex,
         status: userCreated ? 'created' : 'skipped',

@@ -25,7 +25,7 @@ const validHoursArb = fc.integer({ min: 0, max: 100 });
 const validMinutesArb = fc.integer({ min: 0, max: 59 });
 
 /** All four timer states */
-const timerStateArb = fc.constantFrom<TimerState>('idle', 'running', 'paused', 'ended');
+const timerStateArb = fc.constantFrom<TimerState>('idle', 'running', 'paused', 'finished');
 
 /** All four timer actions */
 const timerActionArb = fc.constantFrom<TimerAction>('start', 'pause', 'resume', 'reset');
@@ -107,20 +107,26 @@ describe('Property 2: Invalid duration inputs are always rejected', () => {
 
 // Feature: event-timer-control, Property 3: Computed remaining is correctly clamped
 describe('Property 3: Computed remaining is correctly clamped', () => {
-  it('computeRemaining always returns max(0, remaining - elapsed), never negative', () => {
+  it('computeRemaining always returns max(0, totalDuration - totalElapsed), never negative', () => {
     // Validates: Requirements 5.1, 5.4
     const now = new Date();
     fc.assert(
       fc.property(
-        fc.integer({ min: 0, max: 86400 }),
-        pastIsoArb(now),
-        (remainingSeconds, startedAt) => {
-          const result = computeRemaining(remainingSeconds, startedAt, now);
+        fc.integer({ min: 1, max: 120 }), // durationMinutes
+        fc.integer({ min: 0, max: 86400 }), // elapsedSeconds
+        pastIsoArb(now), // startedAt
+        timerStateArb,
+        (durationMinutes, elapsedSeconds, startedAt, status) => {
+          const result = computeRemaining(durationMinutes, elapsedSeconds, startedAt, now, status);
           expect(result).toBeGreaterThanOrEqual(0);
 
-          const startedAtMs = new Date(startedAt).getTime();
-          const elapsedSeconds = Math.floor((now.getTime() - startedAtMs) / 1000);
-          const expected = Math.max(0, remainingSeconds - elapsedSeconds);
+          let totalElapsed = elapsedSeconds;
+          if (status === 'running' && startedAt) {
+            const startedAtMs = new Date(startedAt).getTime();
+            totalElapsed += Math.floor((now.getTime() - startedAtMs) / 1000);
+          }
+          const totalDurationSeconds = durationMinutes * 60;
+          const expected = Math.max(0, totalDurationSeconds - totalElapsed);
           expect(result).toBe(expected);
         },
       ),
@@ -154,23 +160,25 @@ describe('Property 4: Looming threshold is consistent', () => {
 
 // Feature: event-timer-control, Property 5: Pause payload preserves elapsed time correctly
 describe('Property 5: Pause payload preserves elapsed time correctly', () => {
-  it('buildPausePayload sets timer_remaining_seconds = max(0, remaining - floor((now - startedAt) / 1000))', () => {
+  it('buildPausePayload returns correct status and accumulated elapsed seconds', () => {
     // Validates: Requirements 3.4
     const now = new Date();
     fc.assert(
       fc.property(
-        fc.integer({ min: 0, max: 86400 }),
-        pastIsoArb(now),
-        (remainingSeconds, startedAt) => {
-          const payload = buildPausePayload(remainingSeconds, startedAt, now);
+        fc.integer({ min: 1, max: 120 }), // durationMinutes
+        fc.integer({ min: 0, max: 7200 }), // elapsedSeconds
+        pastIsoArb(now), // startedAt
+        (durationMinutes, elapsedSeconds, startedAt) => {
+          const payload = buildPausePayload(durationMinutes, elapsedSeconds, startedAt, now);
 
           const startedAtMs = new Date(startedAt).getTime();
-          const elapsedSeconds = Math.floor((now.getTime() - startedAtMs) / 1000);
-          const expected = Math.max(0, remainingSeconds - elapsedSeconds);
+          const sessionElapsed = Math.floor((now.getTime() - startedAtMs) / 1000);
+          const expectedElapsed = elapsedSeconds + sessionElapsed;
 
-          expect(payload.timer_state).toBe('paused');
-          expect(payload.timer_remaining_seconds).toBe(expected);
-          expect(payload.timer_started_at).toBeNull();
+          expect(payload.event_status).toBe('paused');
+          expect(payload.event_elapsed_seconds).toBe(expectedElapsed);
+          expect(payload.event_started_at).toBeNull();
+          expect(payload.event_duration_minutes).toBe(durationMinutes);
         },
       ),
       { numRuns: 100 },
@@ -180,23 +188,22 @@ describe('Property 5: Pause payload preserves elapsed time correctly', () => {
 
 // ─── Property 6: Resume payload preserves remaining seconds ───────────────────
 
-// Feature: event-timer-control, Property 6: Resume payload preserves remaining seconds
-describe('Property 6: Resume payload preserves remaining seconds', () => {
-  it('buildResumePayload sets timer_state="running" and timer_started_at≈now', () => {
+// Feature: event-timer-control, Property 6: Resume payload preserves duration and sets started_at
+describe('Property 6: Resume payload preserves duration and sets started_at', () => {
+  it('buildResumePayload sets event_status="running" and event_started_at=now', () => {
     // Validates: Requirements 3.6
     fc.assert(
       fc.property(
-        fc.integer({ min: 0, max: 86400 }),
-        (remainingSeconds) => {
-          // remainingSeconds is the pre-resume value — buildResumePayload does not touch it
-          void remainingSeconds;
-
+        fc.integer({ min: 1, max: 120 }),
+        fc.integer({ min: 0, max: 7200 }),
+        (durationMinutes, elapsedSeconds) => {
           const now = new Date();
-          const payload = buildResumePayload(now);
+          const payload = buildResumePayload(durationMinutes, elapsedSeconds, now);
 
-          expect(payload.timer_state).toBe('running');
-          // timer_started_at should be the ISO string of `now`
-          expect(payload.timer_started_at).toBe(now.toISOString());
+          expect(payload.event_status).toBe('running');
+          expect(payload.event_started_at).toBe(now.toISOString());
+          expect(payload.event_duration_minutes).toBe(durationMinutes);
+          expect(payload.event_elapsed_seconds).toBe(elapsedSeconds);
         },
       ),
       { numRuns: 100 },
@@ -215,7 +222,7 @@ describe('Property 7: State machine permits only valid transitions', () => {
     'running:reset',
     'paused:resume',
     'paused:reset',
-    'ended:reset',
+    'finished:reset',
   ]);
 
   it('isTransitionAllowed returns true only for the 6 valid transitions', () => {
@@ -242,7 +249,7 @@ describe('Property 7: State machine permits only valid transitions', () => {
     expect(isTransitionAllowed('running', 'reset')).toBe(true);
     expect(isTransitionAllowed('paused', 'resume')).toBe(true);
     expect(isTransitionAllowed('paused', 'reset')).toBe(true);
-    expect(isTransitionAllowed('ended', 'reset')).toBe(true);
+    expect(isTransitionAllowed('finished', 'reset')).toBe(true);
   });
 
   it('all invalid transitions return false', () => {
@@ -254,25 +261,27 @@ describe('Property 7: State machine permits only valid transitions', () => {
     expect(isTransitionAllowed('running', 'resume')).toBe(false);
     expect(isTransitionAllowed('paused', 'start')).toBe(false);
     expect(isTransitionAllowed('paused', 'pause')).toBe(false);
-    expect(isTransitionAllowed('ended', 'start')).toBe(false);
-    expect(isTransitionAllowed('ended', 'pause')).toBe(false);
-    expect(isTransitionAllowed('ended', 'resume')).toBe(false);
+    expect(isTransitionAllowed('paused', 'pause')).toBe(false);
+    expect(isTransitionAllowed('finished', 'start')).toBe(false);
+    expect(isTransitionAllowed('finished', 'pause')).toBe(false);
+    expect(isTransitionAllowed('finished', 'resume')).toBe(false);
   });
 });
 
 // ─── Additional: buildStartPayload sanity check ───────────────────────────────
 
 describe('buildStartPayload', () => {
-  it('sets timer_state=running, timer_started_at=now.toISOString(), timer_remaining_seconds=durationSeconds', () => {
+  it('sets event_status=running, event_started_at=now.toISOString(), event_duration_minutes=durationMinutes', () => {
     fc.assert(
       fc.property(
-        fc.integer({ min: 1, max: 86400 }),
-        (durationSeconds) => {
+        fc.integer({ min: 1, max: 120 }),
+        (durationMinutes) => {
           const now = new Date();
-          const payload = buildStartPayload(durationSeconds, now);
-          expect(payload.timer_state).toBe('running');
-          expect(payload.timer_started_at).toBe(now.toISOString());
-          expect(payload.timer_remaining_seconds).toBe(durationSeconds);
+          const payload = buildStartPayload(durationMinutes, now);
+          expect(payload.event_status).toBe('running');
+          expect(payload.event_started_at).toBe(now.toISOString());
+          expect(payload.event_duration_minutes).toBe(durationMinutes);
+          expect(payload.event_elapsed_seconds).toBe(0);
         },
       ),
       { numRuns: 100 },

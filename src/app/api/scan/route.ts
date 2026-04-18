@@ -61,7 +61,7 @@ export async function POST(request: NextRequest): Promise<Response> {
     return Response.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  // Fetch the user's profile (role check — must be kaptain or cocaptain)
+  // Fetch the user's profile (role check — must be captain or vice_captain)
   const { data: userProfile, error: profileError } = await supabase
     .from('users')
     .select('id, role, team_id')
@@ -72,93 +72,59 @@ export async function POST(request: NextRequest): Promise<Response> {
     return Response.json({ error: 'User profile not found' }, { status: 401 });
   }
 
-  if (!['kaptain', 'cocaptain'].includes(userProfile.role)) {
+  if (!['captain', 'vice_captain'].includes(userProfile.role)) {
     return Response.json({ error: 'Insufficient permissions' }, { status: 403 });
   }
 
-  // ── 3. Look up location by barcode_data ───────────────────────────────────
-  const { data: location, error: locationError } = await supabase
-    .from('locations')
-    .select('id, event_id, name, type, points, is_active')
+  // ── 3. Look up activity by barcode_data ───────────────────────────────────
+  const { data: activity, error: activityError } = await supabase
+    .from('activities')
+    .select('id, name, type, max_points')
     .eq('barcode_data', barcode_data.trim())
     .single();
 
-  if (locationError || !location) {
-    const result: ScanResult = {
-      success: false,
-      message: 'Lokasi tidak ditemukan',
-    };
-    return Response.json(result, { status: 404 });
+  if (activityError || !activity) {
+    return Response.json({ success: false, message: 'Lokasi tidak ditemukan' }, { status: 404 });
   }
 
-  // Requirement 6.5: inactive location → 404
-  if (!location.is_active) {
-    const result: ScanResult = {
-      success: false,
-      message: 'Lokasi tidak aktif',
-    };
-    return Response.json(result, { status: 404 });
+  // ── 4. Check event status ──────────────────────────────
+  const { data: statusData } = await supabase.from('settings').select('value').eq('key', 'event_status').single();
+  if (statusData?.value !== 'running') {
+    return Response.json({ success: false, message: 'Event sedang tidak berlangsung.' }, { status: 403 });
   }
 
-  // ── 4. Check event is active and not expired ──────────────────────────────
-  const { data: event, error: eventError } = await supabase
-    .from('events')
-    .select('is_active, end_time')
-    .eq('id', location.event_id)
-    .single();
-
-  if (eventError || !event) {
-    return Response.json({ error: 'Event tidak ditemukan' }, { status: 404 });
-  }
-
-  // Requirement 9.3: reject if event is inactive or has ended
-  const now = new Date();
-  const eventEnded = event.end_time ? new Date(event.end_time) <= now : false;
-
-  if (!event.is_active || eventEnded) {
-    const result: ScanResult = {
-      success: false,
-      message: 'Event tidak aktif atau sudah berakhir',
-    };
-    return Response.json(result, { status: 403 });
-  }
-
-  // ── 5. Insert scan record ─────────────────────────────────────────────────
-  // Requirement 6.4: UNIQUE(team_id, location_id) → 409 on duplicate
-  const { data: scanRecord, error: insertError } = await supabase
-    .from('scans')
+  // ── 5. Insert activity registration ─────────────────────────────────────────────────
+  const { error: insertError } = await supabase
+    .from('activity_registrations')
     .insert({
       team_id: team_id.trim(),
-      location_id: location.id,
-      scanned_by: userProfile.id,
-      points_awarded: location.points,
-    })
-    .select('id')
-    .single();
+      activity_id: activity.id,
+    });
 
   if (insertError) {
-    // PostgreSQL unique violation error code
     if (insertError.code === '23505') {
-      const result: ScanResult = {
-        success: false,
-        message: 'Tim sudah pernah mengunjungi lokasi ini',
-      };
-      return Response.json(result, { status: 409 });
+      return Response.json({ success: false, message: 'Tim sudah pernah mengunjungi lokasi ini' }, { status: 409 });
     }
-
-    console.error('Scan insert error:', insertError);
     return Response.json({ error: 'Gagal menyimpan scan' }, { status: 500 });
+  }
+
+  // Also log to score_logs if it's a fixed-point activity (legacy behavior)
+  if (activity.max_points > 0) {
+    await supabase.from('score_logs').insert({
+      team_id: team_id.trim(),
+      activity_id: activity.id,
+      points_awarded: activity.max_points,
+      lo_id: userProfile.id, // though Captain is scanning, we use their profile ID
+    });
   }
 
   // ── 6. Return ScanResult ──────────────────────────────────────────────────
   const result: ScanResult = {
     success: true,
-    message: `Berhasil! +${location.points} poin`,
-    location_name: location.name,
-    points_awarded: location.points,
+    message: `Berhasil! Found ${activity.name}`,
+    location_name: activity.name,
+    points_awarded: activity.max_points
   };
-
-  void scanRecord; // used only to confirm insert succeeded
 
   return Response.json(result, { status: 200 });
 }

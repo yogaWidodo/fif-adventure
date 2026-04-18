@@ -18,7 +18,7 @@ import {
 
 // ─── Generators ───────────────────────────────────────────────────────────────
 
-const VALID_ROLES: Role[] = ['admin', 'kaptain', 'cocaptain', 'member', 'lo'];
+const VALID_ROLES: Role[] = ['admin', 'captain', 'vice_captain', 'member', 'lo'];
 
 const validRoleArb = fc.constantFrom(...VALID_ROLES);
 
@@ -42,18 +42,17 @@ const csvFieldArb = fc
       s.trim() !== '',
   );
 
-/** Arbitrary for a valid CSV member row */
 const memberRowArb = fc.record({
-  nama: csvFieldArb,
+  name: csvFieldArb,
   npk: csvFieldArb,
-  no_unik: csvFieldArb,
+  birth_date: csvFieldArb,
   role: validRoleArb,
 });
 
 /** Build a valid CSV string from an array of member rows */
-function buildCSV(rows: Array<{ nama: string; npk: string; no_unik: string; role: Role }>): string {
-  const header = 'nama,npk,no_unik,role';
-  const dataRows = rows.map((r) => `${r.nama},${r.npk},${r.no_unik},${r.role}`);
+function buildCSV(rows: Array<{ name: string; npk: string; birth_date: string; role: Role }>): string {
+  const header = 'name,npk,birth_date,role';
+  const dataRows = rows.map((r) => `${r.name},${r.npk},${r.birth_date},${r.role}`);
   return [header, ...dataRows].join('\n');
 }
 
@@ -81,7 +80,7 @@ describe('Property 1: Role-Based Redirect Correctness', () => {
         const redirect = getRoleRedirect(role);
         if (role === 'admin') {
           expect(redirect).toBe('/admin');
-        } else if (role === 'kaptain' || role === 'cocaptain') {
+        } else if (role === 'captain' || role === 'vice_captain') {
           expect(redirect).toBe('/captain');
         } else if (role === 'lo') {
           expect(redirect).toBe('/lo');
@@ -116,13 +115,13 @@ describe('Property 2: Invalid Credentials Are Always Rejected', () => {
     fc.assert(
       fc.property(
         fc.record({
-          nama: csvFieldArb,
+          name: csvFieldArb,
           npk: csvFieldArb,
-          no_unik: csvFieldArb,
+          birth_date: csvFieldArb,
           invalidRole: invalidRoleArb.filter((s) => s.length > 0),
         }),
-        ({ nama, npk, no_unik, invalidRole }) => {
-          const csv = `nama,npk,no_unik,role\n${nama},${npk},${no_unik},${invalidRole}`;
+        ({ name, npk, birth_date, invalidRole }) => {
+          const csv = `name,npk,birth_date,role\n${name},${npk},${birth_date},${invalidRole}`;
           const result = parseTeamCSV(csv);
           // Row with invalid role must not produce a record
           expect(result.records.length).toBe(0);
@@ -199,9 +198,9 @@ describe('Property 5: CSV Import Round-Trip Preserves All Member Data', () => {
         const result = parseTeamCSV(csv);
         expect(result.records).toHaveLength(rows.length);
         for (let i = 0; i < rows.length; i++) {
-          expect(result.records[i].nama).toBe(rows[i].nama);
+          expect(result.records[i].name).toBe(rows[i].name);
           expect(result.records[i].npk).toBe(rows[i].npk);
-          expect(result.records[i].no_unik).toBe(rows[i].no_unik);
+          expect(result.records[i].birth_date).toBe(rows[i].birth_date);
           expect(result.records[i].role).toBe(rows[i].role);
         }
       }),
@@ -214,7 +213,7 @@ describe('Property 5: CSV Import Round-Trip Preserves All Member Data', () => {
 
 // Feature: fif-adventure, Property 6: Invalid CSV Is Always Rejected With Descriptive Error
 describe('Property 6: Invalid CSV Is Always Rejected With Descriptive Error', () => {
-  const ALL_REQUIRED_COLUMNS = ['nama', 'npk', 'no_unik', 'role'] as const;
+  const ALL_REQUIRED_COLUMNS = ['name', 'npk', 'birth_date', 'role'] as const;
 
   it('CSV missing any required column always produces an error naming the missing column', () => {
     // Validates: Requirements 2.3

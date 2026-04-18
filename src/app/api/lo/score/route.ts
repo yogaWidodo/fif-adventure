@@ -1,223 +1,166 @@
-// Requirements: 7.3, 7.4, 7.5, 7.6, 7.8, 7.9, 7.11, 9.1, 9.2, 9.3, 9.4, 9.5
-
 import { createClient } from '@supabase/supabase-js';
 import type { NextRequest } from 'next/server';
-import { getAccessToken, isEventPaused } from '@/lib/serverAuth';
+import { getAuthenticatedClient } from '@/lib/serverAuth';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
-const supabaseAnonKey =
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ??
-  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY ??
-  '';
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '';
+
+async function assertEventRunning(supabase: any) {
+  const { data } = await supabase
+    .from('settings')
+    .select('value')
+    .eq('key', 'event_status')
+    .single();
+  if (data?.value !== 'running') {
+    throw new Error('EVENT_NOT_RUNNING');
+  }
+}
 
 export async function POST(request: NextRequest): Promise<Response> {
-  // ── 1. Parse request body ──────────────────────────────────────────────────
-  let body: { barcode_data?: unknown; location_id?: unknown };
+  const auth = await getAuthenticatedClient(request);
+  if (!auth) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const { supabase, userId } = auth;
+
+  try {
+    await assertEventRunning(supabase);
+  } catch {
+    return Response.json({ error: 'Event sedang tidak berlangsung.' }, { status: 403 });
+  }
+
+  let body: { team_id?: unknown; points?: unknown; note?: unknown };
   try {
     body = await request.json();
   } catch {
     return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
   }
 
-  const { barcode_data, location_id } = body;
+  const { team_id, points, note } = body;
+  const pointsAwarded = Number(points);
 
-  if (typeof barcode_data !== 'string' || !barcode_data.trim()) {
-    return Response.json({ error: 'barcode_data is required' }, { status: 400 });
-  }
-  if (typeof location_id !== 'string' || !location_id.trim()) {
-    return Response.json({ error: 'location_id is required' }, { status: 400 });
+  if (typeof team_id !== 'string' || isNaN(pointsAwarded)) {
+    return Response.json({ error: 'team_id and valid points are required' }, { status: 400 });
   }
 
-  const barcodeData = barcode_data.trim();
-  const locationId = location_id.trim();
-
-  // ── 2. Validate session (cookie or Authorization header) ───────────────────
-  const accessToken = await getAccessToken(request);
-
-  if (!accessToken) {
-    return Response.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
-  const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-    global: {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-    },
-  });
-
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser(accessToken);
-
-  if (userError || !user) {
-    return Response.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
-  // ── 3. Fetch user profile and validate role ────────────────────────────────
-  // Requirements 9.1, 9.2: reject non-LO users with HTTP 403
-  const { data: userProfile, error: profileError } = await supabase
+  // Get LO Profile & Assignment
+  const { data: userProfile } = await supabase
     .from('users')
-    .select('id, role, assigned_location_id')
-    .eq('auth_id', user.id)
+    .select('id, role, npk')
+    .eq('auth_id', userId)
     .single();
 
-  if (profileError || !userProfile) {
-    return Response.json({ error: 'User profile not found' }, { status: 401 });
+  if (!userProfile || userProfile.role !== 'lo') {
+    return Response.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  if (userProfile.role !== 'lo') {
-    return Response.json({ error: 'Insufficient permissions' }, { status: 403 });
-  }
-
-  // ── 4. Validate assigned_location_id matches requested location_id ─────────
-  // Requirement 9.5: LO without assignment → HTTP 403
-  if (!userProfile.assigned_location_id) {
-    return Response.json(
-      { error: 'LO belum di-assign ke lokasi manapun' },
-      { status: 403 }
-    );
-  }
-
-  // Requirement 9.3: LO can only score at their assigned location
-  if (userProfile.assigned_location_id !== locationId) {
-    return Response.json(
-      { error: 'Anda tidak di-assign ke lokasi ini' },
-      { status: 403 }
-    );
-  }
-
-  // ── 5. Look up team by barcode_data ───────────────────────────────────────
-  const { data: team, error: teamError } = await supabase
-    .from('teams')
-    .select('id, name, event_id')
-    .eq('barcode_data', barcodeData)
+  const { data: assignment } = await supabase
+    .from('lo_assignments')
+    .select('activity_id, activities(max_points)')
+    .eq('lo_id', userProfile.id)
     .single();
 
-  if (teamError || !team) {
-    return Response.json({ error: 'Tim tidak ditemukan' }, { status: 404 });
+  const activity = assignment?.activities as any;
+  if (!assignment || !activity) {
+    return Response.json({ error: 'LO assignment not found' }, { status: 403 });
   }
 
-  // ── 6. Validate event is active and not expired ────────────────────────────
-  // Requirement 7.9: reject if event is inactive or has ended
-  const { data: event, error: eventError } = await supabase
-    .from('events')
-    .select('is_active, end_time, timer_state')
-    .eq('id', team.event_id)
-    .single();
-
-  if (eventError || !event) {
-    return Response.json({ error: 'Event tidak ditemukan' }, { status: 404 });
+  if (pointsAwarded < 0 || pointsAwarded > activity.max_points) {
+    return Response.json({ error: `Poin maksimal: ${activity.max_points}` }, { status: 400 });
   }
 
-  // Use timer_state as primary source of truth; end_time as fallback only if timer not used
-  const timerEnded = event.timer_state === 'ended';
-  const now = new Date();
-  const legacyEnded = !event.timer_state || event.timer_state === 'idle'
-    ? (event.end_time ? new Date(event.end_time) <= now : false)
-    : false;
-
-  if (!event.is_active || timerEnded || legacyEnded) {
-    return Response.json({ error: 'Event sudah berakhir' }, { status: 403 });
-  }
-
-  // ── 6b. Block if event is paused ──────────────────────────────────────────
-  const paused = await isEventPaused(supabase, team.event_id);
-  if (paused) {
-    return Response.json({ error: 'Event sedang dijeda. Tunggu hingga event dilanjutkan.' }, { status: 403 });
-  }
-
-  // ── 7. Fetch location to get points value ─────────────────────────────────
-  // Requirement 7.5: score must equal locations.points (not caller-supplied)
-  const { data: location, error: locationError } = await supabase
-    .from('locations')
-    .select('points')
-    .eq('id', locationId)
-    .single();
-
-  if (locationError || !location) {
-    return Response.json({ error: 'Lokasi tidak ditemukan' }, { status: 404 });
-  }
-
-  // ── 8. Verify team has checked in ─────────────────────────────────────────
-  // Requirement 7.4: HTTP 422 if team has not checked in yet
-  const { data: scanRecord, error: scanLookupError } = await supabase
-    .from('scans')
+  // Verify Check-in
+  const { data: checkin } = await supabase
+    .from('activity_registrations')
     .select('id')
-    .eq('team_id', team.id)
-    .eq('location_id', locationId)
-    .maybeSingle();
+    .eq('team_id', team_id)
+    .eq('activity_id', assignment.activity_id)
+    .single();
 
-  if (scanLookupError) {
-    console.error('[POST /api/lo/score] scan lookup error:', scanLookupError);
-    return Response.json({ error: 'Gagal memverifikasi check-in' }, { status: 500 });
+  if (!checkin) {
+    return Response.json({ error: 'Tim belum check-in di aktivitas ini' }, { status: 422 });
   }
 
-  if (!scanRecord) {
-    return Response.json(
-      { error: 'Tim belum check-in di wahana ini' },
-      { status: 422 }
-    );
-  }
-
-  // ── 9. Check for duplicate score submission ────────────────────────────────
-  // Requirement 7.6, 7.11: HTTP 409 if score_logs record already exists
-  const { data: existingScore, error: existingScoreError } = await supabase
-    .from('score_logs')
-    .select('id')
-    .eq('team_id', team.id)
-    .eq('location_id', locationId)
-    .maybeSingle();
-
-  if (existingScoreError) {
-    console.error('[POST /api/lo/score] score_logs lookup error:', existingScoreError);
-    return Response.json({ error: 'Gagal memeriksa data poin' }, { status: 500 });
-  }
-
-  if (existingScore) {
-    return Response.json(
-      { error: 'Tim sudah mendapat poin di wahana ini' },
-      { status: 409 }
-    );
-  }
-
-  // ── 10. Insert into score_logs ────────────────────────────────────────────
-  // Requirement 7.5: score = locations.points; lo_user_id = authenticated LO
-  const { data: scoreLog, error: insertError } = await supabase
+  // Insert Score
+  const { error: insertError } = await supabase
     .from('score_logs')
     .insert({
-      team_id: team.id,
-      location_id: locationId,
-      score: location.points,
-      lo_user_id: userProfile.id,
-    })
-    .select('created_at')
-    .single();
+      team_id,
+      activity_id: assignment.activity_id,
+      lo_id: userProfile.id,
+      points_awarded: pointsAwarded,
+      note: note as string
+    });
 
   if (insertError) {
-    // Handle unique constraint violation as a race-condition fallback
-    if (insertError.code === '23505') {
-      return Response.json(
-        { error: 'Tim sudah mendapat poin di wahana ini' },
-        { status: 409 }
-      );
-    }
-
-    console.error('[POST /api/lo/score] insert error:', insertError);
+    if (insertError.code === '23505') return Response.json({ error: 'Tim sudah dinilai' }, { status: 409 });
     return Response.json({ error: 'Gagal menyimpan poin' }, { status: 500 });
   }
 
-  // ── 11. Return success ────────────────────────────────────────────────────
-  return Response.json(
-    {
-      success: true,
-      team_id: team.id,
-      team_name: team.name,
-      location_id: locationId,
-      score: location.points,
-      created_at: scoreLog.created_at,
-    },
-    { status: 200 }
-  );
+  // Gacha Logic (Requirement 4.5.5.c)
+  const { data: gachaProb } = await supabase.from('settings').select('value').eq('key', 'gacha_probability').single();
+  const prob = parseFloat(gachaProb?.value || '0');
+  let won = false;
+
+  if (Math.random() < prob) {
+    const { data: hintId } = await supabase.rpc('claim_gacha_th', {
+      p_team_id: team_id,
+      p_activity_id: assignment.activity_id
+    });
+    if (hintId) won = true;
+  }
+
+  return Response.json({ success: true, gacha_result: { won } });
+}
+
+export async function PATCH(request: NextRequest): Promise<Response> {
+  const auth = await getAuthenticatedClient(request);
+  if (!auth) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const { supabase, userId } = auth;
+
+  let body: { team_id?: unknown; points?: unknown; note?: unknown };
+  try {
+    body = await request.json();
+  } catch {
+    return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
+  }
+
+  const { team_id, points, note } = body;
+  const pointsAwarded = Number(points);
+
+  const { data: userProfile } = await supabase
+    .from('users')
+    .select('id, role, npk')
+    .eq('auth_id', userId)
+    .single();
+
+  if (!userProfile || userProfile.role !== 'lo') return Response.json({ error: 'Forbidden' }, { status: 403 });
+
+  const { data: assignment } = await supabase
+    .from('lo_assignments')
+    .select('activity_id, activities(max_points)')
+    .eq('lo_id', userProfile.id)
+    .single();
+
+  const activity = assignment?.activities as any;
+  if (!assignment || !activity) return Response.json({ error: 'Forbidden' }, { status: 403 });
+
+  if (pointsAwarded < 0 || pointsAwarded > activity.max_points) {
+    return Response.json({ error: `Poin maksimal: ${activity.max_points}` }, { status: 400 });
+  }
+
+  const { error: updateError } = await supabase
+    .from('score_logs')
+    .update({
+      points_awarded: pointsAwarded,
+      note: note as string,
+      edited_by: userProfile.id,
+      updated_at: new Date().toISOString()
+    })
+    .eq('team_id', team_id)
+    .eq('activity_id', assignment.activity_id);
+
+  if (updateError) return Response.json({ error: 'Gagal mengupdate poin' }, { status: 500 });
+
+  return Response.json({ success: true });
 }

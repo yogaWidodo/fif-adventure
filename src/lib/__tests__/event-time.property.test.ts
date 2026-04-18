@@ -1,36 +1,30 @@
 /**
- * Property-based tests for event time validation and expired-event enforcement.
- * Feature: fif-adventure
+ * Property-based tests for expedition timing validation and status enforcement.
+ * Feature: fif-adventure, Property 21: Expedition Status Guards Operational Lifecycle
  * Uses fast-check with minimum 100 iterations per property.
  */
 
 import { describe, it, expect } from 'vitest';
 import * as fc from 'fast-check';
-import { isScoreValid, timeRemaining } from '../auth';
+import { isScoreValid } from '../auth';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-interface Event {
-  id: string;
-  is_active: boolean;
-  end_time: string | null; // ISO 8601 string, or null if no end time set
-}
+export type ExpeditionStatus = 'idle' | 'running' | 'paused' | 'finished';
 
-interface ScanRecord {
+interface RegistrationRecord {
   id: string;
   team_id: string;
-  location_id: string;
-  scanned_by: string;
-  scanned_at: string;
-  points_awarded: number;
+  activity_id: string;
+  created_at: string;
 }
 
 interface ScoreLogRecord {
   id: string;
   team_id: string;
-  location_id: string;
-  score: number;
-  lo_user_id: string;
+  activity_id: string;
+  points_awarded: number;
+  lo_id: string;
   created_at: string;
 }
 
@@ -43,97 +37,80 @@ interface OperationResult {
 // ─── Pure models ──────────────────────────────────────────────────────────────
 
 /**
- * Pure model of the event-active guard used in /api/scan and /api/score.
- *
- * Mirrors the logic in both route handlers:
- *   const eventEnded = event.end_time ? new Date(event.end_time) <= now : false;
- *   if (!event.is_active || eventEnded) → 403
+ * Pure model of the status guard used in /api/lo/checkin and /api/lo/score.
  */
-function isEventAcceptingOperations(event: Event, now: Date): boolean {
-  if (!event.is_active) return false;
-  if (event.end_time !== null) {
-    const endTime = new Date(event.end_time);
-    if (endTime <= now) return false;
-  }
-  return true;
+function isExpeditionAcceptingOperations(status: ExpeditionStatus): boolean {
+  return status === 'running';
 }
 
 /**
- * Pure model of the scan endpoint's event guard + scan insertion.
- *
- * Returns the operation result and the (possibly unchanged) scans array.
+ * Pure model of the check-in endpoint's status guard + registration insertion.
  */
-function modelScanOperation(
-  event: Event,
+function modelRegistrationOperation(
+  status: ExpeditionStatus,
   now: Date,
   teamId: string,
-  locationId: string,
-  scannedBy: string,
-  points: number,
-  existingScans: ScanRecord[],
-): { result: OperationResult; newScans: ScanRecord[] } {
-  if (!isEventAcceptingOperations(event, now)) {
+  activityId: string,
+  existingRegs: RegistrationRecord[],
+): { result: OperationResult; newRegs: RegistrationRecord[] } {
+  if (!isExpeditionAcceptingOperations(status)) {
     return {
       result: {
         success: false,
-        error: 'Event tidak aktif atau sudah berakhir',
+        error: 'Event sedang tidak berlangsung.',
         status: 403,
       },
-      newScans: existingScans,
+      newRegs: existingRegs,
     };
   }
 
-  // Check for duplicate scan
-  const isDuplicate = existingScans.some(
-    (s) => s.team_id === teamId && s.location_id === locationId,
+  // Check for duplicate registration
+  const isDuplicate = existingRegs.some(
+    (r) => r.team_id === teamId && r.activity_id === activityId,
   );
   if (isDuplicate) {
     return {
       result: {
         success: false,
-        error: 'Tim sudah pernah mengunjungi lokasi ini',
+        error: 'Tim sudah pernah mengunjungi aktivitas ini',
         status: 409,
       },
-      newScans: existingScans,
+      newRegs: existingRegs,
     };
   }
 
-  const newScan: ScanRecord = {
-    id: `scan-${Date.now()}-${Math.random()}`,
+  const newReg: RegistrationRecord = {
+    id: `reg-${Date.now()}-${Math.random()}`,
     team_id: teamId,
-    location_id: locationId,
-    scanned_by: scannedBy,
-    scanned_at: now.toISOString(),
-    points_awarded: points,
+    activity_id: activityId,
+    created_at: now.toISOString(),
   };
 
   return {
     result: { success: true, status: 200 },
-    newScans: [...existingScans, newScan],
+    newRegs: [...existingRegs, newReg],
   };
 }
 
 /**
- * Pure model of the score endpoint's event guard + score_log insertion.
- *
- * Returns the operation result and the (possibly unchanged) score_logs array.
+ * Pure model of the score endpoint's status guard + score_log insertion.
  */
 function modelScoreOperation(
-  event: Event,
+  status: ExpeditionStatus,
   now: Date,
   teamId: string,
-  locationId: string,
-  score: number,
+  activityId: string,
+  points: number,
   maxPoints: number,
-  loUserId: string,
-  existingScans: ScanRecord[],
+  loId: string,
+  existingRegs: RegistrationRecord[],
   existingScoreLogs: ScoreLogRecord[],
 ): { result: OperationResult; newScoreLogs: ScoreLogRecord[] } {
-  if (!isEventAcceptingOperations(event, now)) {
+  if (!isExpeditionAcceptingOperations(status)) {
     return {
       result: {
         success: false,
-        error: 'Event tidak aktif atau sudah berakhir',
+        error: 'Event sedang tidak berlangsung.',
         status: 403,
       },
       newScoreLogs: existingScoreLogs,
@@ -141,11 +118,11 @@ function modelScoreOperation(
   }
 
   // Validate score range
-  if (!isScoreValid(score, maxPoints)) {
+  if (!isScoreValid(points, maxPoints)) {
     return {
       result: {
         success: false,
-        error: `Score must be between 0 and ${maxPoints}`,
+        error: `Points must be between 0 and ${maxPoints}`,
         status: 422,
       },
       newScoreLogs: existingScoreLogs,
@@ -153,14 +130,14 @@ function modelScoreOperation(
   }
 
   // Check team has checked in
-  const hasCheckedIn = existingScans.some(
-    (s) => s.team_id === teamId && s.location_id === locationId,
+  const hasCheckedIn = existingRegs.some(
+    (r) => r.team_id === teamId && r.activity_id === activityId,
   );
   if (!hasCheckedIn) {
     return {
       result: {
         success: false,
-        error: 'Team has not checked in at this location',
+        error: 'Team has not checked in at this activity',
         status: 422,
       },
       newScoreLogs: existingScoreLogs,
@@ -170,9 +147,9 @@ function modelScoreOperation(
   const newLog: ScoreLogRecord = {
     id: `log-${Date.now()}-${Math.random()}`,
     team_id: teamId,
-    location_id: locationId,
-    score,
-    lo_user_id: loUserId,
+    activity_id: activityId,
+    points_awarded: points,
+    lo_id: loId,
     created_at: now.toISOString(),
   };
 
@@ -185,226 +162,86 @@ function modelScoreOperation(
 // ─── Generators ───────────────────────────────────────────────────────────────
 
 const uuidArb = fc.uuid();
-
 const baseMs = Date.now();
 
-/** Arbitrary for a past timestamp (event has ended) */
-const pastEndTimeArb = fc
-  .integer({ min: 1, max: 100_000_000 })
-  .map((offset) => new Date(baseMs - offset).toISOString());
+/** Arbitrary for a non-running status */
+const nonRunningStatusArb = fc.constantFrom('idle', 'paused', 'finished' as ExpeditionStatus);
 
-/** Arbitrary for a future timestamp (event is still running) */
-const futureEndTimeArb = fc
-  .integer({ min: 1_000, max: 100_000_000 })
-  .map((offset) => new Date(baseMs + offset).toISOString());
+// ─── Property 21: Expedition Status Guards Operational Lifecycle ──────────────
 
-/** Arbitrary for an expired event (end_time in the past, is_active may be true or false) */
-const expiredEventArb = fc.record({
-  id: uuidArb,
-  is_active: fc.boolean(),
-  end_time: pastEndTimeArb,
-});
-
-/** Arbitrary for an explicitly inactive event (is_active = false, end_time may be future) */
-const inactiveEventArb = fc.record({
-  id: uuidArb,
-  is_active: fc.constant(false),
-  end_time: fc.oneof(futureEndTimeArb, fc.constant(null)),
-});
-
-/** Arbitrary for an active, non-expired event */
-const activeEventArb = fc.record({
-  id: uuidArb,
-  is_active: fc.constant(true),
-  end_time: futureEndTimeArb,
-});
-
-/** Arbitrary for a location with max points */
-const locationArb = fc.record({
-  id: uuidArb,
-  maxPoints: fc.integer({ min: 1, max: 1000 }),
-});
-
-// ─── Property 21: Expired Events Reject All Scan and Score Operations ─────────
-
-// Feature: fif-adventure, Property 21: Expired Events Reject All Scan and Score Operations
-describe('Property 21: Expired Events Reject All Scan and Score Operations', () => {
-  // ── Scan operations ──────────────────────────────────────────────────────
-
-  it('scan is rejected when event.end_time < now, regardless of is_active flag', () => {
-    // Validates: Requirements 9.3
+describe('Property 21: Expedition Status Guards Operational Lifecycle', () => {
+  it('registration is rejected when status is not "running"', () => {
     fc.assert(
       fc.property(
-        expiredEventArb,
+        nonRunningStatusArb,
         uuidArb,
         uuidArb,
-        uuidArb,
-        fc.integer({ min: 1, max: 500 }),
-        (event, teamId, locationId, scannedBy, points) => {
+        (status, teamId, activityId) => {
           const now = new Date(baseMs);
-
-          const { result, newScans } = modelScanOperation(
-            event,
+          const { result, newRegs } = modelRegistrationOperation(
+            status,
             now,
             teamId,
-            locationId,
-            scannedBy,
-            points,
+            activityId,
             [],
           );
-
           expect(result.success).toBe(false);
           expect(result.status).toBe(403);
-          // No scan record must be created
-          expect(newScans).toHaveLength(0);
+          expect(newRegs).toHaveLength(0);
         },
       ),
       { numRuns: 100 },
     );
   });
 
-  it('scan is rejected when event.is_active = false, regardless of end_time', () => {
-    // Validates: Requirements 9.3
+  it('registration succeeds when status is "running"', () => {
     fc.assert(
       fc.property(
-        inactiveEventArb,
         uuidArb,
         uuidArb,
-        uuidArb,
-        fc.integer({ min: 1, max: 500 }),
-        (event, teamId, locationId, scannedBy, points) => {
+        (teamId, activityId) => {
           const now = new Date(baseMs);
-
-          const { result, newScans } = modelScanOperation(
-            event,
+          const { result, newRegs } = modelRegistrationOperation(
+            'running',
             now,
             teamId,
-            locationId,
-            scannedBy,
-            points,
+            activityId,
             [],
           );
-
-          expect(result.success).toBe(false);
-          expect(result.status).toBe(403);
-          expect(newScans).toHaveLength(0);
-        },
-      ),
-      { numRuns: 100 },
-    );
-  });
-
-  it('scan succeeds when event is active and end_time is in the future', () => {
-    // Validates: Requirements 9.3 (positive case — active event allows scans)
-    fc.assert(
-      fc.property(
-        activeEventArb,
-        uuidArb,
-        uuidArb,
-        uuidArb,
-        fc.integer({ min: 1, max: 500 }),
-        (event, teamId, locationId, scannedBy, points) => {
-          const now = new Date(baseMs);
-
-          const { result, newScans } = modelScanOperation(
-            event,
-            now,
-            teamId,
-            locationId,
-            scannedBy,
-            points,
-            [],
-          );
-
           expect(result.success).toBe(true);
           expect(result.status).toBe(200);
-          expect(newScans).toHaveLength(1);
+          expect(newRegs).toHaveLength(1);
         },
       ),
       { numRuns: 100 },
     );
   });
 
-  it('no scan record is created when event has expired, even with pre-existing scans', () => {
-    // Validates: Requirements 9.3
+  it('scoring is rejected when status is not "running"', () => {
     fc.assert(
       fc.property(
-        expiredEventArb,
+        nonRunningStatusArb,
         uuidArb,
         uuidArb,
-        uuidArb,
-        fc.integer({ min: 1, max: 500 }),
-        fc.array(
-          fc.record({
-            id: uuidArb,
-            team_id: uuidArb,
-            location_id: uuidArb,
-            scanned_by: uuidArb,
-            scanned_at: fc.constant(new Date(baseMs - 1000).toISOString()),
-            points_awarded: fc.integer({ min: 0, max: 500 }),
-          }),
-          { minLength: 0, maxLength: 5 },
-        ),
-        (event, teamId, locationId, scannedBy, points, existingScans) => {
+        fc.integer({ min: 1, max: 1000 }),
+        (status, teamId, activityId, maxPoints) => {
           const now = new Date(baseMs);
-          const countBefore = existingScans.length;
+          const points = Math.floor(Math.random() * (maxPoints + 1));
+          const regs: RegistrationRecord[] = [{
+            id: 'reg-1', team_id: teamId, activity_id: activityId, created_at: now.toISOString(),
+          }];
 
-          const { newScans } = modelScanOperation(
-            event,
+          const { result, newScoreLogs } = modelScoreOperation(
+            status,
             now,
             teamId,
-            locationId,
-            scannedBy,
+            activityId,
             points,
-            existingScans,
-          );
-
-          // Scan count must not have grown
-          expect(newScans).toHaveLength(countBefore);
-        },
-      ),
-      { numRuns: 100 },
-    );
-  });
-
-  // ── Score operations ─────────────────────────────────────────────────────
-
-  it('score input is rejected when event.end_time < now, regardless of is_active flag', () => {
-    // Validates: Requirements 9.3
-    fc.assert(
-      fc.property(
-        expiredEventArb,
-        locationArb,
-        uuidArb,
-        uuidArb,
-        (event, location, teamId, loUserId) => {
-          const now = new Date(baseMs);
-          const score = Math.floor(Math.random() * (location.maxPoints + 1));
-
-          // Team has checked in
-          const scans: ScanRecord[] = [
-            {
-              id: 'scan-1',
-              team_id: teamId,
-              location_id: location.id,
-              scanned_by: teamId,
-              scanned_at: new Date(baseMs - 5000).toISOString(),
-              points_awarded: location.maxPoints,
-            },
-          ];
-
-          const { result, newScoreLogs } = modelScoreOperation(
-            event,
-            now,
-            teamId,
-            location.id,
-            score,
-            location.maxPoints,
-            loUserId,
-            scans,
+            maxPoints,
+            'lo-1',
+            regs,
             [],
           );
-
           expect(result.success).toBe(false);
           expect(result.status).toBe(403);
           expect(newScoreLogs).toHaveLength(0);
@@ -414,85 +251,30 @@ describe('Property 21: Expired Events Reject All Scan and Score Operations', () 
     );
   });
 
-  it('score input is rejected when event.is_active = false, regardless of end_time', () => {
-    // Validates: Requirements 9.3
+  it('scoring succeeds when status is "running" and check-in exists', () => {
     fc.assert(
       fc.property(
-        inactiveEventArb,
-        locationArb,
         uuidArb,
         uuidArb,
-        (event, location, teamId, loUserId) => {
+        fc.integer({ min: 1, max: 1000 }),
+        (teamId, activityId, maxPoints) => {
           const now = new Date(baseMs);
-          const score = Math.floor(Math.random() * (location.maxPoints + 1));
-
-          const scans: ScanRecord[] = [
-            {
-              id: 'scan-1',
-              team_id: teamId,
-              location_id: location.id,
-              scanned_by: teamId,
-              scanned_at: new Date(baseMs - 5000).toISOString(),
-              points_awarded: location.maxPoints,
-            },
-          ];
+          const points = Math.floor(Math.random() * (maxPoints + 1));
+          const regs: RegistrationRecord[] = [{
+            id: 'reg-1', team_id: teamId, activity_id: activityId, created_at: now.toISOString(),
+          }];
 
           const { result, newScoreLogs } = modelScoreOperation(
-            event,
+            'running',
             now,
             teamId,
-            location.id,
-            score,
-            location.maxPoints,
-            loUserId,
-            scans,
+            activityId,
+            points,
+            maxPoints,
+            'lo-1',
+            regs,
             [],
           );
-
-          expect(result.success).toBe(false);
-          expect(result.status).toBe(403);
-          expect(newScoreLogs).toHaveLength(0);
-        },
-      ),
-      { numRuns: 100 },
-    );
-  });
-
-  it('score input succeeds when event is active and end_time is in the future', () => {
-    // Validates: Requirements 9.3 (positive case)
-    fc.assert(
-      fc.property(
-        activeEventArb,
-        locationArb,
-        uuidArb,
-        uuidArb,
-        (event, location, teamId, loUserId) => {
-          const now = new Date(baseMs);
-          const score = Math.floor(Math.random() * (location.maxPoints + 1));
-
-          const scans: ScanRecord[] = [
-            {
-              id: 'scan-1',
-              team_id: teamId,
-              location_id: location.id,
-              scanned_by: teamId,
-              scanned_at: new Date(baseMs - 5000).toISOString(),
-              points_awarded: location.maxPoints,
-            },
-          ];
-
-          const { result, newScoreLogs } = modelScoreOperation(
-            event,
-            now,
-            teamId,
-            location.id,
-            score,
-            location.maxPoints,
-            loUserId,
-            scans,
-            [],
-          );
-
           expect(result.success).toBe(true);
           expect(result.status).toBe(200);
           expect(newScoreLogs).toHaveLength(1);
@@ -502,152 +284,32 @@ describe('Property 21: Expired Events Reject All Scan and Score Operations', () 
     );
   });
 
-  it('no score_log record is created when event has expired, even with pre-existing logs', () => {
-    // Validates: Requirements 9.3
+  it('scoring is rejected if no check-in exists, even if status is "running"', () => {
     fc.assert(
       fc.property(
-        expiredEventArb,
-        locationArb,
         uuidArb,
         uuidArb,
-        fc.array(
-          fc.record({
-            id: uuidArb,
-            team_id: uuidArb,
-            location_id: uuidArb,
-            score: fc.integer({ min: 0, max: 500 }),
-            lo_user_id: uuidArb,
-            created_at: fc.constant(new Date(baseMs - 1000).toISOString()),
-          }),
-          { minLength: 0, maxLength: 5 },
-        ),
-        (event, location, teamId, loUserId, existingLogs) => {
+        fc.integer({ min: 1, max: 1000 }),
+        (teamId, activityId, maxPoints) => {
           const now = new Date(baseMs);
-          const score = Math.floor(Math.random() * (location.maxPoints + 1));
-          const countBefore = existingLogs.length;
-
-          const scans: ScanRecord[] = [
-            {
-              id: 'scan-1',
-              team_id: teamId,
-              location_id: location.id,
-              scanned_by: teamId,
-              scanned_at: new Date(baseMs - 5000).toISOString(),
-              points_awarded: location.maxPoints,
-            },
-          ];
-
-          const { newScoreLogs } = modelScoreOperation(
-            event,
+          const points = Math.floor(Math.random() * (maxPoints + 1));
+          const { result, newScoreLogs } = modelScoreOperation(
+            'running',
             now,
             teamId,
-            location.id,
-            score,
-            location.maxPoints,
-            loUserId,
-            scans,
-            existingLogs,
+            activityId,
+            points,
+            maxPoints,
+            'lo-1',
+            [], // no regs
+            [],
           );
-
-          // Score log count must not have grown
-          expect(newScoreLogs).toHaveLength(countBefore);
+          expect(result.success).toBe(false);
+          expect(result.status).toBe(422);
+          expect(newScoreLogs).toHaveLength(0);
         },
       ),
       { numRuns: 100 },
     );
-  });
-
-  // ── isEventAcceptingOperations invariants ────────────────────────────────
-
-  it('isEventAcceptingOperations returns false for any event where end_time <= now', () => {
-    // Validates: Requirements 9.3
-    fc.assert(
-      fc.property(
-        fc.boolean(), // is_active can be anything
-        fc.integer({ min: 0, max: 100_000_000 }),
-        (isActive, pastOffset) => {
-          const now = new Date(baseMs);
-          const endTime = new Date(baseMs - pastOffset); // at or before now
-
-          const event: Event = {
-            id: 'evt-1',
-            is_active: isActive,
-            end_time: endTime.toISOString(),
-          };
-
-          expect(isEventAcceptingOperations(event, now)).toBe(false);
-        },
-      ),
-      { numRuns: 100 },
-    );
-  });
-
-  it('isEventAcceptingOperations returns false for any event where is_active = false', () => {
-    // Validates: Requirements 9.3
-    fc.assert(
-      fc.property(
-        fc.oneof(futureEndTimeArb, fc.constant(null)),
-        (endTime) => {
-          const now = new Date(baseMs);
-          const event: Event = {
-            id: 'evt-1',
-            is_active: false,
-            end_time: endTime,
-          };
-
-          expect(isEventAcceptingOperations(event, now)).toBe(false);
-        },
-      ),
-      { numRuns: 100 },
-    );
-  });
-
-  it('isEventAcceptingOperations returns true only when is_active = true AND end_time > now', () => {
-    // Validates: Requirements 9.3
-    fc.assert(
-      fc.property(
-        fc.integer({ min: 1_000, max: 100_000_000 }),
-        (futureOffset) => {
-          const now = new Date(baseMs);
-          const endTime = new Date(baseMs + futureOffset);
-
-          const event: Event = {
-            id: 'evt-1',
-            is_active: true,
-            end_time: endTime.toISOString(),
-          };
-
-          expect(isEventAcceptingOperations(event, now)).toBe(true);
-        },
-      ),
-      { numRuns: 100 },
-    );
-  });
-
-  // ── timeRemaining integration ────────────────────────────────────────────
-
-  it('timeRemaining returns 0 for any expired event end_time', () => {
-    // Validates: Requirements 9.2, 9.3 — timer shows 0 when event has ended
-    fc.assert(
-      fc.property(
-        fc.integer({ min: 0, max: 100_000_000 }),
-        (pastOffset) => {
-          const now = new Date(baseMs);
-          const endTime = new Date(baseMs - pastOffset);
-          expect(timeRemaining(endTime, now)).toBe(0);
-        },
-      ),
-      { numRuns: 100 },
-    );
-  });
-
-  it('timeRemaining returns 0 when there is no active event (undefined end_time)', () => {
-    // Validates: Requirements 9.2, 12.2 — timer shows 0 when no active event
-    // When end_time is null/undefined, the timer component defaults to { h:0, m:0, s:0 }
-    // This test verifies the timeRemaining function returns 0 for a past/zero time
-    const now = new Date(baseMs);
-    // Simulate "no event" by using a past time (epoch)
-    const noEventTime = new Date(0);
-    expect(timeRemaining(noEventTime, now)).toBe(0);
   });
 });

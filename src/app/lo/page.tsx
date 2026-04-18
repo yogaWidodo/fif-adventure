@@ -30,38 +30,30 @@ export default function LOPortal() {
   const fetchAssignedWahana = async (userId: string) => {
     setLoading(true);
 
-    // Step 1: Fetch the LO's profile to get assigned_location_id
-    const { data: profile, error: profileError } = await supabase
-      .from('users')
-      .select('assigned_location_id')
-      .eq('id', userId)
-      .single();
+    // Step 1: Fetch the LO's assignment from lo_assignments table
+    const { data: assignment, error: assignmentError } = await supabase
+      .from('lo_assignments')
+      .select('activity_id, activities(id, name, description, max_points, type)')
+      .eq('lo_id', userId)
+      .maybeSingle();
 
-    if (profileError || !profile) {
+    if (assignmentError || !assignment) {
       setAssignedLocationId(null);
+      setWahana(null);
       setLoading(false);
       return;
     }
 
-    const locationId: string | null = profile.assigned_location_id ?? null;
-    setAssignedLocationId(locationId);
-
-    // Step 2: If no assignment, stop here
-    if (!locationId) {
-      setLoading(false);
-      return;
-    }
-
-    // Step 3: Fetch only the assigned wahana
-    const { data, error } = await supabase
-      .from('locations')
-      .select('id, name, description, points, is_active')
-      .eq('id', locationId)
-      .single();
-
-    if (!error && data) {
-      setWahana(data);
-    }
+    const activity = assignment.activities as any;
+    setAssignedLocationId(assignment.activity_id);
+    setWahana({
+      id: activity.id,
+      name: activity.name,
+      description: activity.description,
+      points: activity.max_points,
+      is_active: true // In V2, they are generally active if assigned
+    });
+    
     setLoading(false);
   };
 
@@ -99,9 +91,9 @@ export default function LOPortal() {
               <p className="text-muted-foreground italic font-content max-w-lg mx-auto opacity-70">
                 "Select your post, Officer. The expedition teams await your guidance."
               </p>
-              {user?.nama && (
+              {user?.name && (
                 <p className="mt-4 text-[11px] uppercase font-adventure tracking-[0.3em] text-primary/60">
-                  Officer: {user.nama}
+                  Officer: {user.name}
                 </p>
               )}
             </motion.div>

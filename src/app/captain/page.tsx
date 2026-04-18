@@ -24,7 +24,7 @@ export default function CaptainPortal() {
   }, [isExpired]);
 
   return (
-    <AuthGuard allowedRoles={['admin', 'kaptain', 'cocaptain']}>
+    <AuthGuard allowedRoles={['admin', 'captain', 'vice_captain']}>
       <div className="relative min-h-screen flex flex-col items-center justify-center p-6 bg-black overflow-hidden font-content">
         {/* Background */}
         <div 
@@ -58,7 +58,7 @@ export default function CaptainPortal() {
                   <X className="w-5 h-5" />
                 </button>
                 <p className="text-[10px] uppercase font-adventure tracking-widest text-primary opacity-60 mb-2">Team QR Code</p>
-                <h2 className="font-adventure text-2xl gold-engraving mb-6">{user.nama}</h2>
+                <h2 className="font-adventure text-2xl gold-engraving mb-6">{user.name}</h2>
                 <div className="bg-white p-4 rounded-lg inline-block mb-6">
                   <QRCodeSVG
                     value={generateTeamBarcode(user.team_id)}
@@ -182,10 +182,10 @@ export default function CaptainPortal() {
                 <ShieldAlert className="w-6 h-6 text-red-500" />
               </div>
               <div>
-                <p className="text-[10px] uppercase font-adventure text-red-400 tracking-widest mb-1 italic">Mission Protocol</p>
-                <p className="text-xs text-[#f4e4bc]/60 font-content leading-relaxed">
-                  Remember: Each artifact can only be claimed once per expedition. Ensure your device is calibrated for low-light scans.
-                </p>
+                  <p className="text-[10px] uppercase font-adventure text-red-400 tracking-widest mb-1 italic">Mission Protocol</p>
+                  <p className="text-xs text-[#f4e4bc]/60 font-content leading-relaxed">
+                    Remember: Each activity registration is logged once per team. Ensure your device is calibrated for check-ins.
+                  </p>
               </div>
             </div>
           </div>

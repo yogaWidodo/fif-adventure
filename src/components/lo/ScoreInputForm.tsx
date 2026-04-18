@@ -8,7 +8,7 @@ import { isScoreValid } from '@/lib/auth';
 interface ScoreInputFormProps {
   teamId: string;
   teamName: string;
-  locationId: string;
+  activityId: string;
   maxPoints: number;
   onSuccess?: () => void;
   onCancel?: () => void;
@@ -22,7 +22,7 @@ type ToastState = {
 export default function ScoreInputForm({
   teamId,
   teamName,
-  locationId,
+  activityId,
   maxPoints,
   onSuccess,
   onCancel,
@@ -63,10 +63,10 @@ export default function ScoreInputForm({
     setIsSubmitting(true);
 
     try {
-      const response = await fetch('/api/score', {
+      const response = await fetch('/api/lo/score', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ team_id: teamId, location_id: locationId, score }),
+        body: JSON.stringify({ team_id: teamId, points: score }),
       });
 
       const data = await response.json();

@@ -3,13 +3,14 @@
  * No DOM, no Supabase — all functions are side-effect-free and directly testable.
  */
 
-export type TimerState = 'idle' | 'running' | 'paused' | 'ended';
+export type TimerState = 'idle' | 'running' | 'paused' | 'finished';
 export type TimerAction = 'start' | 'pause' | 'resume' | 'reset';
 
 export interface TimerUpdatePayload {
-  timer_state: TimerState;
-  timer_started_at: string | null;
-  timer_remaining_seconds: number | null;
+  event_status: TimerState;
+  event_started_at: string | null;
+  event_elapsed_seconds: number;
+  event_duration_minutes: number;
 }
 
 /**
@@ -44,19 +45,21 @@ export function validateDuration(
 /**
  * Compute the remaining seconds for a running timer.
  * Clamps to 0 — never returns a negative value.
- *
- * @param remainingSeconds  The stored remaining seconds at the last start/resume.
- * @param startedAt         ISO 8601 string of when the timer was last started/resumed.
- * @param now               The current time.
  */
 export function computeRemaining(
-  remainingSeconds: number,
-  startedAt: string,
+  durationMinutes: number,
+  elapsedSeconds: number,
+  startedAt: string | null,
   now: Date,
+  status: TimerState,
 ): number {
-  const startedAtMs = new Date(startedAt).getTime();
-  const elapsedSeconds = Math.floor((now.getTime() - startedAtMs) / 1000);
-  return Math.max(0, remainingSeconds - elapsedSeconds);
+  let totalElapsed = elapsedSeconds;
+  if (status === 'running' && startedAt) {
+    const startedAtMs = new Date(startedAt).getTime();
+    totalElapsed += Math.floor((now.getTime() - startedAtMs) / 1000);
+  }
+  const totalDurationSeconds = durationMinutes * 60;
+  return Math.max(0, totalDurationSeconds - totalElapsed);
 }
 
 /**
@@ -67,55 +70,50 @@ export function isLooming(computedRemaining: number, timerState: TimerState): bo
   return computedRemaining < 1800 && timerState === 'running';
 }
 
-/**
- * Build the DB payload for the Start action.
- * Sets timer_state = 'running', timer_started_at = now, timer_remaining_seconds = durationSeconds.
- */
-export function buildStartPayload(durationSeconds: number, now: Date): TimerUpdatePayload {
+export function buildStartPayload(durationMinutes: number, now: Date): TimerUpdatePayload {
   return {
-    timer_state: 'running',
-    timer_started_at: now.toISOString(),
-    timer_remaining_seconds: durationSeconds,
+    event_status: 'running',
+    event_started_at: now.toISOString(),
+    event_elapsed_seconds: 0,
+    event_duration_minutes: durationMinutes,
   };
 }
 
-/**
- * Build the DB payload for the Pause action.
- * Computes the new remaining seconds (clamped to 0) and sets timer_state = 'paused'.
- */
 export function buildPausePayload(
-  remainingSeconds: number,
+  durationMinutes: number,
+  elapsedSeconds: number,
   startedAt: string,
   now: Date,
 ): TimerUpdatePayload {
+  const startedAtMs = new Date(startedAt).getTime();
+  const newElapsed = elapsedSeconds + Math.floor((now.getTime() - startedAtMs) / 1000);
   return {
-    timer_state: 'paused',
-    timer_started_at: null,
-    timer_remaining_seconds: computeRemaining(remainingSeconds, startedAt, now),
+    event_status: 'paused',
+    event_started_at: null,
+    event_elapsed_seconds: newElapsed,
+    event_duration_minutes: durationMinutes,
   };
 }
 
-/**
- * Build the DB payload for the Resume action.
- * Preserves timer_remaining_seconds (caller must supply it separately if needed).
- * Sets timer_state = 'running' and timer_started_at = now.
- */
-export function buildResumePayload(now: Date): Pick<TimerUpdatePayload, 'timer_state' | 'timer_started_at'> {
+export function buildResumePayload(
+  durationMinutes: number,
+  elapsedSeconds: number,
+  now: Date,
+): TimerUpdatePayload {
   return {
-    timer_state: 'running',
-    timer_started_at: now.toISOString(),
+    event_status: 'running',
+    event_started_at: now.toISOString(),
+    event_elapsed_seconds: elapsedSeconds,
+    event_duration_minutes: durationMinutes,
   };
 }
 
-/**
- * Build the DB payload for the Reset action.
- * Clears all timer fields and returns to idle.
- */
 export function buildResetPayload(): TimerUpdatePayload {
   return {
-    timer_state: 'idle',
-    timer_started_at: null,
-    timer_remaining_seconds: null,
+    event_status: 'idle',
+    event_started_at: null,
+    event_elapsed_seconds: 0,
+    event_duration_minutes: 0,
   };
 }
 
@@ -138,7 +136,7 @@ export function isTransitionAllowed(from: TimerState, action: TimerAction): bool
       return action === 'pause' || action === 'reset';
     case 'paused':
       return action === 'resume' || action === 'reset';
-    case 'ended':
+    case 'finished':
       return action === 'reset';
     default:
       return false;

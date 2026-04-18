@@ -1,13 +1,12 @@
 'use client';
 
 import { useState, useRef } from 'react';
-import { supabase } from '@/lib/supabase';
 import { parseTeamCSV, type MemberRecord } from '@/lib/auth';
 import { Upload, AlertTriangle, CheckCircle, X, FileText, Loader2 } from 'lucide-react';
 
 interface CSVImporterProps {
   teamId: string;
-  eventId: string;
+  teamName?: string;
   onImportComplete?: () => void;
 }
 
@@ -17,7 +16,7 @@ interface CSVImporterProps {
  * then submits valid records to Supabase.
  * Requirements: 2.2, 2.3
  */
-export default function CSVImporter({ teamId, eventId, onImportComplete }: CSVImporterProps) {
+export default function CSVImporter({ teamId, teamName, onImportComplete }: CSVImporterProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [records, setRecords] = useState<MemberRecord[]>([]);
@@ -46,52 +45,43 @@ export default function CSVImporter({ teamId, eventId, onImportComplete }: CSVIm
     if (records.length === 0) return;
     setImporting(true);
 
-    let successCount = 0;
-    let failedCount = 0;
+    try {
+      // Map MemberRecord → ParsedUserRow shape expected by /api/users/bulk
+      const rows = records.map((r) => ({
+        name: r.name,
+        npk: r.npk,
+        role: r.role,
+        birth_date: r.birth_date,
+        team_name: teamName ?? '',
+      }));
 
-    for (const record of records) {
-      try {
-        // Create Supabase Auth user with email = npk@fif.internal
-        const email = `${record.npk}@fif.internal`;
-        const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-          email,
-          password: record.no_unik,
-          email_confirm: true,
-        });
+      const res = await fetch('/api/users/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rows }),
+      });
 
-        if (authError || !authData.user) {
-          failedCount++;
-          continue;
-        }
-
-        // Insert into users table
-        const { error: userError } = await supabase.from('users').insert({
-          auth_id: authData.user.id,
-          nama: record.nama,
-          npk: record.npk,
-          no_unik: record.no_unik,
-          role: record.role,
-          team_id: teamId,
-          event_id: eventId,
-        });
-
-        if (userError) {
-          failedCount++;
-          continue;
-        }
-
-        successCount++;
-      } catch {
-        failedCount++;
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        setImportResult({ success: 0, failed: records.length });
+        setImporting(false);
+        return;
       }
+
+      const { report } = await res.json();
+      const successCount = (report?.usersCreated ?? 0) + (report?.usersSkipped ?? 0) + (report?.assignmentsSuccess ?? 0);
+      const failedCount = report?.failed ?? records.length;
+
+      setImportResult({ success: successCount, failed: failedCount });
+
+      if (successCount > 0 && onImportComplete) {
+        onImportComplete();
+      }
+    } catch {
+      setImportResult({ success: 0, failed: records.length });
     }
 
     setImporting(false);
-    setImportResult({ success: successCount, failed: failedCount });
-
-    if (successCount > 0 && onImportComplete) {
-      onImportComplete();
-    }
   };
 
   const handleReset = () => {
@@ -128,7 +118,7 @@ export default function CSVImporter({ teamId, eventId, onImportComplete }: CSVIm
               Upload CSV File
             </p>
             <p className="text-[10px] text-muted-foreground italic">
-              Required columns: nama, npk, no_unik, role
+              Required columns: name, npk, birth_date, role
             </p>
           </>
         )}
@@ -170,22 +160,22 @@ export default function CSVImporter({ teamId, eventId, onImportComplete }: CSVIm
             <table className="w-full text-[11px] font-mono">
               <thead className="bg-primary/5 sticky top-0">
                 <tr>
-                  <th className="text-left px-3 py-2 text-primary/60 font-adventure uppercase tracking-wider text-[10px]">Nama</th>
+                  <th className="text-left px-3 py-2 text-primary/60 font-adventure uppercase tracking-wider text-[10px]">Name</th>
                   <th className="text-left px-3 py-2 text-primary/60 font-adventure uppercase tracking-wider text-[10px]">NPK</th>
-                  <th className="text-left px-3 py-2 text-primary/60 font-adventure uppercase tracking-wider text-[10px]">No Unik</th>
+                  <th className="text-left px-3 py-2 text-primary/60 font-adventure uppercase tracking-wider text-[10px]">Birth Date</th>
                   <th className="text-left px-3 py-2 text-primary/60 font-adventure uppercase tracking-wider text-[10px]">Role</th>
                 </tr>
               </thead>
               <tbody>
                 {records.map((r, i) => (
                   <tr key={i} className="border-t border-primary/5 hover:bg-primary/5 transition-colors">
-                    <td className="px-3 py-2 text-foreground/80">{r.nama}</td>
+                    <td className="px-3 py-2 text-foreground/80">{r.name}</td>
                     <td className="px-3 py-2 text-foreground/60">{r.npk}</td>
-                    <td className="px-3 py-2 text-foreground/40">{'•'.repeat(Math.min(r.no_unik.length, 6))}</td>
+                    <td className="px-3 py-2 text-foreground/60">{r.birth_date ? '•'.repeat(Math.min(r.birth_date.length, 6)) : '—'}</td>
                     <td className="px-3 py-2">
                       <span className={`px-2 py-0.5 text-[9px] font-adventure uppercase tracking-wider ${
-                        r.role === 'kaptain' ? 'bg-primary/20 text-primary' :
-                        r.role === 'cocaptain' ? 'bg-secondary/20 text-secondary-foreground' :
+                        r.role === 'captain' ? 'bg-primary/20 text-primary' :
+                        r.role === 'vice_captain' ? 'bg-secondary/20 text-secondary-foreground' :
                         r.role === 'lo' ? 'bg-blue-500/20 text-blue-300' :
                         'bg-foreground/10 text-foreground/60'
                       }`}>

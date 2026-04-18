@@ -73,81 +73,57 @@ export async function POST(request: NextRequest): Promise<Response> {
     return Response.json({ error: 'Insufficient permissions' }, { status: 403 });
   }
 
-  // ── 3. Look up location by location_id ────────────────────────────────────
-  const { data: location, error: locationError } = await supabase
-    .from('locations')
-    .select('id, points, is_active, event_id')
+  // ── 3. Look up activity by activity_id ────────────────────────────────────
+  const { data: activity, error: activityError } = await supabase
+    .from('activities')
+    .select('id, max_points')
     .eq('id', location_id.trim())
     .single();
 
-  if (locationError || !location) {
-    return Response.json({ error: 'Location not found' }, { status: 404 });
+  if (activityError || !activity) {
+    return Response.json({ error: 'Activity not found' }, { status: 404 });
   }
 
-  if (!location.is_active) {
-    return Response.json({ error: 'Location is not active' }, { status: 404 });
+  // ── 4. Validate event is active ────────────────────────────
+  const { data: statusData } = await supabase.from('settings').select('value').eq('key', 'event_status').single();
+  if (statusData?.value !== 'running') {
+    return Response.json({ error: 'Event sedang tidak berlangsung.' }, { status: 403 });
   }
 
-  // ── 4. Validate event is active and not expired ────────────────────────────
-  if (location.event_id) {
-    const { data: event, error: eventError } = await supabase
-      .from('events')
-      .select('is_active, end_time')
-      .eq('id', location.event_id)
-      .single();
-
-    if (eventError || !event) {
-      return Response.json({ error: 'Event not found' }, { status: 404 });
-    }
-
-    const now = new Date();
-    const eventEnded = event.end_time ? new Date(event.end_time) <= now : false;
-
-    if (!event.is_active || eventEnded) {
-      return Response.json(
-        { error: 'Event sudah berakhir, skor tidak dapat disubmit' },
-        { status: 403 }
-      );
-    }
-  }
-
-  // ── 5. Validate score range: 0 <= score <= location.points ────────────────
-  // Requirement 7.3
-  if (!isScoreValid(score, location.points)) {
+  // ── 5. Validate score range ────────────────
+  if (score < 0 || score > activity.max_points) {
     return Response.json(
-      { error: `Score must be between 0 and ${location.points}` },
+      { error: `Score must be between 0 and ${activity.max_points}` },
       { status: 422 }
     );
   }
 
-  // ── 5. Verify team has checked in (scan record exists) ────────────────────
-  // Requirement 7.6
-  const { data: scanRecord, error: scanError } = await supabase
-    .from('scans')
+  // ── 5. Verify team has checked in (registration record exists) ────────────────────
+  const { data: registration, error: regError } = await supabase
+    .from('activity_registrations')
     .select('id')
     .eq('team_id', team_id.trim())
-    .eq('location_id', location_id.trim())
+    .eq('activity_id', location_id.trim())
     .maybeSingle();
 
-  if (scanError) {
-    console.error('Scan lookup error:', scanError);
+  if (regError) {
+    console.error('Registration lookup error:', regError);
     return Response.json({ error: 'Failed to verify check-in' }, { status: 500 });
   }
 
-  if (!scanRecord) {
+  if (!registration) {
     return Response.json(
-      { error: 'Team has not checked in at this location' },
+      { error: 'Team has not checked in at this activity' },
       { status: 422 }
     );
   }
 
   // ── 6. Check for duplicate score submission ────────────────────────────────
-  // Requirement 7.2: prevent double-scoring the same team at the same location
   const { data: existingScore, error: existingScoreError } = await supabase
     .from('score_logs')
     .select('id')
     .eq('team_id', team_id.trim())
-    .eq('location_id', location_id.trim())
+    .eq('activity_id', location_id.trim())
     .maybeSingle();
 
   if (existingScoreError) {
@@ -157,20 +133,19 @@ export async function POST(request: NextRequest): Promise<Response> {
 
   if (existingScore) {
     return Response.json(
-      { error: 'Score already submitted for this team at this location' },
+      { error: 'Score already submitted for this team at this activity' },
       { status: 409 }
     );
   }
 
   // ── 7. Insert into score_logs ─────────────────────────────────────────────
-  // Requirement 7.4: trigger will automatically update teams.total_points
   const { error: insertError } = await supabase
     .from('score_logs')
     .insert({
       team_id: team_id.trim(),
-      location_id: location_id.trim(),
-      score,
-      lo_user_id: userProfile.id,
+      activity_id: location_id.trim(),
+      points_awarded: score,
+      lo_id: userProfile.id,
     });
 
   if (insertError) {

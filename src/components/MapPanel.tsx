@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Map, X, ZoomIn } from 'lucide-react';
+import { Map, X, ZoomIn, ImageOff } from 'lucide-react';
 import Image from 'next/image';
+import { supabase } from '@/lib/supabase';
 
 interface MapPanelProps {
   /** Optional title override */
@@ -21,6 +22,23 @@ export default function MapPanel({
 }: MapPanelProps) {
   const [isOpen, setIsOpen] = useState(!collapsible);
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
+  const [mapUrl, setMapUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  // Fetch map_image_url from global settings (Req. 8 – Decision #4)
+  useEffect(() => {
+    supabase
+      .from('settings')
+      .select('value')
+      .eq('key', 'map_image_url')
+      .single()
+      .then(({ data }) => {
+        setMapUrl(data?.value ?? null);
+        setLoading(false);
+      });
+  }, []);
+
+  const imgSrc = mapUrl ?? '/images/MAP%20TSC.png'; // fallback to local asset
 
   return (
     <>
@@ -54,23 +72,40 @@ export default function MapPanel({
               transition={{ duration: 0.3 }}
               className="overflow-hidden"
             >
-              <div className="relative group cursor-zoom-in" onClick={() => setIsLightboxOpen(true)}>
-                <Image
-                  src="/images/MAP%20TSC.png"
-                  alt="TSC Adventure Expedition Map"
-                  width={1200}
-                  height={900}
-                  className="w-full h-auto object-contain"
-                  priority
-                />
-                {/* Hover overlay */}
-                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
-                  <div className="opacity-0 group-hover:opacity-100 transition-opacity bg-black/60 backdrop-blur-sm px-4 py-2 flex items-center gap-2 border border-primary/30">
-                    <ZoomIn className="w-4 h-4 text-primary" />
-                    <span className="font-adventure text-xs text-primary uppercase tracking-widest">View Full Map</span>
+              {loading ? (
+                <div className="flex items-center justify-center h-40 bg-black/20">
+                  <span className="font-adventure text-xs tracking-widest text-foreground/30 uppercase animate-pulse">
+                    Loading map...
+                  </span>
+                </div>
+              ) : mapUrl === null && typeof window !== 'undefined' ? (
+                // No map configured
+                <div className="flex flex-col items-center justify-center h-40 gap-3 bg-black/20">
+                  <ImageOff className="w-8 h-8 text-foreground/20" />
+                  <span className="font-adventure text-xs tracking-widest text-foreground/30 uppercase">
+                    Peta belum dikonfigurasi Admin
+                  </span>
+                </div>
+              ) : (
+                <div className="relative group cursor-zoom-in" onClick={() => setIsLightboxOpen(true)}>
+                  <Image
+                    src={imgSrc}
+                    alt="TSC Adventure Expedition Map"
+                    width={1200}
+                    height={900}
+                    className="w-full h-auto object-contain"
+                    priority
+                    unoptimized={!!mapUrl} // skip Next.js optimization for external URLs
+                  />
+                  {/* Hover overlay */}
+                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+                    <div className="opacity-0 group-hover:opacity-100 transition-opacity bg-black/60 backdrop-blur-sm px-4 py-2 flex items-center gap-2 border border-primary/30">
+                      <ZoomIn className="w-4 h-4 text-primary" />
+                      <span className="font-adventure text-xs text-primary uppercase tracking-widest">View Full Map</span>
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
             </motion.div>
           )}
         </AnimatePresence>
@@ -108,12 +143,13 @@ export default function MapPanel({
                   <span className="font-adventure text-sm tracking-widest text-primary uppercase">{title}</span>
                 </div>
                 <Image
-                  src="/images/MAP TSC.png"
+                  src={imgSrc}
                   alt="TSC Adventure Expedition Map"
                   width={1600}
                   height={1200}
                   className="w-full h-auto object-contain"
                   priority
+                  unoptimized={!!mapUrl}
                 />
               </div>
             </motion.div>

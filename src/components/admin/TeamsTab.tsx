@@ -19,7 +19,6 @@ interface TeamWithDetails {
   slogan?: string;
   total_points: number;
   captain_id?: string;
-  event_id: string;
   created_at: string;
   member_count?: number;
   captain_name?: string;
@@ -27,25 +26,11 @@ interface TeamWithDetails {
 
 interface Member {
   id: string;
-  nama: string;
+  name: string;
   npk: string;
   role: string;
-  no_unik: string | null;
+  birth_date: string | null;
   team_id?: string;
-}
-
-interface EventListItem {
-  id: string;
-  name: string;
-  is_active: boolean;
-  start_time: string | null;
-  end_time: string | null;
-}
-
-interface Event {
-  id: string;
-  name: string;
-  is_active: boolean;
 }
 
 // ─── Shared modal primitives (inline, no external dep) ───────────────────────
@@ -141,21 +126,21 @@ function MemberCard({
 }: {
   member: Member;
   teamId: string;
-  onAssign: (teamId: string, userId: string, role: 'kaptain' | 'cocaptain') => void;
+  onAssign: (teamId: string, userId: string, role: 'captain' | 'vice_captain') => void;
 }) {
   const [open, setOpen] = useState(false);
 
   const roleStyle: Record<string, string> = {
-    kaptain: 'bg-primary/20 text-primary border-primary/30',
-    cocaptain: 'bg-amber-900/30 text-amber-400 border-amber-500/30',
+    captain: 'bg-primary/20 text-primary border-primary/30',
+    vice_captain: 'bg-amber-900/30 text-amber-400 border-amber-500/30',
     member: 'bg-foreground/5 text-foreground/40 border-foreground/15',
     lo: 'bg-blue-900/30 text-blue-400 border-blue-500/30',
     admin: 'bg-red-900/30 text-red-400 border-red-500/30',
   };
 
   const roleAbbr: Record<string, string> = {
-    kaptain: 'KPT',
-    cocaptain: 'CO',
+    captain: 'KPT',
+    vice_captain: 'VC',
     member: 'MBR',
     lo: 'LO',
     admin: 'ADM',
@@ -171,10 +156,10 @@ function MemberCard({
           <span className={`shrink-0 text-[8px] font-adventure uppercase tracking-wider px-1.5 py-0.5 border ${roleStyle[member.role] ?? roleStyle.member}`}>
             {roleAbbr[member.role] ?? member.role.slice(0, 3).toUpperCase()}
           </span>
-          <span className="text-[11px] text-foreground/80 truncate">{member.nama}</span>
+          <span className="text-[11px] text-foreground/80 truncate">{member.name}</span>
         </div>
-        {member.no_unik && (
-          <span className="shrink-0 text-[9px] font-mono text-foreground/30 ml-1">#{member.no_unik}</span>
+        {member.birth_date && (
+          <span className="shrink-0 text-[9px] font-mono text-foreground/30 ml-1">#{member.birth_date}</span>
         )}
       </button>
 
@@ -188,22 +173,22 @@ function MemberCard({
           >
             <div className="px-3 py-2 space-y-1.5 bg-black/20">
               <p className="text-[9px] font-mono text-foreground/30">{member.npk}</p>
-              {member.role !== 'kaptain' && (
+              {member.role !== 'captain' && (
                 <button
-                  onClick={() => { onAssign(teamId, member.id, 'kaptain'); setOpen(false); }}
+                  onClick={() => { onAssign(teamId, member.id, 'captain'); setOpen(false); }}
                   className="w-full text-left text-[9px] font-adventure uppercase tracking-wider text-primary/60 hover:text-primary transition-colors flex items-center gap-1"
                 >
                   <UserCheck className="w-3 h-3" />
-                  Set as Kaptain
+                  Set as Captain
                 </button>
               )}
-              {member.role !== 'cocaptain' && (
+              {member.role !== 'vice_captain' && (
                 <button
-                  onClick={() => { onAssign(teamId, member.id, 'cocaptain'); setOpen(false); }}
+                  onClick={() => { onAssign(teamId, member.id, 'vice_captain'); setOpen(false); }}
                   className="w-full text-left text-[9px] font-adventure uppercase tracking-wider text-amber-400/60 hover:text-amber-400 transition-colors flex items-center gap-1"
                 >
                   <UserCheck className="w-3 h-3" />
-                  Set as Co-Captain
+                  Set as Vice Captain
                 </button>
               )}
             </div>
@@ -214,9 +199,7 @@ function MemberCard({
   );
 }
 
-// ─── TeamsTab ─────────────────────────────────────────────────────────────────
-
-export default function TeamsTab({ activeEvent }: { activeEvent: Event | null }) {
+export default function TeamsTab() {
   const [teams, setTeams] = useState<TeamWithDetails[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -227,28 +210,10 @@ export default function TeamsTab({ activeEvent }: { activeEvent: Event | null })
   const [saving, setSaving] = useState(false);
   const [membersMap, setMembersMap] = useState<Record<string, Member[]>>({});
 
-  const [events, setEvents] = useState<EventListItem[]>([]);
-  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
-
   const [editingTeam, setEditingTeam] = useState<TeamWithDetails | null>(null);
   const [editName, setEditName] = useState('');
   const [editSlogan, setEditSlogan] = useState('');
-  const [editEventId, setEditEventId] = useState<string | null>(null);
   const [editSaving, setEditSaving] = useState(false);
-
-  useEffect(() => {
-    const fetchEvents = async () => {
-      try {
-        const res = await fetch('/api/events');
-        if (!res.ok) throw new Error('Failed to fetch events');
-        const data: EventListItem[] = await res.json();
-        setEvents(data);
-      } catch (err) {
-        console.error('Failed to load events for selector:', err);
-      }
-    };
-    fetchEvents();
-  }, []);
 
   const fetchTeams = useCallback(async () => {
     setLoading(true);
@@ -270,10 +235,10 @@ export default function TeamsTab({ activeEvent }: { activeEvent: Event | null })
         if (team.captain_id) {
           const { data: cap } = await supabase
             .from('users')
-            .select('nama')
+            .select('name')
             .eq('id', team.captain_id)
             .single();
-          captainName = cap?.nama;
+          captainName = cap?.name;
         }
 
         return { ...team, member_count: count || 0, captain_name: captainName };
@@ -291,7 +256,7 @@ export default function TeamsTab({ activeEvent }: { activeEvent: Event | null })
     if (teamList.length === 0) return;
     const { data } = await supabase
       .from('users')
-      .select('id, nama, npk, role, no_unik, team_id')
+      .select('id, name, npk, role, birth_date, team_id')
       .in('team_id', teamList.map(t => t.id));
     if (!data) return;
     const map: Record<string, Member[]> = {};
@@ -312,7 +277,6 @@ export default function TeamsTab({ activeEvent }: { activeEvent: Event | null })
     setSaving(true);
     const payload: Record<string, unknown> = { name: newName };
     if (newSlogan) payload.slogan = newSlogan;
-    payload.event_id = selectedEventId;
 
     // Insert and retrieve the new team's id so we can generate its barcode
     const { data: newTeam, error } = await supabase
@@ -332,20 +296,22 @@ export default function TeamsTab({ activeEvent }: { activeEvent: Event | null })
       setShowModal(false);
       setNewName('');
       setNewSlogan('');
-      setSelectedEventId(null);
       fetchTeams();
     }
     setSaving(false);
   };
 
-  const handleAssignCaptain = async (teamId: string, userId: string, role: 'kaptain' | 'cocaptain') => {
+  const handleAssignCaptain = async (teamId: string, userId: string, role: 'captain' | 'vice_captain') => {
+    // Reset existing roles to member first
     await supabase
       .from('users')
       .update({ role: 'member' })
       .eq('team_id', teamId)
       .eq('role', role);
+
     await supabase.from('users').update({ role }).eq('id', userId);
-    if (role === 'kaptain') {
+
+    if (role === 'captain') {
       await supabase.from('teams').update({ captain_id: userId }).eq('id', teamId);
     }
     fetchTeams();
@@ -355,7 +321,6 @@ export default function TeamsTab({ activeEvent }: { activeEvent: Event | null })
     setEditingTeam(team);
     setEditName(team.name);
     setEditSlogan(team.slogan || '');
-    setEditEventId(team.event_id ?? null);
   };
 
   const handleEdit = async () => {
@@ -363,19 +328,18 @@ export default function TeamsTab({ activeEvent }: { activeEvent: Event | null })
     setEditSaving(true);
     const { error } = await supabase
       .from('teams')
-      .update({ name: editName, slogan: editSlogan, event_id: editEventId })
+      .update({ name: editName, slogan: editSlogan })
       .eq('id', editingTeam.id);
     if (!error) {
       setEditingTeam(null);
       setEditName('');
       setEditSlogan('');
-      setEditEventId(null);
       fetchTeams();
     }
     setEditSaving(false);
   };
 
-  const rolePriority: Record<string, number> = { kaptain: 0, cocaptain: 1, member: 2, lo: 3, admin: 4 };
+  const rolePriority: Record<string, number> = { captain: 0, vice_captain: 1, member: 2, lo: 3, admin: 4 };
 
   return (
     <motion.div
@@ -398,13 +362,6 @@ export default function TeamsTab({ activeEvent }: { activeEvent: Event | null })
         </motion.div>
 
         <div className="flex items-center gap-3">
-          <button
-            onClick={() => setShowCSVModal(true)}
-            className="flex items-center gap-2 text-[10px] font-adventure uppercase tracking-widest text-primary hover:text-primary/80 border border-primary/20 hover:border-primary/40 px-4 py-2 transition-all"
-          >
-            <FileText className="w-3 h-3" />
-            Import CSV
-          </button>
           <button
             onClick={() => setShowModal(true)}
             className="flex items-center gap-2 bg-primary/20 hover:bg-primary/30 border border-primary/40 text-primary text-[10px] font-adventure uppercase tracking-widest px-4 py-2 transition-all"
@@ -437,9 +394,9 @@ export default function TeamsTab({ activeEvent }: { activeEvent: Event | null })
             const sorted = [...members].sort(
               (a, b) => (rolePriority[a.role] ?? 9) - (rolePriority[b.role] ?? 9)
             );
-            const kaptain = sorted.find(m => m.role === 'kaptain');
-            const cocaptain = sorted.find(m => m.role === 'cocaptain');
-            const rest = sorted.filter(m => m.role !== 'kaptain' && m.role !== 'cocaptain');
+            const captain = sorted.find(m => m.role === 'captain');
+            const vice_captain = sorted.find(m => m.role === 'vice_captain');
+            const rest = sorted.filter(m => m.role !== 'captain' && m.role !== 'vice_captain');
 
             return (
               <motion.div
@@ -480,21 +437,21 @@ export default function TeamsTab({ activeEvent }: { activeEvent: Event | null })
                     <p className="text-[10px] text-foreground/20 italic text-center py-6">No members yet</p>
                   ) : (
                     <>
-                      {/* Kaptain slot */}
-                      {kaptain ? (
-                        <MemberCard member={kaptain} teamId={team.id} onAssign={handleAssignCaptain} />
+                      {/* Captain slot */}
+                      {captain ? (
+                        <MemberCard member={captain} teamId={team.id} onAssign={handleAssignCaptain} />
                       ) : (
                         <div className="border border-dashed border-primary/15 p-2 text-center">
-                          <p className="text-[9px] text-foreground/20 font-adventure uppercase tracking-wider">No Kaptain</p>
+                          <p className="text-[9px] text-foreground/20 font-adventure uppercase tracking-wider">No Captain</p>
                         </div>
                       )}
 
-                      {/* Cocaptain slot */}
-                      {cocaptain ? (
-                        <MemberCard member={cocaptain} teamId={team.id} onAssign={handleAssignCaptain} />
+                      {/* Vice Captain slot */}
+                      {vice_captain ? (
+                        <MemberCard member={vice_captain} teamId={team.id} onAssign={handleAssignCaptain} />
                       ) : (
                         <div className="border border-dashed border-foreground/10 p-2 text-center">
-                          <p className="text-[9px] text-foreground/20 font-adventure uppercase tracking-wider">No Co-Captain</p>
+                          <p className="text-[9px] text-foreground/20 font-adventure uppercase tracking-wider">No Vice Captain</p>
                         </div>
                       )}
 
@@ -521,7 +478,7 @@ export default function TeamsTab({ activeEvent }: { activeEvent: Event | null })
                     className="w-full text-[9px] font-adventure uppercase tracking-widest text-primary/40 hover:text-primary transition-colors flex items-center justify-center gap-1 py-1"
                   >
                     <FileText className="w-3 h-3" />
-                    Import Members
+                    Enlist Members
                   </button>
                 </div>
               </motion.div>
@@ -533,13 +490,12 @@ export default function TeamsTab({ activeEvent }: { activeEvent: Event | null })
       {/* Create Team Modal */}
       <AdventureModal
         show={showModal}
-        onClose={() => { setShowModal(false); setSelectedEventId(null); }}
+        onClose={() => { setShowModal(false); }}
         title="New Team"
       >
         <div className="space-y-5">
           <ModalField label="Team Name" value={newName} onChange={setNewName} placeholder="e.g. Raiders of the Lost Ark" />
           <ModalField label="Slogan (optional)" value={newSlogan} onChange={setNewSlogan} placeholder="e.g. Fortune and glory, kid!" />
-          <EventSelector events={events} value={selectedEventId} onChange={setSelectedEventId} />
           <ModalSubmit label="Establish Team" onClick={handleCreate} disabled={!newName || saving} loading={saving} />
         </div>
       </AdventureModal>
@@ -547,28 +503,28 @@ export default function TeamsTab({ activeEvent }: { activeEvent: Event | null })
       {/* Edit Team Modal */}
       <AdventureModal
         show={editingTeam !== null}
-        onClose={() => { setEditingTeam(null); setEditName(''); setEditSlogan(''); setEditEventId(null); }}
+        onClose={() => { setEditingTeam(null); setEditName(''); setEditSlogan(''); }}
         title="Edit Team"
       >
         <div className="space-y-5">
           <ModalField label="Team Name" value={editName} onChange={setEditName} placeholder="e.g. Raiders of the Lost Ark" />
           <ModalField label="Slogan (optional)" value={editSlogan} onChange={setEditSlogan} placeholder="e.g. Fortune and glory, kid!" />
-          <EventSelector events={events} value={editEventId} onChange={setEditEventId} />
           <ModalSubmit label="Save Changes" onClick={handleEdit} disabled={!editName || editSaving} loading={editSaving} />
         </div>
       </AdventureModal>
 
       {/* CSV Import Modal */}
       <AdventureModal show={showCSVModal} onClose={() => setShowCSVModal(false)} title="Import Members via CSV">
-        {activeEvent ? (
-          <CSVImporter
-            teamId={selectedTeam?.id || ''}
-            eventId={activeEvent.id}
-            onImportComplete={() => { setShowCSVModal(false); fetchTeams(); }}
-          />
-        ) : (
-          <p className="text-sm text-muted-foreground italic">Please activate an event first before importing members.</p>
-        )}
+        <CSVImporter
+          teamId={selectedTeam?.id || ''}
+          teamName={selectedTeam?.name || ''}
+          onImportComplete={() => {
+            setTimeout(() => {
+              setShowCSVModal(false);
+              fetchTeams();
+            }, 1000);
+          }}
+        />
       </AdventureModal>
     </motion.div>
   );

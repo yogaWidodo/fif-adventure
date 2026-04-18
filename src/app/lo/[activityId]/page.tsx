@@ -11,7 +11,7 @@ import AuthGuard from '@/components/AuthGuard';
 import TeamQueueList from '@/components/lo/TeamQueueList';
 import ScanModal from '@/components/lo/ScanModal';
 
-interface WahanaInfo {
+interface ActivityInfo {
   id: string;
   name: string;
   description: string | null;
@@ -23,18 +23,18 @@ type ToastState = {
   message: string;
 } | null;
 
-export default function LOScoreDashboard({
+export default function ActivityDashboard({
   params,
 }: {
-  params: Promise<{ wahanaId: string }>;
+  params: Promise<{ activityId: string }>;
 }) {
   // Next.js App Router: params is async
-  const { wahanaId } = use(params);
+  const { activityId } = use(params);
   const router = useRouter();
   const { user } = useAuth();
 
-  const [wahana, setWahana] = useState<WahanaInfo | null>(null);
-  const [loadingWahana, setLoadingWahana] = useState(true);
+  const [activity, setActivity] = useState<ActivityInfo | null>(null);
+  const [loadingActivity, setLoadingActivity] = useState(true);
   const [accessDenied, setAccessDenied] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [isScanModalOpen, setIsScanModalOpen] = useState(false);
@@ -52,49 +52,46 @@ export default function LOScoreDashboard({
     if (!user?.id) return;
 
     const fetchAndVerify = async () => {
-      setLoadingWahana(true);
+      setLoadingActivity(true);
 
-      // Step 1: Fetch LO's assigned_location_id — Requirement 9.6
-      const { data: profile, error: profileError } = await supabase
-        .from('users')
-        .select('assigned_location_id')
-        .eq('id', user.id)
-        .single();
+      // Step 1: Fetch LO assignment from lo_assignments — Requirement 4.1
+      const { data: assignment, error: assignmentError } = await supabase
+        .from('lo_assignments')
+        .select('activity_id, activities(id, name, description, max_points)')
+        .eq('lo_id', user.id)
+        .maybeSingle();
 
-      if (profileError || !profile) {
-        // Can't verify — redirect to safety
+      if (assignmentError || !assignment) {
+        // No assignment — redirect back to LO portal
         router.replace('/lo');
         return;
       }
 
-      const assignedLocationId: string | null = profile.assigned_location_id ?? null;
-
       // Step 2: Access check — Requirement 4.3, 9.6
-      if (assignedLocationId !== wahanaId) {
+      if (assignment.activity_id !== activityId) {
         setAccessDenied(true);
-        setLoadingWahana(false);
-        // Redirect to /lo with error message after a brief moment so user sees the message
+        setLoadingActivity(false);
         setTimeout(() => {
           router.replace('/lo');
         }, 2000);
         return;
       }
 
-      // Step 3: Fetch wahana details
-      const { data, error } = await supabase
-        .from('locations')
-        .select('id, name, description, points')
-        .eq('id', wahanaId)
-        .single();
-
-      if (!error && data) {
-        setWahana(data);
+      // Step 3: Set activity details
+      const act = assignment.activities as any;
+      if (act) {
+        setActivity({
+          id: act.id,
+          name: act.name,
+          description: act.description,
+          points: act.max_points
+        });
       }
-      setLoadingWahana(false);
+      setLoadingActivity(false);
     };
 
     fetchAndVerify();
-  }, [user?.id, wahanaId, router]);
+  }, [user?.id, activityId, router]);
 
   // ── Scan modal handlers ──────────────────────────────────────────────────────
 
@@ -190,12 +187,12 @@ export default function LOScoreDashboard({
                 </p>
               </div>
 
-              {loadingWahana ? (
+              {loadingActivity ? (
                 <div className="flex items-center gap-3 opacity-40">
                   <Compass className="w-6 h-6 text-primary animate-spin-slow" />
-                  <span className="font-adventure text-2xl">Loading post...</span>
+                  <span className="font-adventure text-2xl">Loading activity...</span>
                 </div>
-              ) : wahana ? (
+              ) : activity ? (
                 <>
                   <div className="flex items-start gap-4">
                     <div className="bg-primary/10 p-3 rounded-lg border border-primary/20 mt-1">
@@ -203,30 +200,30 @@ export default function LOScoreDashboard({
                     </div>
                     <div>
                       <h1 className="font-adventure text-4xl md:text-5xl gold-engraving mb-2">
-                        {wahana.name}
+                        {activity.name}
                       </h1>
                       <div className="flex items-center gap-4">
-                        {wahana.description && (
+                        {activity.description && (
                           <p className="text-muted-foreground text-sm italic opacity-70">
-                            {wahana.description}
+                            {activity.description}
                           </p>
                         )}
                         <span className="flex items-center gap-1.5 text-[10px] font-adventure uppercase tracking-widest text-primary/60 bg-primary/10 px-3 py-1 border border-primary/20 flex-shrink-0">
                           <Flame className="w-3 h-3" />
-                          {wahana.points} pts max
+                          {activity.points} pts max
                         </span>
                       </div>
                     </div>
                   </div>
                 </>
               ) : (
-                <p className="font-adventure text-2xl text-red-400">Post not found</p>
+                <p className="font-adventure text-2xl text-red-400">Activity not found</p>
               )}
             </motion.div>
           </header>
 
           {/* Main content: Team Queue */}
-          {wahana && (
+          {activity && (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -238,7 +235,7 @@ export default function LOScoreDashboard({
                 </p>
               </div>
               <TeamQueueList
-                wahanaId={wahanaId}
+                activityId={activityId}
                 refreshTrigger={refreshTrigger}
               />
             </motion.div>
@@ -290,12 +287,12 @@ export default function LOScoreDashboard({
         </button>
 
         {/* ScanModal — Requirements 5.3, 6.6, 7.7 */}
-        {wahana && (
+        {activity && (
           <ScanModal
             isOpen={isScanModalOpen}
-            locationId={wahanaId}
-            locationName={wahana.name}
-            locationPoints={wahana.points}
+            activityId={activityId}
+            activityName={activity.name}
+            activityPoints={activity.points}
             onClose={handleScanModalClose}
             onCheckinSuccess={handleCheckinSuccess}
             onScoringSuccess={handleScoringSuccess}

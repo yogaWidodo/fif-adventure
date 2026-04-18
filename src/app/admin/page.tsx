@@ -201,14 +201,20 @@ function EventControlTab({
 }) {
   const [durationMinutes, setDurationMinutes] = useState(status?.durationMinutes || 480);
   const [gachaProb, setGachaProb] = useState('0.3');
+  const [mapUrl, setMapUrl] = useState('');
   const [saving, setSaving] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [error, setError] = useState('');
 
-  // Fetch gacha probability from settings
+  // Fetch from settings
   useEffect(() => {
-    supabase.from('settings').select('*').eq('key', 'gacha_probability').single().then(({ data }) => {
-      if (data) setGachaProb(data.value);
+    supabase.from('settings').select('*').in('key', ['gacha_probability', 'map_image_url']).then(({ data }) => {
+      if (data) {
+        const g = data.find(d => d.key === 'gacha_probability')?.value;
+        const m = data.find(d => d.key === 'map_image_url')?.value;
+        if (g) setGachaProb(g);
+        if (m) setMapUrl(m);
+      }
     });
   }, []);
 
@@ -219,6 +225,7 @@ function EventControlTab({
       const updates = [
         { key: 'event_duration_minutes', value: String(durationMinutes) },
         { key: 'gacha_probability', value: gachaProb },
+        { key: 'map_image_url', value: mapUrl },
       ];
       for (const item of updates) {
         await supabase.from('settings').upsert(item);
@@ -226,6 +233,33 @@ function EventControlTab({
       onUpdate();
     } catch {
       setError('Gagal menyimpan settings');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setSaving(true);
+      setError('');
+      
+      const fileName = `map_${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+      const { error: uploadError } = await supabase.storage
+        .from('maps')
+        .upload(fileName, file, { cacheControl: '3600', upsert: false });
+
+      if (uploadError) throw uploadError;
+
+      const { data: publicUrlData } = supabase.storage
+        .from('maps')
+        .getPublicUrl(fileName);
+
+      setMapUrl(publicUrlData.publicUrl);
+    } catch (err: any) {
+      setError(err.message || 'Gagal mengupload peta');
     } finally {
       setSaving(false);
     }
@@ -339,6 +373,18 @@ function EventControlTab({
               <div>
                 <label className="block text-[10px] uppercase text-foreground/40 font-adventure mb-2">Treasure Hunt Probability (0.0 - 1.0)</label>
                 <input type="text" value={gachaProb} onChange={e => setGachaProb(e.target.value)} className="w-full bg-transparent border-b border-primary/20 py-2 font-mono text-xl focus:outline-none focus:border-primary" />
+              </div>
+              <div>
+                <label className="block text-[10px] uppercase text-foreground/40 font-adventure mb-2">Expedition Map URL</label>
+                <div className="flex gap-4">
+                  <input type="text" value={mapUrl} onChange={e => setMapUrl(e.target.value)} placeholder="/images/MAP TSC.png" className="flex-1 bg-transparent border-b border-primary/20 py-2 font-mono text-lg focus:outline-none focus:border-primary" />
+                  <div className="relative">
+                    <input type="file" accept="image/*" onChange={handleFileUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" disabled={saving} />
+                    <button type="button" disabled={saving} className="bg-primary/20 px-4 py-2 font-adventure text-primary border border-primary/40 hover:bg-primary/30 uppercase text-[10px] tracking-widest h-full flex items-center justify-center min-w-[80px]">
+                      Upload
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
             {error && <p className="text-red-400 text-xs mt-4">{error}</p>}

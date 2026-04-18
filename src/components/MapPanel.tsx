@@ -38,7 +38,8 @@ export default function MapPanel({
       });
   }, []);
 
-  const imgSrc = mapUrl ?? '/images/MAP%20TSC.png'; // fallback to local asset
+  // fallback to local asset, use || so empty string falls back too. Next.js handles spaces in unencoded format.
+  const imgSrc = mapUrl || '/images/MAP TSC.png'; 
 
   return (
     <>

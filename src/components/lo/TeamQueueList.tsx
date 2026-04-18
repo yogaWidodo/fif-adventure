@@ -43,11 +43,11 @@ export default function TeamQueueList({
       .select(`
         id,
         team_id,
-        created_at,
+        checked_in_at,
         teams ( name )
       `)
       .eq('activity_id', activityId)
-      .order('created_at', { ascending: true });
+      .order('checked_in_at', { ascending: true });
 
     if (registrationsError || !registrations) {
       setLoading(false);
@@ -67,7 +67,7 @@ export default function TeamQueueList({
       team_id: reg.team_id,
       // @ts-expect-error — Supabase join returns nested object
       team_name: reg.teams?.name ?? 'Unknown Team',
-      created_at: reg.created_at,
+      created_at: reg.checked_in_at,
       has_score: scoredTeamIds.has(reg.team_id),
     }));
 

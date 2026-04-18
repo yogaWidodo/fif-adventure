@@ -48,7 +48,7 @@ interface ScanModalProps {
   activityPoints: number;
   onClose: () => void;
   onCheckinSuccess: (teamName: string) => void;
-  onScoringSuccess: (teamName: string, score: number) => void;
+  onScoringSuccess: (teamName: string, score: number, gachaWon?: boolean) => void;
 }
 
 type Phase =
@@ -248,8 +248,10 @@ export default function ScanModal({
       });
 
       if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        const gachaWon = data.gacha_result?.won ?? false;
         setPhase('success');
-        setTimeout(() => onScoringSuccess(team.name, activityPoints), 800);
+        setTimeout(() => onScoringSuccess(team.name, activityPoints, gachaWon), 800);
       } else {
         const data = await res.json().catch(() => ({}));
         setErrorMsg(

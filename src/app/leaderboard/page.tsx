@@ -31,7 +31,15 @@ export default function LeaderboardPage() {
     try {
       const res = await fetch('/api/leaderboard');
       if (!res.ok) return;
-      const data: TeamScore[] = await res.json();
+      const json = await res.json();
+      
+      let data: TeamScore[] = [];
+      if (Array.isArray(json)) {
+        data = json;
+      } else if (json && Array.isArray(json.leaderboard)) {
+        data = json.leaderboard;
+      }
+      
       setTeams(data);
       setLoading(false);
     } catch {

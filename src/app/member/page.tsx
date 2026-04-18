@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import {
   Users, Trophy, MapPin, CheckCircle2, Circle,
-  Compass, Flame, LogOut, Map, Crown, Shield, Gem, ScrollText, Lock,
+  Compass, Flame, LogOut, Crown, Shield, Gem, ScrollText, Lock, ChevronDown,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import AuthGuard from '@/components/AuthGuard';
@@ -39,7 +39,7 @@ interface HintWithTreasure {
     name: string;
     hint_text: string;
     points: number;
-  }[] | null;
+  } | null;
 }
 
 interface TreasureHuntClaim {
@@ -71,6 +71,7 @@ export default function MemberPortal() {
   const [claims, setClaims] = useState<TreasureHuntClaim[]>([]);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({ crew: false, tasks: true, hints: true, leaderboard: false });
 
   useEffect(() => {
     if (!user?.team_id) {
@@ -102,7 +103,7 @@ export default function MemberPortal() {
     setMembers((membersRes.data ?? []) as TeamMember[]);
     setActivities(actRes.data ?? []);
     setRegistrations(regRes.data ?? []);
-    setHints((hintsRes.data ?? []) as HintWithTreasure[]);
+    setHints((hintsRes.data ?? []) as unknown as HintWithTreasure[]);
     setClaims((claimRes.data ?? []) as TreasureHuntClaim[]);
     setLeaderboard(Array.isArray(lbRes) ? lbRes : []);
     setLoading(false);
@@ -113,7 +114,7 @@ export default function MemberPortal() {
   const completedCount = activities.filter(a => isActivityDone(a.id)).length;
   const progress = activities.length > 0 ? (completedCount / activities.length) * 100 : 0;
   const claimedHintsCount = hints.filter(h => {
-    const th = h.treasure_hunts?.[0];
+    const th = h.treasure_hunts;
     return th && claims.some(c => c.treasure_hunt_id === th.id);
   }).length;
   const myRank = leaderboard.find(t => t.id === user?.team_id)?.rank ?? null;
@@ -216,92 +217,105 @@ export default function MemberPortal() {
                 </div>
               </motion.div>
 
-              {/* ── Team Members ── */}
+              {/* ── Team Members (collapsible) ── */}
               <motion.div
                 initial={{ opacity: 0, y: 16 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.2 }}
                 className="adventure-card overflow-hidden"
               >
-                <div className="flex items-center gap-3 px-5 py-4 border-b border-primary/10">
+                <button
+                  onClick={() => setExpanded(p => ({ ...p, crew: !p.crew }))}
+                  className="flex items-center gap-3 px-5 py-4 border-b border-primary/10 w-full text-left"
+                >
                   <Users className="w-4 h-4 text-primary" />
                   <span className="font-adventure text-sm tracking-widest text-primary uppercase">Expedition Crew</span>
                   <span className="ml-auto text-[10px] font-adventure opacity-40">{members.length} members</span>
-                </div>
-                <div className="divide-y divide-primary/5">
-                  {members.map((m, i) => {
-                    const { label, icon } = roleLabel(m.role);
-                    return (
-                      <motion.div
-                        key={m.id}
-                        initial={{ opacity: 0, x: -10 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: 0.2 + i * 0.04 }}
-                        className="flex items-center gap-3 px-5 py-3"
-                      >
-                        <div className="w-7 h-7 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center flex-shrink-0">
-                          <span className="font-adventure text-[10px] text-primary">{m.name.charAt(0)}</span>
-                        </div>
-                        <span className="font-content text-sm text-foreground/80 flex-1">{m.name}</span>
-                        <div className="flex items-center gap-1">
-                          {icon}
-                          <span className="text-[10px] font-adventure uppercase tracking-widest opacity-40">{label}</span>
-                        </div>
-                      </motion.div>
-                    );
-                  })}
-                </div>
+                  <ChevronDown className={`w-4 h-4 text-primary/50 transition-transform ${expanded.crew ? 'rotate-180' : ''}`} />
+                </button>
+                {expanded.crew && (
+                  <div className="divide-y divide-primary/5">
+                    {members.map((m, i) => {
+                      const { label, icon } = roleLabel(m.role);
+                      return (
+                        <motion.div
+                          key={m.id}
+                          initial={{ opacity: 0, x: -10 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ delay: 0.02 * i }}
+                          className="flex items-center gap-3 px-5 py-3"
+                        >
+                          <div className="w-7 h-7 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center flex-shrink-0">
+                            <span className="font-adventure text-[10px] text-primary">{m.name.charAt(0)}</span>
+                          </div>
+                          <span className="font-content text-sm text-foreground/80 flex-1">{m.name}</span>
+                          <div className="flex items-center gap-1">
+                            {icon}
+                            <span className="text-[10px] font-adventure uppercase tracking-widest opacity-40">{label}</span>
+                          </div>
+                        </motion.div>
+                      );
+                    })}
+                  </div>
+                )}
               </motion.div>
 
-              {/* ── Activity Progress ── */}
+              {/* ── Activity Progress (collapsible) ── */}
               <motion.div
                 initial={{ opacity: 0, y: 16 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.3 }}
                 className="adventure-card overflow-hidden"
               >
-                <div className="flex items-center gap-3 px-5 py-4 border-b border-primary/10">
+                <button
+                  onClick={() => setExpanded(p => ({ ...p, tasks: !p.tasks }))}
+                  className="flex items-center gap-3 px-5 py-4 border-b border-primary/10 w-full text-left"
+                >
                   <MapPin className="w-4 h-4 text-primary" />
                   <span className="font-adventure text-sm tracking-widest text-primary uppercase">Expedition Tasks</span>
-                </div>
-                <div className="p-4 grid gap-3">
-                  {activities.length === 0 ? (
-                    <p className="text-center text-xs italic opacity-30 py-6">No activities found.</p>
-                  ) : (
-                    activities.map((act, i) => {
-                      const done = isActivityDone(act.id);
-                      return (
-                        <motion.div
-                          key={act.id}
-                          initial={{ opacity: 0, x: -8 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          transition={{ delay: 0.3 + i * 0.04 }}
-                          className={`flex items-center gap-4 p-4 border-l-4 transition-all ${
-                            done
-                              ? 'border-l-primary bg-primary/5'
-                              : 'border-l-white/5 opacity-50'
-                          }`}
-                        >
-                          {done
-                            ? <CheckCircle2 className="w-5 h-5 text-primary flex-shrink-0" />
-                            : <Circle className="w-5 h-5 text-foreground/20 flex-shrink-0" />
-                          }
-                          <div className="flex-1 min-w-0">
-                            <p className="font-adventure text-sm tracking-tight truncate">{act.name}</p>
-                            <p className="text-[10px] uppercase font-adventure opacity-40 tracking-widest">
-                              {act.type} · {act.max_points} pts
-                            </p>
-                          </div>
-                          {done && (
-                            <span className="text-[9px] font-adventure uppercase tracking-widest text-primary opacity-60 flex-shrink-0">
-                              Completed
-                            </span>
-                          )}
-                        </motion.div>
-                      );
-                    })
-                  )}
-                </div>
+                  <span className="ml-auto text-[10px] font-adventure opacity-40">{completedCount}/{activities.length}</span>
+                  <ChevronDown className={`w-4 h-4 text-primary/50 transition-transform ${expanded.tasks ? 'rotate-180' : ''}`} />
+                </button>
+                {expanded.tasks && (
+                  <div className="p-4 grid gap-3">
+                    {activities.length === 0 ? (
+                      <p className="text-center text-xs italic opacity-30 py-6">No activities found.</p>
+                    ) : (
+                      activities.map((act, i) => {
+                        const done = isActivityDone(act.id);
+                        return (
+                          <motion.div
+                            key={act.id}
+                            initial={{ opacity: 0, x: -8 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: 0.02 * i }}
+                            className={`flex items-center gap-4 p-4 border-l-4 transition-all ${
+                              done
+                                ? 'border-l-primary bg-primary/5'
+                                : 'border-l-white/5 opacity-50'
+                            }`}
+                          >
+                            {done
+                              ? <CheckCircle2 className="w-5 h-5 text-primary flex-shrink-0" />
+                              : <Circle className="w-5 h-5 text-foreground/20 flex-shrink-0" />
+                            }
+                            <div className="flex-1 min-w-0">
+                              <p className="font-adventure text-sm tracking-tight truncate">{act.name}</p>
+                              <p className="text-[10px] uppercase font-adventure opacity-40 tracking-widest">
+                                {act.type} · {act.max_points} pts
+                              </p>
+                            </div>
+                            {done && (
+                              <span className="text-[9px] font-adventure uppercase tracking-widest text-primary opacity-60 flex-shrink-0">
+                                Completed
+                              </span>
+                            )}
+                          </motion.div>
+                        );
+                      })
+                    )}
+                  </div>
+                )}
               </motion.div>
 
               {/* ── Expedition Map ── */}
@@ -313,144 +327,150 @@ export default function MemberPortal() {
                 <MapPanel title="Expedition Map" subtitle="TSC Adventure Grounds" collapsible />
               </motion.div>
 
-              {/* ── Treasure Hunt Hints ── */}
+              {/* ── Treasure Hunt Hints (collapsible) ── */}
               <motion.div
                 initial={{ opacity: 0, y: 16 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.45 }}
                 className="adventure-card overflow-hidden"
               >
-                <div className="flex items-center gap-3 px-5 py-4 border-b border-primary/10">
+                <button
+                  onClick={() => setExpanded(p => ({ ...p, hints: !p.hints }))}
+                  className="flex items-center gap-3 px-5 py-4 border-b border-primary/10 w-full text-left"
+                >
                   <Gem className="w-4 h-4 text-primary" />
                   <span className="font-adventure text-sm tracking-widest text-primary uppercase">Treasure Hunt Hints</span>
                   <span className="ml-auto text-[10px] font-adventure opacity-40">
                     {claimedHintsCount}/{hints.length} claimed
                   </span>
-                </div>
-                <div className="p-4 grid gap-3">
-                  {hints.length === 0 ? (
-                    <div className="py-8 text-center">
-                      <Lock className="w-6 h-6 text-foreground/20 mx-auto mb-2" />
-                      <p className="text-xs italic opacity-30">Belum ada hint. Selesaikan wahana untuk memutar gacha!</p>
-                    </div>
-                  ) : (
-                    hints.map((hint, i) => {
-                      const th = hint.treasure_hunts?.[0];
-                      if (!th) return null;
-                      const claimed = claims.some(c => c.treasure_hunt_id === th.id);
-                      return (
-                        <motion.div
-                          key={hint.id}
-                          initial={{ opacity: 0, x: -8 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          transition={{ delay: 0.45 + i * 0.04 }}
-                          className={`p-4 border-l-4 transition-all ${
-                            claimed
-                              ? 'border-l-green-500 bg-green-500/5'
-                              : 'border-l-primary bg-primary/5'
-                          }`}
-                        >
-                          <div className="flex items-start gap-3">
-                            {claimed
-                              ? <CheckCircle2 className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
-                              : <ScrollText className="w-5 h-5 text-primary flex-shrink-0 mt-0.5" />
-                            }
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 mb-1">
-                                <p className="font-adventure text-sm tracking-tight truncate">{th.name}</p>
-                                <span className={`text-[8px] font-mono px-1.5 py-0.5 uppercase flex-shrink-0 ${
-                                  claimed ? 'bg-green-500/20 text-green-400' : 'bg-primary/20 text-primary'
-                                }`}>
-                                  {claimed ? 'CLAIMED' : 'ACTIVE'}
-                                </span>
-                              </div>
-                              {/* Show the hint clue */}
-                              <div className="bg-white/5 border border-primary/10 p-2.5 rounded-sm mb-1.5">
-                                <p className="text-xs text-foreground/60 italic leading-relaxed">
-                                  💡 {th.hint_text}
+                  <ChevronDown className={`w-4 h-4 text-primary/50 transition-transform ${expanded.hints ? 'rotate-180' : ''}`} />
+                </button>
+                {expanded.hints && (
+                  <div className="p-4 grid gap-3">
+                    {hints.length === 0 ? (
+                      <div className="py-8 text-center">
+                        <Lock className="w-6 h-6 text-foreground/20 mx-auto mb-2" />
+                        <p className="text-xs italic opacity-30">Belum ada hint. Selesaikan wahana untuk memutar gacha!</p>
+                      </div>
+                    ) : (
+                      hints.map((hint, i) => {
+                        const th = hint.treasure_hunts;
+                        if (!th) return null;
+                        const claimed = claims.some(c => c.treasure_hunt_id === th.id);
+                        return (
+                          <motion.div
+                            key={hint.id}
+                            initial={{ opacity: 0, x: -8 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: 0.02 * i }}
+                            className={`p-4 border-l-4 transition-all ${
+                              claimed
+                                ? 'border-l-green-500 bg-green-500/5'
+                                : 'border-l-primary bg-primary/5'
+                            }`}
+                          >
+                            <div className="flex items-start gap-3">
+                              {claimed
+                                ? <CheckCircle2 className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
+                                : <ScrollText className="w-5 h-5 text-primary flex-shrink-0 mt-0.5" />
+                              }
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <p className="font-adventure text-sm tracking-tight truncate">{th.name}</p>
+                                  <span className={`text-[8px] font-mono px-1.5 py-0.5 uppercase flex-shrink-0 ${
+                                    claimed ? 'bg-green-500/20 text-green-400' : 'bg-primary/20 text-primary'
+                                  }`}>
+                                    {claimed ? 'CLAIMED' : 'ACTIVE'}
+                                  </span>
+                                </div>
+                                <div className="bg-white/5 border border-primary/10 p-2.5 rounded-sm mb-1.5">
+                                  <p className="text-xs text-foreground/60 italic leading-relaxed">
+                                    💡 {th.hint_text}
+                                  </p>
+                                </div>
+                                <p className="text-[10px] uppercase font-adventure opacity-40 tracking-widest">
+                                  {th.points} pts · diterima {new Date(hint.received_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
                                 </p>
                               </div>
-                              <p className="text-[10px] uppercase font-adventure opacity-40 tracking-widest">
-                                {th.points} pts · diterima {new Date(hint.received_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
-                              </p>
                             </div>
-                          </div>
-                          {claimed && (
-                            <div className="flex items-center gap-2 mt-2 pt-2 border-t border-green-500/10 ml-8">
-                              <Gem className="w-3 h-3 text-green-500" />
-                              <span className="text-[9px] font-adventure uppercase tracking-widest text-green-400">Treasure Secured · +{th.points} pts</span>
-                            </div>
-                          )}
-                        </motion.div>
-                      );
-                    })
-                  )}
-                </div>
+                            {claimed && (
+                              <div className="flex items-center gap-2 mt-2 pt-2 border-t border-green-500/10 ml-8">
+                                <Gem className="w-3 h-3 text-green-500" />
+                                <span className="text-[9px] font-adventure uppercase tracking-widest text-green-400">Treasure Secured · +{th.points} pts</span>
+                              </div>
+                            )}
+                          </motion.div>
+                        );
+                      })
+                    )}
+                  </div>
+                )}
               </motion.div>
 
-              {/* ── Leaderboard (top 5) ── */}
+              {/* ── Leaderboard (collapsible, top 5) ── */}
               <motion.div
                 initial={{ opacity: 0, y: 16 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.5 }}
                 className="adventure-card overflow-hidden"
               >
-                <div className="flex items-center gap-3 px-5 py-4 border-b border-primary/10">
+                <button
+                  onClick={() => setExpanded(p => ({ ...p, leaderboard: !p.leaderboard }))}
+                  className="flex items-center gap-3 px-5 py-4 border-b border-primary/10 w-full text-left"
+                >
                   <Trophy className="w-4 h-4 text-primary" />
-                  <span className="font-adventure text-sm tracking-widest text-primary uppercase">Top Expeditions</span>
-                  <Link href="/leaderboard" className="ml-auto text-[10px] font-adventure uppercase tracking-widest text-primary/50 hover:text-primary transition-colors">
-                    View All →
-                  </Link>
-                </div>
-                <div className="divide-y divide-primary/5">
-                  {leaderboard.slice(0, 5).map((t, i) => {
-                    const isMyTeam = t.id === user?.team_id;
-                    return (
-                      <div
-                        key={t.id}
-                        className={`flex items-center gap-4 px-5 py-3 ${isMyTeam ? 'bg-primary/10' : ''}`}
-                      >
-                        <span className={`font-adventure w-6 text-center ${i === 0 ? 'gold-engraving text-lg' : 'opacity-40 text-sm'}`}>
-                          #{t.rank}
-                        </span>
-                        <span className={`font-adventure text-sm flex-1 truncate ${isMyTeam ? 'text-primary' : 'opacity-70'}`}>
-                          {t.name} {isMyTeam && '← You'}
-                        </span>
-                        <span className="font-adventure text-sm text-primary">{t.total_points}</span>
-                      </div>
-                    );
-                  })}
-                  {/* Show my team if outside top 5 */}
-                  {myRank && myRank > 5 && (
-                    <>
-                      <div className="px-5 py-1 text-center text-[10px] opacity-20 font-adventure">· · ·</div>
-                      {leaderboard.filter(t => t.id === user?.team_id).map(t => (
-                        <div key={t.id} className="flex items-center gap-4 px-5 py-3 bg-primary/10">
-                          <span className="font-adventure w-6 text-center opacity-60 text-sm">#{t.rank}</span>
-                          <span className="font-adventure text-sm flex-1 text-primary truncate">{t.name} ← You</span>
+                  <span className="font-adventure text-sm tracking-widest text-primary uppercase">Leaderboard</span>
+                  {myRank && <span className="ml-auto text-[10px] font-adventure opacity-40">Rank #{myRank}</span>}
+                  <ChevronDown className={`w-4 h-4 text-primary/50 transition-transform ${expanded.leaderboard ? 'rotate-180' : ''}`} />
+                </button>
+                {expanded.leaderboard && (
+                  <div className="divide-y divide-primary/5">
+                    {leaderboard.slice(0, 5).map((t, i) => {
+                      const isMyTeam = t.id === user?.team_id;
+                      return (
+                        <div
+                          key={t.id}
+                          className={`flex items-center gap-4 px-5 py-3 ${isMyTeam ? 'bg-primary/10' : ''}`}
+                        >
+                          <span className={`font-adventure w-6 text-center ${i === 0 ? 'gold-engraving text-lg' : 'opacity-40 text-sm'}`}>
+                            #{t.rank}
+                          </span>
+                          <span className={`font-adventure text-sm flex-1 truncate ${isMyTeam ? 'text-primary' : 'opacity-70'}`}>
+                            {t.name} {isMyTeam && '← You'}
+                          </span>
                           <span className="font-adventure text-sm text-primary">{t.total_points}</span>
                         </div>
-                      ))}
-                    </>
-                  )}
-                </div>
+                      );
+                    })}
+                    {myRank && myRank > 5 && (
+                      <>
+                        <div className="px-5 py-1 text-center text-[10px] opacity-20 font-adventure">· · ·</div>
+                        {leaderboard.filter(t => t.id === user?.team_id).map(t => (
+                          <div key={t.id} className="flex items-center gap-4 px-5 py-3 bg-primary/10">
+                            <span className="font-adventure w-6 text-center opacity-60 text-sm">#{t.rank}</span>
+                            <span className="font-adventure text-sm flex-1 text-primary truncate">{t.name} ← You</span>
+                            <span className="font-adventure text-sm text-primary">{t.total_points}</span>
+                          </div>
+                        ))}
+                      </>
+                    )}
+                    <Link href="/leaderboard" className="block px-5 py-3 text-center text-[10px] font-adventure uppercase tracking-widest text-primary/50 hover:text-primary transition-colors">
+                      View Full Leaderboard →
+                    </Link>
+                  </div>
+                )}
               </motion.div>
             </>
           )}
         </div>
 
         {/* Footer nav */}
-        <nav className="fixed bottom-6 left-4 right-4 z-30 flex justify-center gap-4">
-          <Link href="/leaderboard">
-            <button className="adventure-card px-6 py-3 bg-card/60 backdrop-blur-xl border-primary/20 font-adventure text-xs tracking-widest uppercase hover:text-primary transition-colors flex items-center gap-2">
-              <Map className="w-4 h-4" /> Leaderboard
-            </button>
-          </Link>
+        <nav className="fixed bottom-6 left-4 right-4 z-30 flex justify-center">
           <button
             onClick={logout}
-            className="adventure-card px-6 py-3 bg-card/60 backdrop-blur-xl border-red-500/20 font-adventure text-xs tracking-widest uppercase text-red-400/60 hover:text-red-400 transition-colors flex items-center gap-2"
+            className="adventure-card px-8 py-3 bg-card/60 backdrop-blur-xl border-red-500/20 font-adventure text-xs tracking-widest uppercase text-red-400/60 hover:text-red-400 transition-colors flex items-center gap-2"
           >
-            <LogOut className="w-4 h-4" /> Leave
+            <LogOut className="w-4 h-4" /> Leave Expedition
           </button>
         </nav>
       </div>

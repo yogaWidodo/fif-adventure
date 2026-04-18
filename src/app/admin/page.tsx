@@ -121,9 +121,6 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     fetchSettings();
-    // Poll settings every 10s or use real-time
-    const interval = setInterval(fetchSettings, 30000);
-    return () => clearInterval(interval);
   }, [fetchSettings]);
 
   return (
@@ -723,7 +720,7 @@ function TreasureTab() {
                 {expandedQR === th.id && (
                   <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden mt-4 flex flex-col items-center">
                     <div className="bg-white p-3 rounded-xl mb-2">
-                       <QRCodeDisplay barcodeData={th.id} label={th.name} size={150} />
+                       <QRCodeDisplay barcodeData={`fif-treasure-${th.id}`} label={th.name} size={150} />
                     </div>
                   </motion.div>
                 )}
@@ -782,7 +779,7 @@ function AnalyticsTab() {
         supabase.from('score_logs').select('*', { count: 'exact', head: true }),
         supabase.from('teams').select('name, total_points').order('total_points', { ascending: false }).limit(10),
         supabase.from('activities').select('id, name'),
-        supabase.from('activity_registrations').select('activity_id, created_at'),
+        supabase.from('activity_registrations').select('activity_id, checked_in_at'),
         supabase.from('score_logs').select('activity_id'),
       ]);
 
@@ -815,8 +812,8 @@ function AnalyticsTab() {
       if (activityRegsData && activityRegsData.length > 0) {
         const hourMap: Record<string, number> = {};
         activityRegsData.forEach(s => {
-          if (s.created_at) {
-            const hour = new Date(s.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', hour12: false }).slice(0, 5);
+          if (s.checked_in_at) {
+            const hour = new Date(s.checked_in_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', hour12: false }).slice(0, 5);
             hourMap[hour] = (hourMap[hour] || 0) + 1;
           }
         });
@@ -951,7 +948,7 @@ function AuditTab() {
         id, team_id, activity_id, points_awarded, lo_id, created_at,
         teams(name),
         activities(name),
-        users(name)
+        users!score_logs_lo_id_fkey(name)
       `)
       .order('created_at', { ascending: false })
       .limit(200);

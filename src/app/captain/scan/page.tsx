@@ -48,10 +48,20 @@ export default function CaptainScanner() {
       const barcodeType = result.startsWith('fif-treasure-') ? 'treasure' : 'other';
 
       if (barcodeType === 'treasure') {
+        // Extract the treasure_hunt_id from the barcode format: fif-treasure-{UUID}
+        const treasureHuntId = result.replace('fif-treasure-', '');
+
+        // Get auth token for the API
+        const { data: { session } } = await (await import('@/lib/supabase')).supabase.auth.getSession();
+        const token = session?.access_token;
+
         const response = await fetch('/api/treasure/claim', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ barcode_data: result, team_id: teamId }),
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({ treasure_hunt_id: treasureHuntId }),
         });
 
         const data = await response.json();

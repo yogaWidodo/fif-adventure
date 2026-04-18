@@ -87,7 +87,7 @@ export default function MemberPortal() {
       supabase.from('teams').select('id, name, slogan, total_points').eq('id', teamId).maybeSingle(),
       supabase.from('users').select('id, name, role').eq('team_id', teamId).order('role'),
       supabase.from('activities').select('id, name, type, max_points').order('name'),
-      supabase.from('activity_registrations').select('activity_id, created_at').eq('team_id', teamId),
+      supabase.from('activity_registrations').select('activity_id, checked_in_at').eq('team_id', teamId),
       // Only fetch hints this team received from gacha
       supabase
         .from('treasure_hunt_hints')

@@ -168,11 +168,20 @@ export default function ScanModal({
       return;
     }
 
+    const { extractTeamIdFromBarcode } = await import('@/lib/auth');
+    const extractedTeamId = extractTeamIdFromBarcode(rawValue);
+    if (!extractedTeamId) {
+      setErrorMsg('Gagal mengekstrak ID tim dari QR.');
+      setPhase('error');
+      processingRef.current = false;
+      return;
+    }
+
     // Look up team
     const { data: teamRecord } = await supabase
       .from('teams')
       .select('id, name')
-      .eq('barcode_data', rawValue)
+      .eq('id', extractedTeamId)
       .maybeSingle();
 
     if (!teamRecord) {

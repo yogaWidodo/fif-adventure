@@ -7,11 +7,11 @@ import LoginForm from './LoginForm';
 
 export default function LoginPage() {
   return (
-    <div className="relative min-h-screen flex flex-col items-center justify-center p-6 bg-black overflow-hidden font-content">
+    <div className="relative min-h-screen flex flex-col items-center justify-center p-6 bg-[#0a0a0b] overflow-hidden font-content">
       {/* Background */}
       <div
-        className="fixed inset-0 z-0 bg-cover bg-center opacity-30"
-        style={{ backgroundImage: 'url("/images/expedition_map_bg.png")', filter: 'brightness(0.2)' }}
+        className="fixed inset-0 z-0 bg-cover bg-center opacity-45"
+        style={{ backgroundImage: 'url("/images/expedition_map_bg.png")', filter: 'brightness(0.5) contrast(1.1)' }}
       />
 
       <main className="relative z-20 w-full max-w-md">

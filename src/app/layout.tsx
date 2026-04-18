@@ -6,6 +6,7 @@ import { TimerProvider } from "@/context/TimerContext";
 import ExpeditionTimer from "@/components/ExpeditionTimer";
 import PauseModal from "@/components/PauseModal";
 import FinishedModal from "@/components/FinishedModal";
+import SoundManager from "@/components/SoundManager";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -31,6 +32,7 @@ export default function RootLayout({
             <ExpeditionTimer />
             <PauseModal />
             <FinishedModal />
+            <SoundManager />
             {children}
           </TimerProvider>
         </AuthProvider>

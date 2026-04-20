@@ -24,7 +24,7 @@ import {
   Compass, Flame, Sword, Gem, ScrollText,
   ChevronDown, ChevronUp, Loader2, AlertTriangle,
   CheckCircle, Edit2, Save, UserCheck, FileText,
-  Clock, Filter, Play, Pause, RotateCcw, Square, UserCog
+  Clock, Filter, Play, Pause, RotateCcw, Square, UserCog, Trash2
 } from 'lucide-react';
 import {
   validateDuration,
@@ -61,6 +61,8 @@ interface Activity {
   id: string;
   name: string;
   description?: string;
+  how_to_play?: string;
+  barcode_data?: string;
   type: 'wahana' | 'challenge_regular' | 'challenge_popup' | 'challenge_additional';
   max_points: number;
   created_at: string;
@@ -508,8 +510,11 @@ function WahanaTab() {
   const [showModal, setShowModal] = useState(false);
   const [newName, setNewName] = useState('');
   const [newDesc, setNewDesc] = useState('');
+  const [newHowTo, setNewHowTo] = useState('');
+  const [newBarcode, setNewBarcode] = useState('');
   const [newPoints, setNewPoints] = useState('');
   const [saving, setSaving] = useState(false);
+  const [editingActivity, setEditingActivity] = useState<Activity | null>(null);
   const [expandedQR, setExpandedQR] = useState<string | null>(null);
 
   const fetchWahana = useCallback(async () => {
@@ -525,25 +530,67 @@ function WahanaTab() {
 
   useEffect(() => { fetchWahana(); }, [fetchWahana]);
 
-  const handleCreate = async () => {
+  const handleOpenModal = (act?: Activity) => {
+    if (act) {
+      setEditingActivity(act);
+      setNewName(act.name);
+      setNewDesc(act.description || '');
+      setNewHowTo(act.how_to_play || '');
+      setNewBarcode(act.barcode_data || '');
+      setNewPoints(act.max_points.toString());
+    } else {
+      setEditingActivity(null);
+      setNewName('');
+      setNewDesc('');
+      setNewHowTo('');
+      setNewBarcode('');
+      setNewPoints('');
+    }
+    setShowModal(true);
+  };
+
+  const handleSave = async () => {
     if (!newName || !newPoints) return;
     setSaving(true);
-    const { error } = await supabase.from('activities').insert({
+    
+    const payload = {
       name: newName,
       description: newDesc || null,
+      how_to_play: newHowTo || null,
+      barcode_data: newBarcode || null,
       max_points: parseInt(newPoints, 10),
-      type: 'wahana',
-    });
+      type: 'wahana' as const,
+    };
+
+    let error;
+    if (editingActivity) {
+      const { error: err } = await supabase
+        .from('activities')
+        .update(payload)
+        .eq('id', editingActivity.id);
+      error = err;
+    } else {
+      const { error: err } = await supabase
+        .from('activities')
+        .insert(payload);
+      error = err;
+    }
+
     if (!error) {
       setShowModal(false);
-      setNewName(''); setNewDesc(''); setNewPoints('');
       fetchWahana();
     }
     setSaving(false);
   };
 
+  const handleDelete = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this wahana? This action cannot be undone.')) return;
+    const { error } = await supabase.from('activities').delete().eq('id', id);
+    if (!error) fetchWahana();
+  };
+
   return (
-    <TabLayout title="Wahana" subtitle="Atraksi utama ekspedisi" onAdd={() => setShowModal(true)}>
+    <TabLayout title="Wahana" subtitle="Atraksi utama ekspedisi" onAdd={() => handleOpenModal()}>
       {loading ? <LoadingState /> : activities.length === 0 ? <EmptyState tab="wahana" /> : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {activities.map((act, idx) => (
@@ -558,7 +605,21 @@ function WahanaTab() {
                 <div className="p-2 rounded-lg border bg-primary/20 border-primary/40">
                   <MapIcon className="w-5 h-5 text-primary" />
                 </div>
-                <span className="text-[10px] font-adventure text-primary bg-primary/10 px-2 py-0.5">{act.max_points} MAX PTS</span>
+                <div className="flex items-center gap-2">
+                   <button 
+                    onClick={() => handleOpenModal(act)}
+                    className="p-1.5 hover:bg-primary/10 text-primary/60 hover:text-primary transition-colors rounded-md"
+                  >
+                    <Edit2 className="w-4 h-4" />
+                  </button>
+                  <button 
+                    onClick={() => handleDelete(act.id)}
+                    className="p-1.5 hover:bg-red-500/10 text-red-400/60 hover:text-red-400 transition-colors rounded-md"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                  <span className="text-[10px] font-adventure text-primary bg-primary/10 px-2 py-0.5">{act.max_points} MAX PTS</span>
+                </div>
               </div>
               <h3 className="font-adventure text-lg text-foreground mb-1 group-hover:text-primary transition-colors">{act.name}</h3>
               <p className="text-xs text-muted-foreground/60 mb-4 line-clamp-2">{act.description}</p>
@@ -572,7 +633,7 @@ function WahanaTab() {
                 {expandedQR === act.id && (
                   <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden mt-4 flex flex-col items-center">
                     <div className="bg-white p-3 rounded-xl mb-2">
-                       <QRCodeDisplay barcodeData={act.id} label={act.name} size={150} />
+                       <QRCodeDisplay barcodeData={act.barcode_data || act.id} label={act.name} size={150} />
                     </div>
                   </motion.div>
                 )}
@@ -582,12 +643,14 @@ function WahanaTab() {
         </div>
       )}
 
-      <AdventureModal show={showModal} onClose={() => setShowModal(false)} title="New Wahana">
+      <AdventureModal show={showModal} onClose={() => setShowModal(false)} title={editingActivity ? 'Edit Wahana' : 'New Wahana'}>
         <div className="space-y-5">
           <ModalField label="Wahana Name" value={newName} onChange={setNewName} placeholder="e.g. Temple of Doom" />
-          <ModalField label="Description" value={newDesc} onChange={setNewDesc} placeholder="What happens here?" />
+          <ModalField label="Description (Lore)" value={newDesc} onChange={setNewDesc} placeholder="What happens here?" />
+          <ModalField label="How to Play (Steps)" value={newHowTo} onChange={setNewHowTo} placeholder="1. Walk in\n2. Solve... " />
+          <ModalField label="Barcode Data (Optional)" value={newBarcode} onChange={setNewBarcode} placeholder="Custom code or leave empty for ID" />
           <ModalField label="Max Points" value={newPoints} onChange={setNewPoints} placeholder="e.g. 100" type="number" />
-          <ModalSubmit label="Establish Wahana" onClick={handleCreate} disabled={!newName || !newPoints || saving} loading={saving} />
+          <ModalSubmit label={editingActivity ? 'Update Wahana' : 'Establish Wahana'} onClick={handleSave} disabled={!newName || !newPoints || saving} loading={saving} />
         </div>
       </AdventureModal>
     </TabLayout>
@@ -606,9 +669,12 @@ function ChallengesTab() {
   const [showModal, setShowModal] = useState(false);
   const [newName, setNewName] = useState('');
   const [newDesc, setNewDesc] = useState('');
+  const [newHowTo, setNewHowTo] = useState('');
+  const [newBarcode, setNewBarcode] = useState('');
   const [newPoints, setNewPoints] = useState('');
   const [newType, setNewType] = useState<Activity['type']>('challenge_regular');
   const [saving, setSaving] = useState(false);
+  const [editingChallenge, setEditingChallenge] = useState<Activity | null>(null);
   const [expandedQR, setExpandedQR] = useState<string | null>(null);
 
   const fetchChallenges = useCallback(async () => {
@@ -624,21 +690,65 @@ function ChallengesTab() {
 
   useEffect(() => { fetchChallenges(); }, [fetchChallenges]);
 
-  const handleCreate = async () => {
+  const handleOpenModal = (act?: Activity) => {
+    if (act) {
+      setEditingChallenge(act);
+      setNewName(act.name);
+      setNewDesc(act.description || '');
+      setNewHowTo(act.how_to_play || '');
+      setNewBarcode(act.barcode_data || '');
+      setNewPoints(act.max_points.toString());
+      setNewType(act.type);
+    } else {
+      setEditingChallenge(null);
+      setNewName('');
+      setNewDesc('');
+      setNewHowTo('');
+      setNewBarcode('');
+      setNewPoints('');
+      setNewType('challenge_regular');
+    }
+    setShowModal(true);
+  };
+
+  const handleSave = async () => {
     if (!newName || !newPoints) return;
     setSaving(true);
-    const { error } = await supabase.from('activities').insert({
+
+    const payload = {
       name: newName,
       description: newDesc || null,
+      how_to_play: newHowTo || null,
+      barcode_data: newBarcode || null,
       max_points: parseInt(newPoints, 10),
       type: newType,
-    });
+    };
+
+    let error;
+    if (editingChallenge) {
+      const { error: err } = await supabase
+        .from('activities')
+        .update(payload)
+        .eq('id', editingChallenge.id);
+      error = err;
+    } else {
+      const { error: err } = await supabase
+        .from('activities')
+        .insert(payload);
+      error = err;
+    }
+
     if (!error) {
       setShowModal(false);
-      setNewName(''); setNewDesc(''); setNewPoints('');
       fetchChallenges();
     }
     setSaving(false);
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this challenge?')) return;
+    const { error } = await supabase.from('activities').delete().eq('id', id);
+    if (!error) fetchChallenges();
   };
 
   const typeColor = (type: string) => {
@@ -649,7 +759,7 @@ function ChallengesTab() {
   };
 
   return (
-    <TabLayout title="Challenges" subtitle="Misi sampingan berhadiah" onAdd={() => setShowModal(true)}>
+    <TabLayout title="Challenges" subtitle="Misi sampingan berhadiah" onAdd={() => handleOpenModal()}>
       {loading ? <LoadingState /> : activities.length === 0 ? <EmptyState tab="challenges" /> : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {activities.map((act, idx) => (
@@ -665,6 +775,18 @@ function ChallengesTab() {
                   <Sword className="w-5 h-5 text-primary" />
                 </div>
                 <div className="flex items-center gap-2">
+                   <button 
+                    onClick={() => handleOpenModal(act)}
+                    className="p-1.5 hover:bg-primary/10 text-primary/60 hover:text-primary transition-colors rounded-md"
+                  >
+                    <Edit2 className="w-4 h-4" />
+                  </button>
+                  <button 
+                    onClick={() => handleDelete(act.id)}
+                    className="p-1.5 hover:bg-red-500/10 text-red-400/60 hover:text-red-400 transition-colors rounded-md"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
                    <span className={`text-[9px] font-adventure uppercase px-2 py-0.5 ${typeColor(act.type)}`}>
                     {act.type.replace('challenge_', '')}
                   </span>
@@ -683,7 +805,7 @@ function ChallengesTab() {
                 {expandedQR === act.id && (
                   <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden mt-4 flex flex-col items-center">
                     <div className="bg-white p-3 rounded-xl mb-2">
-                       <QRCodeDisplay barcodeData={act.id} label={act.name} size={150} />
+                       <QRCodeDisplay barcodeData={act.barcode_data || act.id} label={act.name} size={150} />
                     </div>
                   </motion.div>
                 )}
@@ -693,10 +815,12 @@ function ChallengesTab() {
         </div>
       )}
 
-      <AdventureModal show={showModal} onClose={() => setShowModal(false)} title="New Challenge">
+      <AdventureModal show={showModal} onClose={() => setShowModal(false)} title={editingChallenge ? 'Edit Challenge' : 'New Challenge'}>
         <div className="space-y-5">
           <ModalField label="Challenge Name" value={newName} onChange={setNewName} placeholder="e.g. Bridge of Doom" />
-          <ModalField label="Description" value={newDesc} onChange={setNewDesc} placeholder="Misi apa ini?" />
+          <ModalField label="Description (Lore)" value={newDesc} onChange={setNewDesc} placeholder="Misi apa ini?" />
+          <ModalField label="How to Play (Steps)" value={newHowTo} onChange={setNewHowTo} placeholder="1. Cross... " />
+          <ModalField label="Barcode Data (Optional)" value={newBarcode} onChange={setNewBarcode} placeholder="Custom code or leave empty for ID" />
           <ModalField label="Points" value={newPoints} onChange={setNewPoints} placeholder="e.g. 50" type="number" />
           <div>
             <label className="block text-[10px] uppercase tracking-widest font-adventure text-[#2b1d0e]/60 mb-2">Challenge Type</label>
@@ -714,7 +838,7 @@ function ChallengesTab() {
               ))}
             </div>
           </div>
-          <ModalSubmit label="Create Challenge" onClick={handleCreate} disabled={!newName || !newPoints || saving} loading={saving} />
+          <ModalSubmit label={editingChallenge ? 'Update Challenge' : 'Create Challenge'} onClick={handleSave} disabled={!newName || !newPoints || saving} loading={saving} />
         </div>
       </AdventureModal>
     </TabLayout>
@@ -736,6 +860,7 @@ function TreasureTab() {
   const [newHint, setNewHint] = useState('');
   const [newQuota, setNewQuota] = useState('');
   const [saving, setSaving] = useState(false);
+  const [editingTreasure, setEditingTreasure] = useState<TreasureHunt | null>(null);
   const [expandedQR, setExpandedQR] = useState<string | null>(null);
   const [expandedClaims, setExpandedClaims] = useState<string | null>(null);
   const [claimTeams, setClaimTeams] = useState<{ team_name: string }[]>([]);
@@ -759,26 +884,73 @@ function TreasureTab() {
     setExpandedClaims(treasureId);
   };
 
-  const handleCreate = async () => {
+  const handleOpenModal = (th?: TreasureHunt) => {
+    if (th) {
+      setEditingTreasure(th);
+      setNewName(th.name);
+      setNewPoints(th.points.toString());
+      setNewHint(th.hint_text || '');
+      setNewQuota(th.quota.toString());
+    } else {
+      setEditingTreasure(null);
+      setNewName('');
+      setNewPoints('');
+      setNewHint('');
+      setNewQuota('');
+    }
+    setShowModal(true);
+  };
+
+  const handleSave = async () => {
     if (!newName || !newPoints || !newQuota) return;
     setSaving(true);
-    const { error } = await supabase.from('treasure_hunts').insert({
-      name: newName,
-      points: parseInt(newPoints, 10),
-      hint_text: newHint || null,
-      quota: parseInt(newQuota, 10),
-      remaining_quota: parseInt(newQuota, 10),
-    });
+    
+    const quotaVal = parseInt(newQuota, 10);
+    const pointsVal = parseInt(newPoints, 10);
+
+    let error;
+    if (editingTreasure) {
+      // Calculate new remaining_quota
+      const quotaDiff = quotaVal - editingTreasure.quota;
+      const newRemaining = Math.max(0, editingTreasure.remaining_quota + quotaDiff);
+
+      const { error: err } = await supabase
+        .from('treasure_hunts')
+        .update({
+          name: newName,
+          points: pointsVal,
+          hint_text: newHint || null,
+          quota: quotaVal,
+          remaining_quota: newRemaining,
+        })
+        .eq('id', editingTreasure.id);
+      error = err;
+    } else {
+      const { error: err } = await supabase.from('treasure_hunts').insert({
+        name: newName,
+        points: pointsVal,
+        hint_text: newHint || null,
+        quota: quotaVal,
+        remaining_quota: quotaVal,
+      });
+      error = err;
+    }
+
     if (!error) {
       setShowModal(false);
-      setNewName(''); setNewPoints(''); setNewHint(''); setNewQuota('');
       fetchTreasures();
     }
     setSaving(false);
   };
 
+  const handleDelete = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this treasure?')) return;
+    const { error } = await supabase.from('treasure_hunts').delete().eq('id', id);
+    if (!error) fetchTreasures();
+  };
+
   return (
-    <TabLayout title="Treasure Hunt" subtitle="Harta karun tersembunyi" onAdd={() => setShowModal(true)}>
+    <TabLayout title="Treasure Hunt" subtitle="Harta karun tersembunyi" onAdd={() => handleOpenModal()}>
       {loading ? <LoadingState /> : treasures.length === 0 ? <EmptyState tab="treasure" /> : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {treasures.map((th, idx) => (
@@ -793,9 +965,23 @@ function TreasureTab() {
                 <div className="p-2 rounded-lg border bg-primary/20 border-primary/40">
                   <Gem className="w-5 h-5 text-primary" />
                 </div>
-                <div className="text-right">
-                   <p className="text-[10px] font-adventure text-primary">{th.points} PTS</p>
-                   <p className="text-[9px] text-muted-foreground/40">{th.remaining_quota}/{th.quota} REMAINING</p>
+                <div className="flex items-center gap-2">
+                   <button 
+                    onClick={() => handleOpenModal(th)}
+                    className="p-1.5 hover:bg-primary/10 text-primary/60 hover:text-primary transition-colors rounded-md"
+                  >
+                    <Edit2 className="w-4 h-4" />
+                  </button>
+                  <button 
+                    onClick={() => handleDelete(th.id)}
+                    className="p-1.5 hover:bg-red-500/10 text-red-400/60 hover:text-red-400 transition-colors rounded-md"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                  <div className="text-right ml-2">
+                    <p className="text-[10px] font-adventure text-primary">{th.points} PTS</p>
+                    <p className="text-[9px] text-muted-foreground/40">{th.remaining_quota}/{th.quota} REMAINING</p>
+                  </div>
                 </div>
               </div>
 
@@ -841,13 +1027,13 @@ function TreasureTab() {
         </div>
       )}
 
-      <AdventureModal show={showModal} onClose={() => setShowModal(false)} title="New Treasure">
+      <AdventureModal show={showModal} onClose={() => setShowModal(false)} title={editingTreasure ? 'Edit Treasure' : 'New Treasure'}>
         <div className="space-y-5">
           <ModalField label="Treasure Name" value={newName} onChange={setNewName} placeholder="e.g. Golden Idol" />
           <ModalField label="Points" value={newPoints} onChange={setNewPoints} placeholder="e.g. 500" type="number" />
           <ModalField label="Hint" value={newHint} onChange={setNewHint} placeholder="Di mana dia berada?" />
           <ModalField label="Quota" value={newQuota} onChange={setNewQuota} placeholder="e.g. 1" type="number" />
-          <ModalSubmit label="Bury Treasure" onClick={handleCreate} disabled={!newName || !newPoints || !newQuota || saving} loading={saving} />
+          <ModalSubmit label={editingTreasure ? 'Update Treasure' : 'Bury Treasure'} onClick={handleSave} disabled={!newName || !newPoints || !newQuota || saving} loading={saving} />
         </div>
       </AdventureModal>
     </TabLayout>

@@ -12,6 +12,9 @@ interface ScanSuccess {
   pointsAwarded?: number;
   quotaRemaining?: number;
   message: string;
+  description?: string | null;
+  howToPlay?: string | null;
+  alreadyDiscovered?: boolean;
 }
 
 export default function CaptainScanner() {
@@ -23,6 +26,8 @@ export default function CaptainScanner() {
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [cameraReady, setCameraReady] = useState(false);
   const [lastScanMessage, setLastScanMessage] = useState<{ type: 'success' | 'error', text: string, scanSuccess?: ScanSuccess } | null>(null);
+  const [showDiscoveryModal, setShowDiscoveryModal] = useState(false);
+  const [currentDiscovery, setCurrentDiscovery] = useState<ScanSuccess | null>(null);
 
   const scannerRef = useRef<import('html5-qrcode').Html5Qrcode | null>(null);
   const isScanningRef = useRef(false);
@@ -165,10 +170,24 @@ export default function CaptainScanner() {
           type: data.location_type === 'challenge' ? 'challenge' : 'wahana',
           locationName: data.location_name || 'Location',
           pointsAwarded: data.points_awarded,
-          message: `Prestige Earned! Found ${data.location_name}. +${data.points_awarded ?? 0} Points!`,
+          message: data.already_discovered 
+            ? `Lokasi Terdeteksi: ${data.location_name}`
+            : `Prestige Earned! Found ${data.location_name}. +${data.points_awarded ?? 0} Points!`,
+          description: data.description,
+          howToPlay: data.how_to_play,
+          alreadyDiscovered: data.already_discovered
         };
 
         setLastScanMessage({ type: 'success', text: scanSuccess.message, scanSuccess });
+        
+        // Show discovery modal for wahana/challenge
+        if (scanSuccess.description || scanSuccess.howToPlay) {
+          setCurrentDiscovery(scanSuccess);
+          // Wait a bit for the success animation before showing modal
+          setTimeout(() => {
+            setShowDiscoveryModal(true);
+          }, 1500);
+        }
       }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'The scan was interrupted by unknown forces.';
@@ -181,10 +200,26 @@ export default function CaptainScanner() {
 
   const restartAfterDelay = () => {
     setTimeout(() => {
-      setLastScanMessage(null);
-      processingRef.current = false;
-      startCamera();
+      // Don't restart if discovery modal is about to show or is showing
+      setLastScanMessage((prev) => {
+        if (prev?.type === 'success' && (prev.scanSuccess?.description || prev.scanSuccess?.howToPlay)) {
+           return prev; // Let the modal handle it
+        }
+        if (!showDiscoveryModal) {
+          processingRef.current = false;
+          startCamera();
+        }
+        return null; // Clear message if not success/discovery
+      });
     }, 4000);
+  };
+
+  const handleCloseDiscovery = () => {
+    setShowDiscoveryModal(false);
+    setLastScanMessage(null);
+    setCurrentDiscovery(null);
+    processingRef.current = false;
+    startCamera();
   };
 
   return (
@@ -308,6 +343,63 @@ export default function CaptainScanner() {
             <span className="text-[8px] font-mono">ENCRYPTED FEED ACTIVE</span>
           </div>
         </div>
+
+        {/* Discovery Modal */}
+        <AnimatePresence>
+          {showDiscoveryModal && currentDiscovery && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/90 backdrop-blur-sm"
+            >
+              <motion.div
+                initial={{ scale: 0.9, y: 20 }}
+                animate={{ scale: 1, y: 0 }}
+                className="relative adventure-card p-8 max-w-md w-full border-primary/30 flex flex-col gap-6"
+              >
+                <div className="text-center space-y-2">
+                  <div className="inline-block p-3 rounded-full bg-primary/10 border border-primary/20 mb-2">
+                    <Compass className="w-8 h-8 text-primary shadow-[0_0_15px_var(--primary)]" />
+                  </div>
+                  <h2 className="font-adventure text-3xl gold-engraving tracking-tight uppercase">
+                    {currentDiscovery.locationName}
+                  </h2>
+                  <p className="text-[10px] font-adventure uppercase tracking-[0.3em] text-primary/60">
+                    Location Intel Recovered
+                  </p>
+                </div>
+
+                <div className="space-y-6 overflow-y-auto max-h-[60vh] pr-2 scrollbar-thin scrollbar-thumb-primary/20">
+                  {currentDiscovery.description && (
+                    <div className="space-y-2">
+                      <p className="text-[10px] font-adventure uppercase tracking-widest text-primary/40 border-b border-primary/10 pb-1">Lore</p>
+                      <p className="text-[#f4e4bc]/80 italic text-sm font-content leading-relaxed">
+                        "{currentDiscovery.description}"
+                      </p>
+                    </div>
+                  )}
+
+                  {currentDiscovery.howToPlay && (
+                    <div className="space-y-2">
+                      <p className="text-[10px] font-adventure uppercase tracking-widest text-primary/40 border-b border-primary/10 pb-1">How to Play</p>
+                      <div className="text-[#f4e4bc] text-sm font-content leading-relaxed whitespace-pre-wrap">
+                        {currentDiscovery.howToPlay}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  onClick={handleCloseDiscovery}
+                  className="w-full mt-4 py-4 bg-primary/20 hover:bg-primary/30 border border-primary/40 text-primary font-adventure uppercase tracking-[0.2em] transition-all hover:scale-[1.02] active:scale-[0.98]"
+                >
+                  Close Discovery
+                </button>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
       </div>
     </AuthGuard>

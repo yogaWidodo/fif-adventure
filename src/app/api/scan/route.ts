@@ -9,6 +9,9 @@ interface ScanResult {
   message: string;
   location_name?: string;
   points_awarded?: number;
+  description?: string | null;
+  how_to_play?: string | null;
+  already_discovered?: boolean;
 }
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
@@ -79,7 +82,7 @@ export async function POST(request: NextRequest): Promise<Response> {
   // ── 3. Look up activity by barcode_data ───────────────────────────────────
   const { data: activity, error: activityError } = await supabase
     .from('activities')
-    .select('id, name, type, max_points')
+    .select('id, name, type, max_points, description, how_to_play')
     .eq('barcode_data', barcode_data.trim())
     .single();
 
@@ -103,7 +106,16 @@ export async function POST(request: NextRequest): Promise<Response> {
 
   if (insertError) {
     if (insertError.code === '23505') {
-      return Response.json({ success: false, message: 'Tim sudah pernah mengunjungi lokasi ini' }, { status: 409 });
+       // Already scanned, but we return details anyway
+       return Response.json({
+         success: true,
+         already_discovered: true,
+         message: `Lokasi Terdeteksi: ${activity.name}`,
+         location_name: activity.name,
+         description: activity.description,
+         how_to_play: activity.how_to_play,
+         points_awarded: 0
+       });
     }
     return Response.json({ error: 'Gagal menyimpan scan' }, { status: 500 });
   }
@@ -123,7 +135,9 @@ export async function POST(request: NextRequest): Promise<Response> {
     success: true,
     message: `Berhasil! Found ${activity.name}`,
     location_name: activity.name,
-    points_awarded: activity.max_points
+    points_awarded: activity.max_points,
+    description: activity.description,
+    how_to_play: activity.how_to_play
   };
 
   return Response.json(result, { status: 200 });

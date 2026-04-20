@@ -7,7 +7,7 @@ import { getAccessToken } from '@/lib/serverAuth';
 interface ScanResult {
   success: boolean;
   message: string;
-  location_name?: string;
+  location_type?: string;
   points_awarded?: number;
   description?: string | null;
   how_to_play?: string | null;
@@ -96,49 +96,23 @@ export async function POST(request: NextRequest): Promise<Response> {
     return Response.json({ success: false, message: 'Event sedang tidak berlangsung.' }, { status: 403 });
   }
 
-  // ── 5. Insert activity registration ─────────────────────────────────────────────────
-  const { error: insertError } = await supabase
+  // ── 5. Check if already discovered (Optional Info) ────────────────────────
+  const { data: existingReg } = await supabase
     .from('activity_registrations')
-    .insert({
-      team_id: team_id.trim(),
-      activity_id: activity.id,
-      checked_in_by: userProfile.id,
-    });
-
-  if (insertError) {
-    if (insertError.code === '23505') {
-       // Already scanned, but we return details anyway
-       return Response.json({
-         success: true,
-         already_discovered: true,
-         message: `Lokasi Terdeteksi: ${activity.name}`,
-         location_name: activity.name,
-         description: activity.description,
-         how_to_play: activity.how_to_play,
-         points_awarded: 0
-       });
-    }
-    return Response.json({ error: 'Gagal menyimpan scan' }, { status: 500 });
-  }
-
-  // Also log to score_logs if it's a fixed-point activity (legacy behavior)
-  if (activity.max_points > 0) {
-    await supabase.from('score_logs').insert({
-      team_id: team_id.trim(),
-      activity_id: activity.id,
-      points_awarded: activity.max_points,
-      lo_id: userProfile.id, // though Captain is scanning, we use their profile ID
-    });
-  }
+    .select('id')
+    .eq('team_id', team_id.trim())
+    .eq('activity_id', activity.id)
+    .maybeSingle();
 
   // ── 6. Return ScanResult ──────────────────────────────────────────────────
   const result: ScanResult = {
     success: true,
-    message: `Berhasil! Found ${activity.name}`,
-    location_name: activity.name,
-    points_awarded: activity.max_points,
+    message: `Berhasil! Intel recovered for ${activity.name}`,
+    location_type: activity.type,
+    points_awarded: 0,
     description: activity.description,
-    how_to_play: activity.how_to_play
+    how_to_play: activity.how_to_play,
+    already_discovered: !!existingReg
   };
 
   return Response.json(result, { status: 200 });

@@ -167,10 +167,10 @@ export default function CaptainScanner() {
         }
 
         const scanSuccess: ScanSuccess = {
-          type: data.location_type === 'challenge' ? 'challenge' : 'wahana',
+          type: data.location_type?.startsWith('challenge') ? 'challenge' : 'wahana',
           locationName: data.location_name || 'Location',
           pointsAwarded: data.points_awarded,
-          message: data.already_discovered 
+          message: data.already_discovered
             ? `Lokasi Terdeteksi: ${data.location_name}`
             : `Prestige Earned! Found ${data.location_name}. +${data.points_awarded ?? 0} Points!`,
           description: data.description,
@@ -179,7 +179,7 @@ export default function CaptainScanner() {
         };
 
         setLastScanMessage({ type: 'success', text: scanSuccess.message, scanSuccess });
-        
+
         // Show discovery modal for wahana/challenge
         if (scanSuccess.description || scanSuccess.howToPlay) {
           setCurrentDiscovery(scanSuccess);
@@ -203,7 +203,7 @@ export default function CaptainScanner() {
       // Don't restart if discovery modal is about to show or is showing
       setLastScanMessage((prev) => {
         if (prev?.type === 'success' && (prev.scanSuccess?.description || prev.scanSuccess?.howToPlay)) {
-           return prev; // Let the modal handle it
+          return prev; // Let the modal handle it
         }
         if (!showDiscoveryModal) {
           processingRef.current = false;

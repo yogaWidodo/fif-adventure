@@ -53,8 +53,7 @@ export default function TeamJournal() {
 
   const totalHints = hints.length;
   const claimedHints = hints.filter(h => {
-    const th = h.treasure_hunts as any;
-    return th && claims.some((c: any) => c.treasure_hunt_id === th.id);
+    return claims.some((c: any) => c.treasure_hunt_id === h.treasure_hunt_id);
   }).length;
 
   return (
@@ -174,9 +173,10 @@ export default function TeamJournal() {
               </div>
               <div className="grid gap-4">
                 {hints.map((hint, idx) => {
-                  const th = hint.treasure_hunts as any;
+                  const thRaw = hint.treasure_hunts as any;
+                  const th = Array.isArray(thRaw) ? thRaw[0] : thRaw;
                   if (!th) return null;
-                  const claimed = claims.some((c: any) => c.treasure_hunt_id === th.id);
+                  const claimed = claims.some((c: any) => c.treasure_hunt_id === hint.treasure_hunt_id);
                   return (
                     <motion.div
                       key={hint.id}

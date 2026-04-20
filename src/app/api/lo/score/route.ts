@@ -96,32 +96,7 @@ export async function POST(request: NextRequest): Promise<Response> {
     return Response.json({ error: 'Gagal menyimpan poin' }, { status: 500 });
   }
 
-  // Gacha Logic (Requirement 4.5.5.c)
-  const { data: gachaProb } = await supabase.from('settings').select('value').eq('key', 'gacha_probability').single();
-  const prob = parseFloat(gachaProb?.value || '0');
-  let won = false;
-  let thName: string | null = null;
-
-  if (Math.random() < prob) {
-    // Use service role for RPC to bypass RLS
-    const supabaseAdmin = createClient(supabaseUrl, process.env.SUPABASE_SERVICE_ROLE_KEY ?? '');
-    const { data: hintId } = await supabaseAdmin.rpc('claim_gacha_th', {
-      p_team_id: team_id,
-      p_activity_id: assignment.activity_id
-    });
-    if (hintId) {
-      won = true;
-      // Fetch the TH name to show in LO toast (not the hint itself)
-      const { data: thData } = await supabaseAdmin
-        .from('treasure_hunts')
-        .select('name')
-        .eq('id', hintId)
-        .single();
-      thName = thData?.name ?? null;
-    }
-  }
-
-  return Response.json({ success: true, gacha_result: { won, treasure_name: thName } });
+  return Response.json({ success: true, message: 'Points successfully awarded.' });
 }
 
 export async function PATCH(request: NextRequest): Promise<Response> {

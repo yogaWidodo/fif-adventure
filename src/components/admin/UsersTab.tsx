@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  UserPlus, Edit2, UserCheck, Upload, Download,
+  UserPlus, Edit2, UserCheck, UserMinus, Upload, Download,
   Search, X, Loader2, Compass, MapPin,
 } from 'lucide-react';
 import AssignLocationModal from '@/components/admin/AssignLocationModal';
@@ -73,6 +73,12 @@ function UserFormModal({
     if (!birthDate.trim()) return 'Tanggal Lahir wajib diisi';
     const validRoles = ['admin', 'captain', 'vice_captain', 'member', 'lo'];
     if (!validRoles.includes(role)) return 'Role tidak valid';
+    
+    // Check if moving to LO but still tied to a team
+    if (role === 'lo' && user?.team_id) {
+      return 'Lakukan Unassign member dari tim terlebih dahulu via menu Assign Tim sebelum memindah role ke LO.';
+    }
+    
     return null;
   };
 
@@ -113,6 +119,25 @@ function UserFormModal({
     }
   };
 
+  const handleUnassign = async () => {
+    setSaving(true);
+    setError('');
+    try {
+      const res = await fetch(`/api/users/${user!.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ team_id: null, role: 'member' }),
+      });
+      if (!res.ok) throw new Error('Gagal unassign tim');
+      onSuccess();
+      onClose();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Terjadi kesalahan');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="absolute inset-0 bg-black/90" />
@@ -144,10 +169,24 @@ function UserFormModal({
             </select>
           </div>
           {error && <p className="text-red-400 text-[10px]">{error}</p>}
-          <button onClick={handleSubmit} disabled={saving} className="w-full flex items-center justify-center gap-2 bg-primary/20 hover:bg-primary/30 border border-primary/40 text-primary text-[10px] font-adventure uppercase tracking-widest px-4 py-2 transition-all">
-            {saving && <Loader2 className="w-3 h-3 animate-spin" />}
-            {isEdit ? 'Simpan' : 'Buat User'}
-          </button>
+          <div className="flex flex-col gap-3">
+            <button onClick={handleSubmit} disabled={saving} className="w-full flex items-center justify-center gap-2 bg-primary/20 hover:bg-primary/30 border border-primary/40 text-primary text-[10px] font-adventure uppercase tracking-widest px-4 py-2 transition-all">
+              {saving && <Loader2 className="w-3 h-3 animate-spin" />}
+              {isEdit ? 'Simpan' : 'Buat User'}
+            </button>
+            
+            {isEdit && user?.team_id && (
+              <button 
+                onClick={handleUnassign} 
+                disabled={saving} 
+                type="button"
+                className="w-full flex items-center justify-center gap-2 bg-red-900/20 hover:bg-red-900/40 border border-red-500/40 text-red-500 text-[10px] font-adventure uppercase tracking-widest px-4 py-2 transition-all"
+              >
+                {saving && <Loader2 className="w-3 h-3 animate-spin" />}
+                Unassign dari Tim
+              </button>
+            )}
+          </div>
         </div>
       </motion.div>
     </div>
@@ -198,6 +237,25 @@ function AssignTeamModal({
     }
   };
 
+  const handleUnassign = async () => {
+    setSaving(true);
+    setError('');
+    try {
+      const res = await fetch(`/api/users/${user.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ team_id: null, role: 'member' }),
+      });
+      if (!res.ok) throw new Error('Gagal unassign tim');
+      onSuccess();
+      onClose();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Terjadi kesalahan');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="absolute inset-0 bg-black/90" />
@@ -231,6 +289,13 @@ function AssignTeamModal({
             {saving && <Loader2 className="w-3 h-3 animate-spin" />}
             Update Sesuai Role
           </button>
+          
+          {user.team_id && (
+            <button onClick={handleUnassign} disabled={saving} className="w-full flex items-center justify-center gap-2 bg-red-900/20 hover:bg-red-900/40 border border-red-500/40 text-red-500 text-[10px] font-adventure uppercase tracking-widest px-4 py-2 transition-all mt-3">
+              {saving && <Loader2 className="w-3 h-3 animate-spin" />}
+              Unassign dari Tim
+            </button>
+          )}
         </div>
       </motion.div>
     </div>
@@ -444,12 +509,30 @@ export default function UsersTab() {
                 )}
               </div>
               <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                <button onClick={() => setEditingUser(user)} className="p-2 hover:bg-primary/10 rounded-full text-primary/60 hover:text-primary transition-all"><Edit2 className="w-4 h-4" /></button>
+                <button onClick={() => setEditingUser(user)} title="Edit User" className="p-2 hover:bg-primary/10 rounded-full text-primary/60 hover:text-primary transition-all"><Edit2 className="w-4 h-4" /></button>
                 {user.role !== 'lo' && (
-                  <button onClick={() => setAssigningUser(user)} className="p-2 hover:bg-primary/10 rounded-full text-primary/60 hover:text-primary transition-all"><UserCheck className="w-4 h-4" /></button>
+                  <button onClick={() => setAssigningUser(user)} title="Assign Team" className="p-2 hover:bg-primary/10 rounded-full text-primary/60 hover:text-primary transition-all"><UserCheck className="w-4 h-4" /></button>
+                )}
+                {user.team_id && (
+                   <button 
+                     onClick={async () => {
+                       if (confirm(`Apakah Anda yakin ingin mengeluarkan ${user.name} dari tim?`)) {
+                         const res = await fetch(`/api/users/${user.id}`, {
+                           method: 'PATCH',
+                           headers: { 'Content-Type': 'application/json' },
+                           body: JSON.stringify({ team_id: null, role: 'member' }),
+                         });
+                         if (res.ok) fetchUsers();
+                       }
+                     }} 
+                     title="Unassign Team"
+                     className="p-2 hover:bg-red-900/20 rounded-full text-red-500/60 hover:text-red-500 transition-all"
+                   >
+                     <UserMinus className="w-4 h-4" />
+                   </button>
                 )}
                 {user.role === 'lo' && (
-                  <button onClick={() => setAssigningLocationUser(user)} className="p-2 hover:bg-primary/10 rounded-full text-blue-400/60 hover:text-blue-400 transition-all"><MapPin className="w-4 h-4" /></button>
+                  <button onClick={() => setAssigningLocationUser(user)} title="Assign Activity" className="p-2 hover:bg-primary/10 rounded-full text-blue-400/60 hover:text-blue-400 transition-all"><MapPin className="w-4 h-4" /></button>
                 )}
               </div>
             </div>

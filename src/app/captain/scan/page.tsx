@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useId } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Camera, CameraOff, CheckCircle2, Trophy, Navigation, Compass, Flame, ShieldAlert, Loader2 } from 'lucide-react';
+import { Camera, CameraOff, CheckCircle2, Compass, ShieldAlert, Loader2 } from 'lucide-react';
 import AuthGuard from '@/components/AuthGuard';
 import { useAuth } from '@/context/AuthContext';
 
@@ -309,29 +309,7 @@ export default function CaptainScanner() {
           </div>
         </div>
 
-        {/* Bottom Tool Bar */}
-        <nav className="fixed bottom-8 left-6 right-6 z-30 flex justify-between items-center px-10 py-6 bg-card/90 border border-primary/20 adventure-card shadow-lg">
-          <NavItem icon={<Trophy className="w-6 h-6" />} label="Prestige" value={`${user?.team_id ? '—' : '0'}`} />
-          <div className="h-10 w-px bg-primary/10" />
-          <NavItem icon={<Flame className="w-6 h-6" />} label="Scanner" value="Active" active />
-          <div className="h-10 w-px bg-primary/10" />
-          <NavItem icon={<Navigation className="w-6 h-6" />} label="Status" value="Tracking" />
-        </nav>
       </div>
     </AuthGuard>
-  );
-}
-
-function NavItem({ icon, label, value, active = false }: { icon: React.ReactNode, label: string, value: string, active?: boolean }) {
-  return (
-    <div className={`flex flex-col items-center gap-2 transition-all ${active ? 'scale-110' : 'opacity-60'}`}>
-      <div className={`${active ? 'text-primary torch-glow' : 'text-foreground/40'}`}>
-        {icon}
-      </div>
-      <div className="text-center">
-        <p className="text-[8px] font-adventure uppercase tracking-tighter opacity-50">{label}</p>
-        <p className={`text-[10px] font-adventure leading-none ${active ? 'text-primary' : ''}`}>{value}</p>
-      </div>
-    </div>
   );
 }

@@ -7,6 +7,7 @@ import ExpeditionTimer from "@/components/ExpeditionTimer";
 import PauseModal from "@/components/PauseModal";
 import FinishedModal from "@/components/FinishedModal";
 import SoundManager from "@/components/SoundManager";
+import CaptainGachaListener from "@/components/captain/CaptainGachaListener";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -14,7 +15,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "FIF ADventure| Event Management",
+  title: "FIF Adventure | Event Management",
   description: "Wild, adventure-themed game management for the ultimate event experience.",
 };
 
@@ -33,6 +34,7 @@ export default function RootLayout({
             <PauseModal />
             <FinishedModal />
             <SoundManager />
+            <CaptainGachaListener />
             {children}
           </TimerProvider>
         </AuthProvider>

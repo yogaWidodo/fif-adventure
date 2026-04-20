@@ -57,14 +57,8 @@ type Phase =
   | 'scanning'                  // kamera aktif, menunggu scan
   | 'choosing'                  // QR berhasil di-scan, pilih aksi
   | 'submitting'                // sedang kirim ke API
-  | 'gacha_rolling'             // animasi roulette gacha TH
   | 'error'                     // error, bisa retry
   | 'success';                  // berhasil, modal akan tutup
-
-interface GachaResult {
-  won: boolean;
-  treasureName: string | null;
-}
 
 interface TeamInfo {
   id: string;
@@ -89,7 +83,6 @@ export default function ScanModal({
   const [phase, setPhase] = useState<Phase>('scanning');
   const [team, setTeam] = useState<TeamInfo | null>(null);
   const [errorMsg, setErrorMsg] = useState('');
-  const [gachaResult, setGachaResult] = useState<GachaResult | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
 
   const scannerRef = useRef<import('html5-qrcode').Html5Qrcode | null>(null);
@@ -257,19 +250,8 @@ export default function ScanModal({
       });
 
       if (res.ok) {
-        const data = await res.json().catch(() => ({}));
-        const gachaWon = data.gacha_result?.won ?? false;
-        const treasureName = data.gacha_result?.treasure_name ?? null;
-
-        // Transition to gacha roulette animation
-        setGachaResult({ won: gachaWon, treasureName });
-        setPhase('gacha_rolling');
-
-        // After 3.5s of roulette animation, show final result then close
-        setTimeout(() => {
-          setPhase('success');
-          setTimeout(() => onScoringSuccess(team.name, activityPoints, gachaWon), 1200);
-        }, 3500);
+        setPhase('success');
+        setTimeout(() => onScoringSuccess(team.name, activityPoints), 800);
       } else {
         const data = await res.json().catch(() => ({}));
         setErrorMsg(
@@ -445,84 +427,7 @@ export default function ScanModal({
                   </motion.div>
                 )}
 
-                {/* Gacha Roulette Animation */}
-                {phase === 'gacha_rolling' && gachaResult && (
-                  <motion.div
-                    key="gacha"
-                    initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                    className="flex flex-col items-center gap-4 py-4"
-                  >
-                    <p className="text-[10px] uppercase font-adventure tracking-widest text-primary/60 mb-1">
-                      ✨ Poin berhasil · Memutar Gacha Treasure Hunt...
-                    </p>
 
-                    {/* Slot reel container */}
-                    <div className="relative w-full h-24 overflow-hidden border-2 border-primary/30 bg-black/60 rounded-sm">
-                      {/* Spinning symbols */}
-                      <motion.div
-                        className="flex flex-col items-center gap-4 absolute inset-x-0"
-                        initial={{ y: 0 }}
-                        animate={{
-                          y: gachaResult.won
-                            ? [0, -800, -1600, -2000, -2200, -2200 + 38] // lands on Gem
-                            : [0, -800, -1400, -1600, -1700, -1700 + 38], // lands on Skull
-                        }}
-                        transition={{ duration: 3, ease: [0.12, 0.8, 0.2, 1] }}
-                      >
-                        {/* Generate reel symbols — alternating win/lose */}
-                        {Array.from({ length: 60 }).map((_, i) => {
-                          const isGem = i % 3 === 0;
-                          return (
-                            <div key={i} className="flex items-center justify-center h-16 w-full flex-shrink-0">
-                              {isGem ? (
-                                <Gem className="w-10 h-10 text-primary" />
-                              ) : i % 3 === 1 ? (
-                                <Skull className="w-10 h-10 text-red-400/60" />
-                              ) : (
-                                <Star className="w-10 h-10 text-yellow-500/40" />
-                              )}
-                            </div>
-                          );
-                        })}
-                      </motion.div>
-
-                      {/* Center highlight line */}
-                      <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-16 border-y-2 border-primary/50 pointer-events-none" />
-                      {/* Fade edges */}
-                      <div className="absolute inset-x-0 top-0 h-8 bg-gradient-to-b from-black/90 to-transparent pointer-events-none" />
-                      <div className="absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-black/90 to-transparent pointer-events-none" />
-                    </div>
-
-                    {/* Reveal after 2.8s */}
-                    <motion.div
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: 3.1 }}
-                      className="text-center"
-                    >
-                      {gachaResult.won ? (
-                        <div className="flex flex-col items-center gap-2">
-                          <div className="bg-primary/20 p-3 rounded-full border border-primary/40">
-                            <Gem className="w-6 h-6 text-primary torch-glow" />
-                          </div>
-                          <p className="font-adventure text-sm text-primary uppercase tracking-widest">Hint Didapat! 🎉</p>
-                          {gachaResult.treasureName && (
-                            <p className="text-xs text-foreground/50 font-content italic">
-                              Hint "{gachaResult.treasureName}" dikirim ke tim
-                            </p>
-                          )}
-                        </div>
-                      ) : (
-                        <div className="flex flex-col items-center gap-2">
-                          <div className="bg-red-500/10 p-3 rounded-full border border-red-500/20">
-                            <Skull className="w-6 h-6 text-red-400/70" />
-                          </div>
-                          <p className="font-adventure text-sm text-red-400/80 uppercase tracking-widest">Zonk! Tidak dapat hint</p>
-                        </div>
-                      )}
-                    </motion.div>
-                  </motion.div>
-                )}
 
                 {/* Success */}
                 {phase === 'success' && (
@@ -561,8 +466,7 @@ export default function ScanModal({
               </AnimatePresence>
             </div>
 
-            {/* Footer */}
-            {phase !== 'success' && phase !== 'submitting' && phase !== 'gacha_rolling' && (
+            {phase !== 'success' && phase !== 'submitting' && (
               <div className="px-6 pb-5">
                 <button
                   onClick={handleClose}

@@ -106,17 +106,12 @@ export default function ActivityDashboard({
   };
 
   // Requirement 7.7: close modal, show success toast, refresh queue
-  const handleScoringSuccess = (teamName: string, score: number, gachaWon?: boolean) => {
+  const handleScoringSuccess = (teamName: string, score: number) => {
     setIsScanModalOpen(false);
     
-    // Check gacha result to display to LO without revealing the hint itself
-    const gachaText = gachaWon 
-      ? ' + Gacha TH: Berhasil 🎉' 
-      : ' (Gacha TH: Zonk)';
-
     setToast({ 
       type: 'success', 
-      message: `Poin berhasil diberikan: ${score} poin untuk Tim ${teamName}!${gachaWon !== undefined ? gachaText : ''}` 
+      message: `Poin berhasil diberikan: ${score} poin untuk Tim ${teamName}!` 
     });
     setRefreshTrigger((prev) => prev + 1);
   };

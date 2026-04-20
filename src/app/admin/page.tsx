@@ -204,6 +204,8 @@ function EventControlTab({
   const [error, setError] = useState('');
   const [isSaved, setIsSaved] = useState(false);
   const [isHovering, setIsHovering] = useState(false);
+  const [top3, setTop3] = useState<{ name: string; total_points: number }[]>([]);
+  const [loadingTop3, setLoadingTop3] = useState(false);
 
   // Reset "Saved" state when any input changes
   useEffect(() => {
@@ -221,6 +223,20 @@ function EventControlTab({
       }
     });
   }, []);
+
+  useEffect(() => {
+    if (status?.status === 'finished') {
+       setLoadingTop3(true);
+       fetch('/api/leaderboard')
+         .then(res => res.json())
+         .then(data => {
+            const list = Array.isArray(data) ? data : data.leaderboard || [];
+            setTop3(list.slice(0, 3));
+         })
+         .finally(() => setLoadingTop3(false));
+    }
+  }, [status?.status]);
+
 
   const handleUpdateSettings = async () => {
     setSaving(true);
@@ -293,19 +309,35 @@ function EventControlTab({
   useEffect(() => {
     if (!status) return;
 
+    const maxSeconds = status.durationMinutes * 60;
+
     const compute = () => {
+      let current = status.elapsedSeconds;
       if (status.status === 'running' && status.startedAt) {
         const timeSinceStart = Math.floor((Date.now() - new Date(status.startedAt).getTime()) / 1000);
-        return status.elapsedSeconds + timeSinceStart;
+        current += timeSinceStart;
       }
-      return status.elapsedSeconds;
+      return Math.min(current, maxSeconds);
     };
 
-    setLocalElapsed(compute());
+    const initial = compute();
+    setLocalElapsed(initial);
 
-    if (status.status === 'running') {
+    // Auto-finish safety: if time is up and status is still running, mark as finished
+    if (status.status === 'running' && initial >= maxSeconds) {
+       handleTimerAction('reset'); // Rest resets to idle, we need a 'finish' action.
+       // Actually I'll use a direct supabase update for finish if no API exists.
+       supabase.from('settings').update({ value: 'finished' }).eq('key', 'event_status').then(() => onUpdate());
+    }
+
+    if (status.status === 'running' && initial < maxSeconds) {
       const interval = setInterval(() => {
-        setLocalElapsed(compute());
+        const next = compute();
+        setLocalElapsed(next);
+        if (next >= maxSeconds) {
+          clearInterval(interval);
+          supabase.from('settings').update({ value: 'finished' }).eq('key', 'event_status').then(() => onUpdate());
+        }
       }, 1000);
       return () => clearInterval(interval);
     }
@@ -366,54 +398,100 @@ function EventControlTab({
           </div>
         </div>
 
-        {/* Settings Panel */}
-        <div className="adventure-card p-8 space-y-8">
-          <div>
-            <h4 className="font-adventure text-primary text-sm uppercase tracking-widest mb-4">Event Parameters</h4>
-            <div className="space-y-6">
+        {/* Settings Panel or Mission Summary */}
+        <div className="adventure-card p-8 space-y-8 flex flex-col">
+          {status.status === 'finished' ? (
+            <div className="flex-1 flex flex-col">
+               <div className="flex items-center gap-3 mb-6">
+                 <div className="p-3 bg-primary/20 border border-primary/40 rounded-lg">
+                   <Trophy className="w-6 h-6 text-primary" />
+                 </div>
+                 <div>
+                   <h4 className="font-adventure text-primary text-sm uppercase tracking-widest">Mission Accomplished</h4>
+                   <p className="text-[10px] text-foreground/40 italic">Final reports from the field</p>
+                 </div>
+               </div>
+
+               <div className="space-y-4 flex-1">
+                 <p className="text-[10px] uppercase tracking-widest font-adventure text-foreground/40 border-b border-primary/10 pb-2">Top 3 Expeditions</p>
+                 {loadingTop3 ? (
+                   <div className="py-8 animate-pulse text-center font-adventure text-xs opacity-30">Deciphering Results...</div>
+                 ) : top3.length === 0 ? (
+                    <div className="py-8 text-center text-xs italic opacity-30">No teams found.</div>
+                 ) : (
+                    <div className="space-y-3">
+                      {top3.map((team, i) => (
+                        <div key={team.name} className={`flex items-center justify-between p-3 border ${i === 0 ? 'bg-primary/10 border-primary/30' : 'bg-white/5 border-white/10'}`}>
+                          <div className="flex items-center gap-3">
+                            <span className={`font-adventure text-xl ${i === 0 ? 'text-yellow-500' : i === 1 ? 'text-gray-400' : 'text-amber-700'}`}>
+                              #{i + 1}
+                            </span>
+                            <span className="font-adventure text-xs uppercase tracking-tight">{team.name}</span>
+                          </div>
+                          <span className="font-adventure text-lg text-primary">{team.total_points}</span>
+                        </div>
+                      ))}
+                    </div>
+                 )}
+               </div>
+
+               <button 
+                 onClick={() => handleTimerAction('reset')}
+                 className="mt-8 py-3 border border-red-500/40 text-red-400 font-adventure uppercase text-[10px] tracking-widest hover:bg-red-500/10 transition-all"
+               >
+                 Archive & Reset for New Expedition
+               </button>
+            </div>
+          ) : (
+            <>
               <div>
-                <label className="block text-[10px] uppercase text-foreground/40 font-adventure mb-2">Duration (Minutes)</label>
-                <input type="number" value={durationMinutes} onChange={e => setDurationMinutes(parseInt(e.target.value))} className="w-full bg-transparent border-b border-primary/20 py-2 font-mono text-xl focus:outline-none focus:border-primary" />
-              </div>
-              <div>
-                <label className="block text-[10px] uppercase text-foreground/40 font-adventure mb-2">Treasure Hunt Probability (0.0 - 1.0)</label>
-                <input type="text" value={gachaProb} onChange={e => setGachaProb(e.target.value)} className="w-full bg-transparent border-b border-primary/20 py-2 font-mono text-xl focus:outline-none focus:border-primary" />
-              </div>
-              <div>
-                <label className="block text-[10px] uppercase text-foreground/40 font-adventure mb-2">Expedition Map URL</label>
-                <div className="flex gap-4">
-                  <input type="text" value={mapUrl} onChange={e => setMapUrl(e.target.value)} placeholder="/images/MAP TSC.png" className="flex-1 bg-transparent border-b border-primary/20 py-2 font-mono text-lg focus:outline-none focus:border-primary" />
-                  <div className="relative">
-                    <input type="file" accept="image/*" onChange={handleFileUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" disabled={saving} />
-                    <button type="button" disabled={saving} className="bg-primary/20 px-4 py-2 font-adventure text-primary border border-primary/40 hover:bg-primary/30 uppercase text-[10px] tracking-widest h-full flex items-center justify-center min-w-[80px]">
-                      Upload
-                    </button>
+                <h4 className="font-adventure text-primary text-sm uppercase tracking-widest mb-4">Event Parameters</h4>
+                <div className="space-y-6">
+                  <div>
+                    <label className="block text-[10px] uppercase text-foreground/40 font-adventure mb-2">Duration (Minutes)</label>
+                    <input type="number" value={durationMinutes} onChange={e => setDurationMinutes(parseInt(e.target.value))} className="w-full bg-transparent border-b border-primary/20 py-2 font-mono text-xl focus:outline-none focus:border-primary" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] uppercase text-foreground/40 font-adventure mb-2">Treasure Hunt Probability (0.0 - 1.0)</label>
+                    <input type="text" value={gachaProb} onChange={e => setGachaProb(e.target.value)} className="w-full bg-transparent border-b border-primary/20 py-2 font-mono text-xl focus:outline-none focus:border-primary" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] uppercase text-foreground/40 font-adventure mb-2">Expedition Map URL</label>
+                    <div className="flex gap-4">
+                      <input type="text" value={mapUrl} onChange={e => setMapUrl(e.target.value)} placeholder="/images/MAP TSC.png" className="flex-1 bg-transparent border-b border-primary/20 py-2 font-mono text-lg focus:outline-none focus:border-primary" />
+                      <div className="relative">
+                        <input type="file" accept="image/*" onChange={handleFileUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" disabled={saving} />
+                        <button type="button" disabled={saving} className="bg-primary/20 px-4 py-2 font-adventure text-primary border border-primary/40 hover:bg-primary/30 uppercase text-[10px] tracking-widest h-full flex items-center justify-center min-w-[80px]">
+                          Upload
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </div>
+                {error && <p className="text-red-400 text-xs mt-4">{error}</p>}
+                <button 
+                  onClick={handleUpdateSettings} 
+                  onMouseEnter={() => setIsHovering(true)}
+                  onMouseLeave={() => setIsHovering(false)}
+                  disabled={saving} 
+                  className={`mt-8 w-full py-3 font-adventure border tracking-widest uppercase text-xs transition-all duration-300 ${
+                    isSaved && !isHovering 
+                      ? 'bg-green-500/20 text-green-400 border-green-500/40' 
+                      : 'bg-primary/20 text-primary border-primary/40 hover:bg-primary/30'
+                  }`}
+                >
+                  {saving 
+                    ? 'Saving...' 
+                    : isHovering 
+                      ? 'Edit Parameter' 
+                      : isSaved 
+                        ? 'Saved' 
+                        : 'Save Parameters'
+                  }
+                </button>
               </div>
-            </div>
-            {error && <p className="text-red-400 text-xs mt-4">{error}</p>}
-            <button 
-              onClick={handleUpdateSettings} 
-              onMouseEnter={() => setIsHovering(true)}
-              onMouseLeave={() => setIsHovering(false)}
-              disabled={saving} 
-              className={`mt-8 w-full py-3 font-adventure border tracking-widest uppercase text-xs transition-all duration-300 ${
-                isSaved && !isHovering 
-                  ? 'bg-green-500/20 text-green-400 border-green-500/40' 
-                  : 'bg-primary/20 text-primary border-primary/40 hover:bg-primary/30'
-              }`}
-            >
-              {saving 
-                ? 'Saving...' 
-                : isHovering 
-                  ? 'Edit Parameter' 
-                  : isSaved 
-                    ? 'Saved' 
-                    : 'Save Parameters'
-              }
-            </button>
-          </div>
+            </>
+          )}
         </div>
       </div>
     </div>

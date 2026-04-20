@@ -498,13 +498,14 @@ export default function UsersTab() {
                   <p className="text-[10px] text-foreground/40 font-mono">{user.npk} • {user.birth_date}</p>
                 </div>
                 <RoleBadge role={user.role} />
-                <div className="text-[10px] text-foreground/40 uppercase font-adventure">
-                  {user.team_name ? <span className="text-primary/60">Team: {user.team_name}</span> : <span>Solo</span>}
-                </div>
-                {user.role === 'lo' && user.activity_name && (
+                {user.role !== 'lo' ? (
+                  <div className="text-[10px] text-foreground/40 uppercase font-adventure">
+                    {user.team_name ? <span className="text-primary/60">Team: {user.team_name}</span> : <span>Solo</span>}
+                  </div>
+                ) : (
                   <div className="flex items-center gap-1 text-[10px] text-blue-400 uppercase font-adventure">
                     <MapPin className="w-3 h-3" />
-                    {user.activity_name}
+                    {user.activity_name || <span className="opacity-40">No Assignment</span>}
                   </div>
                 )}
               </div>

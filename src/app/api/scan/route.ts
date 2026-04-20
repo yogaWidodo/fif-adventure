@@ -79,14 +79,26 @@ export async function POST(request: NextRequest): Promise<Response> {
     return Response.json({ error: 'Insufficient permissions' }, { status: 403 });
   }
 
-  // ── 3. Look up activity by barcode_data ───────────────────────────────────
-  const { data: activity, error: activityError } = await supabase
+  // ── 3. Look up activity by barcode_data or ID ────────────────────────────
+  const trimmedCode = barcode_data.trim();
+  let { data: activity, error: activityError } = await supabase
     .from('activities')
     .select('id, name, type, max_points, description, how_to_play')
-    .eq('barcode_data', barcode_data.trim())
-    .single();
+    .eq('barcode_data', trimmedCode)
+    .maybeSingle();
 
-  if (activityError || !activity) {
+  // Fallback: If not found by barcode_data, check if it's a UUID and matches primary ID
+  const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmedCode);
+  if (!activity && isUUID) {
+    const { data: idActivity } = await supabase
+      .from('activities')
+      .select('id, name, type, max_points, description, how_to_play')
+      .eq('id', trimmedCode)
+      .maybeSingle();
+    activity = idActivity;
+  }
+
+  if (!activity) {
     return Response.json({ success: false, message: 'Lokasi tidak ditemukan' }, { status: 404 });
   }
 

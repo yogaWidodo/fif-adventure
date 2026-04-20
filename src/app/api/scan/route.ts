@@ -102,6 +102,7 @@ export async function POST(request: NextRequest): Promise<Response> {
     .insert({
       team_id: team_id.trim(),
       activity_id: activity.id,
+      checked_in_by: userProfile.id,
     });
 
   if (insertError) {

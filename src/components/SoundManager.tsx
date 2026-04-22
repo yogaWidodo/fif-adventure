@@ -4,7 +4,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Volume2, VolumeX, Music } from 'lucide-react';
 
-const AUDIO_PATH = '/audio/Beyond_the_Green_Horizon.mp3';
+const AUDIO_PATH = '/audio/Beyond_the_Green_Horizon_compressed.mp3';
 const STORAGE_KEY = 'expedition_bgm_muted';
 
 export default function SoundManager() {

@@ -7,7 +7,7 @@ import LoginForm from './LoginForm';
 
 export default function LoginPage() {
   return (
-    <div className="relative min-h-screen flex flex-col items-center justify-center p-6 bg-[#0a0a0b] overflow-hidden font-content">
+    <div className="fixed inset-0 overflow-y-auto overflow-x-hidden flex flex-col items-center justify-center p-6 bg-[#0a0a0b] font-content">
       {/* Background */}
       <div
         className="fixed inset-0 z-0 bg-cover bg-center opacity-45"

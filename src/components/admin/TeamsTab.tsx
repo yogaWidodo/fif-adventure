@@ -3,12 +3,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Users, Edit2, UserCheck, FileText,
+  Users, Edit2, UserCheck,
   Loader2, Compass,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { generateTeamBarcode } from '@/lib/auth';
-import CSVImporter from '@/components/admin/CSVImporter';
 import EventSelector from '@/components/admin/EventSelector';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -203,7 +202,6 @@ export default function TeamsTab() {
   const [teams, setTeams] = useState<TeamWithDetails[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
-  const [showCSVModal, setShowCSVModal] = useState(false);
   const [selectedTeam, setSelectedTeam] = useState<TeamWithDetails | null>(null);
   const [newName, setNewName] = useState('');
   const [newSlogan, setNewSlogan] = useState('');
@@ -464,16 +462,7 @@ export default function TeamsTab() {
                   )}
                 </div>
 
-                {/* Column footer */}
-                <div className="px-4 py-2 border-t border-primary/10 bg-black/10">
-                  <button
-                    onClick={() => { setSelectedTeam(team); setShowCSVModal(true); }}
-                    className="w-full text-[9px] font-adventure uppercase tracking-widest text-primary/40 hover:text-primary transition-colors flex items-center justify-center gap-1 py-1"
-                  >
-                    <FileText className="w-3 h-3" />
-                    Enlist Members
-                  </button>
-                </div>
+                {/* Removed redundant column footer */}
               </motion.div>
             );
           })}
@@ -506,19 +495,6 @@ export default function TeamsTab() {
         </div>
       </AdventureModal>
 
-      {/* CSV Import Modal */}
-      <AdventureModal show={showCSVModal} onClose={() => setShowCSVModal(false)} title="Import Members via CSV">
-        <CSVImporter
-          teamId={selectedTeam?.id || ''}
-          teamName={selectedTeam?.name || ''}
-          onImportComplete={() => {
-            setTimeout(() => {
-              setShowCSVModal(false);
-              fetchTeams();
-            }, 1000);
-          }}
-        />
-      </AdventureModal>
     </motion.div>
   );
 }

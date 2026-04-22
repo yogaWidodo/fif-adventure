@@ -409,7 +409,7 @@ export default function UsersTab() {
   const [assigningLocationUser, setAssigningLocationUser] = useState<UserRecord | null>(null);
   const [showBulkUpload, setShowBulkUpload] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
-  const PAGE_SIZE = 25;
+  const PAGE_SIZE = 10;
 
   const fetchUsers = useCallback(async () => {
     setLoading(true);

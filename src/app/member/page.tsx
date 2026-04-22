@@ -129,7 +129,7 @@ export default function MemberPortal() {
 
   return (
     <AuthGuard allowedRoles={['member']}>
-      <div className="relative min-h-screen flex flex-col items-center bg-black overflow-hidden font-content pb-24">
+      <div className="fixed inset-0 overflow-y-auto overflow-x-hidden flex flex-col items-center bg-black font-content pb-24">
         {/* Background */}
         <div
           className="fixed inset-0 z-0 bg-cover bg-center"

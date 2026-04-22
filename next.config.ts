@@ -21,11 +21,12 @@ const nextConfig: NextConfig = {
             key: "Content-Security-Policy",
             value: [
               "default-src 'self'",
-              "script-src 'self' 'unsafe-eval' 'unsafe-inline'", // unsafe-eval needed for Next.js dev
+              "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://va.vercel-scripts.com", // unsafe-eval needed for Next.js dev
               "style-src 'self' 'unsafe-inline'",
-              "img-src 'self' data: blob: https://www.transparenttextures.com",
+              // OSM tile servers (a/b/c subdomains) + unpkg for Leaflet marker icons
+              "img-src 'self' data: blob: https://www.transparenttextures.com https://*.tile.openstreetmap.org https://unpkg.com",
               "font-src 'self'",
-              "connect-src 'self' https://*.supabase.co wss://*.supabase.co",
+              "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://vitals.vercel-insights.com",
               "media-src 'self' blob:",
               "worker-src blob:",
               "frame-ancestors 'none'",

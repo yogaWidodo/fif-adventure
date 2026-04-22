@@ -6,6 +6,19 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import AuthGuard from '@/components/AuthGuard';
 import UsersTab from '@/components/admin/UsersTab';
+import AttendanceTab from '@/components/admin/AttendanceTab';
+import Pagination from '@/components/admin/Pagination';
+
+// GeofenceMap uses Leaflet which requires browser APIs — must be client-only
+const GeofenceMap = dynamic(() => import('@/components/admin/GeofenceMap'), {
+  ssr: false,
+  loading: () => (
+    <div className="h-60 flex items-center justify-center bg-black/20 border border-primary/10">
+      <span className="text-[10px] font-adventure uppercase tracking-widest text-foreground/30 animate-pulse">Loading map...</span>
+    </div>
+  ),
+});
+
 
 // Dynamically import chart components to avoid SSR issues with recharts
 const TopTeamsChart = dynamic(() => import('@/components/admin/AnalyticsCharts').then(m => m.TopTeamsChart), { ssr: false });
@@ -21,7 +34,7 @@ import {
   Compass, Flame, Sword, Gem, ScrollText,
   ChevronDown, ChevronUp, Loader2, AlertTriangle,
   CheckCircle, Edit2, Save, UserCheck, FileText,
-  Clock, Filter, Play, Pause, RotateCcw, Square, UserCog, Trash2
+  Clock, Filter, Play, Pause, RotateCcw, Square, UserCog, Trash2, ClipboardList
 } from 'lucide-react';
 
 
@@ -119,7 +132,7 @@ export default function AdminDashboard() {
 
   return (
     <AuthGuard allowedRoles={['admin']}>
-      <div className="relative flex h-screen bg-black overflow-hidden font-content selection:bg-primary selection:text-primary-foreground">
+      <div className="fixed inset-0 flex bg-black overflow-hidden font-content selection:bg-primary selection:text-primary-foreground z-10">
         {/* Immersive Background */}
         <div
           className="absolute inset-0 z-0 bg-cover bg-center opacity-40"
@@ -156,6 +169,7 @@ export default function AdminDashboard() {
             </div>
             <SidebarLink icon={<BarChart3 className="w-5 h-5" />} label="Metrics" active={activeTab === 'analytics'} onClick={() => setActiveTab('analytics')} />
             <SidebarLink icon={<ScrollText className="w-5 h-5" />} label="Audit Log" active={activeTab === 'audit'} onClick={() => setActiveTab('audit')} />
+            <SidebarLink icon={<ClipboardList className="w-5 h-5" />} label="Attendance" active={activeTab === 'attendance'} onClick={() => setActiveTab('attendance')} />
           </nav>
 
           <div className="mt-auto pt-8 border-t border-primary/10">
@@ -174,6 +188,7 @@ export default function AdminDashboard() {
             {activeTab === 'treasure' && <TreasureTab key="treasure" />}
             {activeTab === 'analytics' && <AnalyticsTab key="analytics" />}
             {activeTab === 'audit' && <AuditTab key="audit" />}
+            {activeTab === 'attendance' && <AttendanceTab key="attendance" />}
           </AnimatePresence>
         </main>
       </div>
@@ -199,6 +214,24 @@ function EventControlTab({
   const [isHovering, setIsHovering] = useState(false);
   const [top3, setTop3] = useState<{ name: string; total_points: number }[]>([]);
   const [loadingTop3, setLoadingTop3] = useState(false);
+  // Geofence settings
+  const [venueLat, setVenueLat] = useState('');
+  const [venueLng, setVenueLng] = useState('');
+  const [venueRadius, setVenueRadius] = useState('500');
+  const [geofenceEnabled, setGeofenceEnabled] = useState(false);
+  // Debounced coords for map preview — only updates 800ms after user stops typing
+  const [mapPreviewLat, setMapPreviewLat] = useState('');
+  const [mapPreviewLng, setMapPreviewLng] = useState('');
+  const [mapPreviewRadius, setMapPreviewRadius] = useState('500');
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setMapPreviewLat(venueLat);
+      setMapPreviewLng(venueLng);
+      setMapPreviewRadius(venueRadius);
+    }, 800);
+    return () => clearTimeout(t);
+  }, [venueLat, venueLng, venueRadius]);
 
   // Sync state with props when status is loaded
   useEffect(() => {
@@ -214,10 +247,18 @@ function EventControlTab({
 
   // Fetch from settings
   useEffect(() => {
-    supabase.from('settings').select('*').in('key', ['map_image_url']).then(({ data }) => {
+    supabase.from('settings').select('*').in('key', ['map_image_url', 'venue_lat', 'venue_lng', 'venue_radius_meters', 'geofence_enabled']).then(({ data }) => {
       if (data) {
         const m = data.find(d => d.key === 'map_image_url')?.value;
         if (m) setMapUrl(m);
+        const lat = data.find(d => d.key === 'venue_lat')?.value;
+        if (lat) setVenueLat(lat);
+        const lng = data.find(d => d.key === 'venue_lng')?.value;
+        if (lng) setVenueLng(lng);
+        const radius = data.find(d => d.key === 'venue_radius_meters')?.value;
+        if (radius) setVenueRadius(radius);
+        const geo = data.find(d => d.key === 'geofence_enabled')?.value;
+        setGeofenceEnabled(geo === 'true');
       }
     });
   }, []);
@@ -243,6 +284,10 @@ function EventControlTab({
       const updates = [
         { key: 'event_duration_minutes', value: String(durationMinutes) },
         { key: 'map_image_url', value: mapUrl },
+        { key: 'venue_lat', value: venueLat },
+        { key: 'venue_lng', value: venueLng },
+        { key: 'venue_radius_meters', value: venueRadius },
+        { key: 'geofence_enabled', value: String(geofenceEnabled) },
       ];
       for (const item of updates) {
         await supabase.from('settings').upsert(item);
@@ -458,6 +503,93 @@ function EventControlTab({
                     </div>
                   </div>
                 </div>
+                {/* Geofence / Absensi Lokasi */}
+                <div className="border-t border-primary/10 pt-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <h5 className="font-adventure text-primary text-xs uppercase tracking-widest">Geofence Absensi</h5>
+                      <p className="text-[10px] text-foreground/40 italic mt-0.5">Verifikasi lokasi peserta saat login</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setGeofenceEnabled(!geofenceEnabled)}
+                      className={`relative w-12 h-6 rounded-full transition-colors duration-300 focus:outline-none ${geofenceEnabled ? 'bg-primary/60' : 'bg-foreground/10'}`}
+                    >
+                      <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform duration-300 ${geofenceEnabled ? 'translate-x-6' : 'translate-x-0'}`} />
+                    </button>
+                  </div>
+                  {geofenceEnabled && (
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-[10px] uppercase text-foreground/40 font-adventure mb-1">Latitude Venue</label>
+                          <input
+                            type="text"
+                            value={venueLat}
+                            onChange={e => setVenueLat(e.target.value)}
+                            placeholder="-6.3741..."
+                            className="w-full bg-transparent border-b border-primary/20 py-1.5 font-mono text-sm focus:outline-none focus:border-primary"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] uppercase text-foreground/40 font-adventure mb-1">Longitude Venue</label>
+                          <input
+                            type="text"
+                            value={venueLng}
+                            onChange={e => setVenueLng(e.target.value)}
+                            placeholder="106.9076..."
+                            className="w-full bg-transparent border-b border-primary/20 py-1.5 font-mono text-sm focus:outline-none focus:border-primary"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-[10px] uppercase text-foreground/40 font-adventure mb-1">Radius (Meter)</label>
+                        <input
+                          type="number"
+                          value={venueRadius}
+                          onChange={e => setVenueRadius(e.target.value)}
+                          placeholder="500"
+                          className="w-full bg-transparent border-b border-primary/20 py-1.5 font-mono text-xl focus:outline-none focus:border-primary"
+                        />
+                      </div>
+                      <p className="text-[10px] text-foreground/30 italic">
+                        💡 Tip: Buka Google Maps → klik lokasi venue → copy koordinat.<br />
+                        Trans Studio Cibubur: <span className="font-mono text-primary/50">-6.374, 106.908</span>
+                      </p>
+
+                    </div>
+                  )}
+                </div>
+                {geofenceEnabled && (() => {
+                  const lat = parseFloat(mapPreviewLat);
+                  const lng = parseFloat(mapPreviewLng);
+                  const radius = parseInt(mapPreviewRadius) || 500;
+                  if (isNaN(lat) || isNaN(lng)) return null;
+                  return (
+                    <div className="mt-8 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h4 className="font-adventure text-primary text-sm uppercase tracking-widest">Venue Geofence Preview</h4>
+                          <p className="text-[10px] text-foreground/40 font-mono mt-0.5">
+                            {lat.toFixed(6)}, {lng.toFixed(6)} · radius {radius}m
+                          </p>
+                        </div>
+                        <a
+                          href={`https://maps.google.com/maps?q=${lat},${lng}&ll=${lat},${lng}&z=17`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-[9px] font-adventure uppercase tracking-widest text-primary/50 hover:text-primary transition-colors border border-primary/20 px-4 py-2 hover:bg-primary/10"
+                        >
+                          Buka Google Maps ↗
+                        </a>
+                      </div>
+                      <div className="border border-primary/20" style={{ height: 320 }}>
+                        <GeofenceMap lat={lat} lng={lng} radius={radius} />
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 {error && <p className="text-red-400 text-xs mt-4">{error}</p>}
                 <button
                   onClick={handleUpdateSettings}
@@ -483,6 +615,7 @@ function EventControlTab({
           )}
         </div>
       </div>
+
     </TabLayout>
   );
 }
@@ -506,6 +639,8 @@ function WahanaTab() {
   const [showModal, setShowModal] = useState(false);
   const [error, setError] = useState('');
   const [linkedTreasureIds, setLinkedTreasureIds] = useState<Set<string>>(new Set());
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 10;
 
   const fetchPrivateTreasures = async () => {
     const { data: treasures } = await supabase.from("treasure_hunts").select("*").eq("is_public", false).order("name");
@@ -593,9 +728,13 @@ function WahanaTab() {
 
   return (
     <TabLayout title="Wahana" subtitle="Atraksi utama ekspedisi" onAdd={() => handleOpenModal()}>
-      {loading ? <LoadingState /> : activities.length === 0 ? <EmptyState tab="wahana" /> : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {activities.map((act, idx) => (
+      {loading ? <LoadingState /> : activities.length === 0 ? <EmptyState tab="wahana" /> : (() => {
+        const totalPages = Math.ceil(activities.length / PAGE_SIZE);
+        const paginated = activities.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+        return (
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {paginated.map((act, idx) => (
             <motion.div
               key={act.id}
               initial={{ opacity: 0, y: 20 }}
@@ -628,10 +767,20 @@ function WahanaTab() {
               <p className="text-xs text-muted-foreground/60 mb-4 line-clamp-2">{act.description}</p>
 
 
-            </motion.div>
-          ))}
-        </div>
-      )}
+              </motion.div>
+            ))}
+            </div>
+            <Pagination
+              currentPage={page}
+              totalPages={totalPages}
+              totalItems={activities.length}
+              pageSize={PAGE_SIZE}
+              onPageChange={setPage}
+              itemLabel="wahana"
+            />
+          </div>
+        );
+      })()}
 
       <AdventureModal show={showModal} onClose={() => setShowModal(false)} title={editingActivity ? 'Edit Wahana' : 'New Wahana'}>
         <div className="space-y-5">
@@ -683,6 +832,8 @@ function ChallengesTab() {
   const [saving, setSaving] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [linkedTreasureIds, setLinkedTreasureIds] = useState<Set<string>>(new Set());
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 10;
 
   const fetchPrivateTreasures = async () => {
     const { data: treasures } = await supabase.from("treasure_hunts").select("*").eq("is_public", false).order("name");
@@ -779,9 +930,13 @@ function ChallengesTab() {
 
   return (
     <TabLayout title="Challenges" subtitle="Misi sampingan berhadiah" onAdd={() => handleOpenModal()}>
-      {loading ? <LoadingState /> : activities.length === 0 ? <EmptyState tab="challenges" /> : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {activities.map((act, idx) => (
+      {loading ? <LoadingState /> : activities.length === 0 ? <EmptyState tab="challenges" /> : (() => {
+        const totalPages = Math.ceil(activities.length / PAGE_SIZE);
+        const paginated = activities.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+        return (
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {paginated.map((act, idx) => (
             <motion.div
               key={act.id}
               initial={{ opacity: 0, y: 20 }}
@@ -816,10 +971,20 @@ function ChallengesTab() {
               <h3 className="font-adventure text-lg text-foreground mb-1 group-hover:text-primary transition-colors">{act.name}</h3>
               <p className="text-xs text-muted-foreground/60 mb-4 line-clamp-2">{act.description}</p>
 
-            </motion.div>
-          ))}
-        </div>
-      )}
+              </motion.div>
+            ))}
+            </div>
+            <Pagination
+              currentPage={page}
+              totalPages={totalPages}
+              totalItems={activities.length}
+              pageSize={PAGE_SIZE}
+              onPageChange={setPage}
+              itemLabel="challenge"
+            />
+          </div>
+        );
+      })()}
 
       <AdventureModal show={showModal} onClose={() => setShowModal(false)} title={editingChallenge ? 'Edit Challenge' : 'New Challenge'}>
         <div className="space-y-5">
@@ -885,6 +1050,8 @@ function TreasureTab() {
   const [expandedQR, setExpandedQR] = useState<string | null>(null);
   const [expandedClaims, setExpandedClaims] = useState<string | null>(null);
   const [claimTeams, setClaimTeams] = useState<{ team_name: string }[]>([]);
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 10;
 
   const fetchTreasures = useCallback(async () => {
     setLoading(true);
@@ -976,9 +1143,13 @@ function TreasureTab() {
 
   return (
     <TabLayout title="Treasure Hunt" subtitle="Harta karun tersembunyi" onAdd={() => handleOpenModal()}>
-      {loading ? <LoadingState /> : treasures.length === 0 ? <EmptyState tab="treasure" /> : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {treasures.map((th, idx) => (
+      {loading ? <LoadingState /> : treasures.length === 0 ? <EmptyState tab="treasure" /> : (() => {
+        const totalPages = Math.ceil(treasures.length / PAGE_SIZE);
+        const paginated = treasures.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+        return (
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {paginated.map((th, idx) => (
             <motion.div
               key={th.id}
               initial={{ opacity: 0, y: 20 }}
@@ -1052,8 +1223,18 @@ function TreasureTab() {
               </AnimatePresence>
             </motion.div>
           ))}
-        </div>
-      )}
+            </div>
+            <Pagination
+              currentPage={page}
+              totalPages={totalPages}
+              totalItems={treasures.length}
+              pageSize={PAGE_SIZE}
+              onPageChange={setPage}
+              itemLabel="treasure"
+            />
+          </div>
+        );
+      })()}
 
       <AdventureModal show={showModal} onClose={() => setShowModal(false)} title={editingTreasure ? 'Edit Treasure' : 'New Treasure'}>
         <div className="space-y-5">

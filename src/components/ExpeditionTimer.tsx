@@ -89,12 +89,18 @@ export default function ExpeditionTimer({ onExpired }: ExpeditionTimerProps) {
 
       // Tick every second (smooth countdown)
       const tickInterval = setInterval(() => {
-        localRemainingRef.current = Math.max(0, localRemainingRef.current - 1);
-        const remaining = localRemainingRef.current;
+        const remaining = computeRemaining(durationMinutes, elapsedSeconds, startedAt, new Date(), status);
+        localRemainingRef.current = remaining;
         const looming = isLooming(remaining, status);
 
-        setTimeLeft(secondsToHMS(remaining));
-        setLoomingState(looming);
+        // Only update state if values actually changed to avoid unnecessary re-renders
+        setLoomingState(prev => prev !== looming ? looming : prev);
+        
+        const newHMS = secondsToHMS(remaining);
+        setTimeLeft(prev => {
+          if (prev && prev.h === newHMS.h && prev.m === newHMS.m && prev.s === newHMS.s) return prev;
+          return newHMS;
+        });
 
         if (remaining <= 0 && !expiredFiredRef.current) {
           expiredFiredRef.current = true;

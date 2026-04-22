@@ -23,14 +23,14 @@ export async function POST(request: NextRequest): Promise<Response> {
   const { supabase, userId } = auth;
 
   // 2. Parse request body
-  let body: { team_id?: unknown; points?: unknown; activity_id?: unknown; note?: unknown };
+  let body: { team_id?: unknown; points?: unknown; activity_id?: unknown; note?: unknown; participant_ids?: unknown };
   try {
     body = await request.json();
   } catch {
     return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
   }
 
-  const { team_id, points, activity_id, note } = body;
+  const { team_id, points, activity_id, note, participant_ids } = body;
   if (typeof team_id !== 'string' || !team_id.trim()) {
     return Response.json({ error: 'team_id is required' }, { status: 400 });
   }
@@ -94,7 +94,8 @@ export async function POST(request: NextRequest): Promise<Response> {
       activity_id,
       lo_id: userProfile.id,
       points_awarded: points,
-      note: note as string
+      note: note as string,
+      participant_ids: Array.isArray(participant_ids) ? participant_ids : []
     });
 
   if (insertError) {

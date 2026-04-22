@@ -1,16 +1,19 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   Users, Trophy, MapPin, CheckCircle2, Circle,
-  Compass, Flame, LogOut, Crown, Shield, Gem, ScrollText, Lock, ChevronDown,
+  Compass, Flame, LogOut, Crown, Shield, Gem, ScrollText, Lock, ChevronDown, X
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import AuthGuard from '@/components/AuthGuard';
 import MapPanel from '@/components/MapPanel';
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
+import { QRCodeSVG } from 'qrcode.react';
+import { generateTeamBarcode } from '@/lib/auth';
+import { calculateBadges } from '@/lib/badges';
 
 interface TeamMember {
   id: string;
@@ -42,6 +45,15 @@ interface HintWithTreasure {
   } | null;
 }
 
+interface ScoreLog {
+  id: string;
+  activity_id: string;
+  points_awarded: number;
+  created_at: string;
+  participant_ids: string[] | null;
+  activities: { name: string } | null;
+}
+
 interface TreasureHuntClaim {
   treasure_hunt_id: string;
 }
@@ -70,8 +82,10 @@ export default function MemberPortal() {
   const [hints, setHints] = useState<HintWithTreasure[]>([]);
   const [claims, setClaims] = useState<TreasureHuntClaim[]>([]);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
+  const [scoreLogs, setScoreLogs] = useState<ScoreLog[]>([]);
   const [loading, setLoading] = useState(true);
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({ crew: false, tasks: true, hints: true, leaderboard: false });
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({ crew: false, tasks: true, hints: true, leaderboard: false, journey: true });
+  const [showQR, setShowQR] = useState(false);
 
   useEffect(() => {
     if (!user?.team_id) {
@@ -84,7 +98,7 @@ export default function MemberPortal() {
   const fetchAll = async (teamId: string) => {
     setLoading(true);
 
-    const [teamRes, membersRes, actRes, regRes, hintsRes, claimRes, lbRes] = await Promise.all([
+    const [teamRes, membersRes, actRes, regRes, hintsRes, claimRes, lbRes, logsRes] = await Promise.all([
       supabase.from('teams').select('id, name, slogan, total_points').eq('id', teamId).maybeSingle(),
       supabase.from('users').select('id, name, role').eq('team_id', teamId).order('role'),
       supabase.from('activities').select('id, name, type, max_points').order('name'),
@@ -97,6 +111,11 @@ export default function MemberPortal() {
         .order('received_at', { ascending: false }),
       supabase.from('treasure_hunt_claims').select('treasure_hunt_id').eq('team_id', teamId),
       fetch('/api/leaderboard').then(r => r.ok ? r.json() : []),
+      supabase
+        .from('score_logs')
+        .select('id, activity_id, points_awarded, created_at, participant_ids, activities(name)')
+        .eq('team_id', teamId)
+        .order('created_at', { ascending: false })
     ]);
 
     setTeam(teamRes.data ?? null);
@@ -106,6 +125,7 @@ export default function MemberPortal() {
     setHints((hintsRes.data ?? []) as unknown as HintWithTreasure[]);
     setClaims((claimRes.data ?? []) as TreasureHuntClaim[]);
     setLeaderboard(Array.isArray(lbRes) ? lbRes : []);
+    setScoreLogs((logsRes.data ?? []) as any as ScoreLog[]);
     setLoading(false);
   };
 
@@ -118,6 +138,22 @@ export default function MemberPortal() {
     return th && claims.some(c => c.treasure_hunt_id === th.id);
   }).length;
   const myRank = leaderboard.find(t => t.id === user?.team_id)?.rank ?? null;
+
+  // Personal Contribution Calculation
+  const myScoreLogs = scoreLogs.filter(log => log.participant_ids && user?.id && log.participant_ids.includes(user.id));
+  const myTotalContribution = myScoreLogs.reduce((sum, log) => {
+    const pointsPerPerson = log.participant_ids && log.participant_ids.length > 0 
+      ? log.points_awarded / log.participant_ids.length 
+      : 0;
+    return sum + pointsPerPerson;
+  }, 0);
+  
+  const contributionPercentage = team?.total_points && team.total_points > 0
+    ? Math.round((myTotalContribution / team.total_points) * 100)
+    : 0;
+
+  // Badges Calculation
+  const badges = calculateBadges(user?.id ?? '', scoreLogs, team?.total_points ?? 0);
 
   const roleLabel = (role: string) => {
     switch (role) {
@@ -139,6 +175,69 @@ export default function MemberPortal() {
 
         <div className="relative z-20 w-full max-w-2xl px-4 pt-8 space-y-6">
 
+          {/* QR Code Modal */}
+          <AnimatePresence>
+            {showQR && user?.team_id && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 z-[95] bg-black/95 flex items-center justify-center p-6"
+                onClick={() => setShowQR(false)}
+              >
+                <motion.div
+                  initial={{ scale: 0.85, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.85, opacity: 0 }}
+                  className="adventure-card p-8 max-w-sm w-full text-center border-primary/30 relative"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <button
+                    onClick={() => setShowQR(false)}
+                    className="absolute top-4 right-4 z-50 text-foreground/40 hover:text-primary transition-colors bg-black/80 p-2 rounded-full"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                  
+                  {/* Digital Pass Aesthetic - Optimized */}
+                  <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-black to-black opacity-80 rounded-lg pointer-events-none" />
+                  <div className="absolute top-0 left-1/2 -translate-x-1/2 w-24 h-1 bg-primary/50 rounded-b" />
+                  
+                  <div className="relative z-10">
+                    <div className="flex items-center justify-center gap-2 mb-4">
+                      <span className="h-px w-6 bg-primary/40" />
+                      <p className="text-[10px] uppercase font-adventure tracking-[0.4em] text-primary">Access Pass</p>
+                      <span className="h-px w-6 bg-primary/40" />
+                    </div>
+
+                    <h2 className="font-adventure text-3xl gold-engraving mb-1">{user.name}</h2>
+                    <p className="text-[11px] uppercase tracking-widest text-primary/70 mb-6 font-adventure flex items-center justify-center gap-2">
+                      {roleLabel(user.role ?? '').icon}
+                      {roleLabel(user.role ?? '').label} • {team?.name ?? 'Loading Team...'}
+                    </p>
+
+                    <div className="bg-white/95 p-5 rounded-xl inline-block mb-6 border border-primary/20 relative">
+                      <div className="absolute -inset-1 border border-primary/30 rounded-xl pointer-events-none opacity-50" />
+                      <QRCodeSVG
+                        value={user.team_id ? generateTeamBarcode(user.team_id) : ''}
+                        size={180}
+                        level="M"
+                        includeMargin={false}
+                      />
+                    </div>
+                    
+                    <div className="bg-primary/5 border border-primary/10 p-3 rounded-lg text-left">
+                      <p className="text-[9px] uppercase font-adventure text-primary/50 tracking-widest mb-1">Pass Instructions</p>
+                      <p className="text-xs text-foreground/60 italic font-content leading-relaxed">
+                        Tunjukkan pass ini kepada Station Officer di wahana untuk memvalidasi partisipasi Anda dan mewakili tim.
+                      </p>
+                    </div>
+                  </div>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           {/* Header */}
           <motion.header
             initial={{ opacity: 0, y: -16 }}
@@ -149,9 +248,16 @@ export default function MemberPortal() {
               <Compass className="w-10 h-10 text-primary torch-glow" />
             </div>
             <h1 className="font-adventure text-4xl gold-engraving tracking-widest">Expedition Log</h1>
-            <p className="text-muted-foreground text-xs uppercase tracking-[0.3em] font-adventure opacity-50 mt-1">
+            <p className="text-muted-foreground text-xs uppercase tracking-[0.3em] font-adventure opacity-50 mt-1 mb-4">
               {user?.name ?? 'Explorer'}
             </p>
+            <button
+              onClick={() => setShowQR(true)}
+              className="inline-flex items-center gap-2 px-6 py-2 bg-primary/20 border border-primary/40 text-primary font-adventure tracking-widest text-xs uppercase hover:bg-primary/30 transition-all rounded shadow-[0_0_15px_rgba(var(--primary-rgb),0.2)]"
+            >
+              <Users className="w-4 h-4" />
+              Tampilkan Barcode Tim
+            </button>
           </motion.header>
 
           {loading ? (
@@ -215,6 +321,42 @@ export default function MemberPortal() {
                     </motion.div>
                   </div>
                 </div>
+
+                {/* Personal Contribution */}
+                <div className="mt-6 pt-6 border-t border-primary/20">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="bg-primary/20 p-2 rounded">
+                      <Flame className="w-5 h-5 text-primary" />
+                    </div>
+                    <div>
+                      <p className="text-[10px] uppercase font-adventure text-primary tracking-widest opacity-70">Personal Contribution</p>
+                      <p className="font-adventure text-xl gold-engraving">{Math.round(myTotalContribution)} Poin</p>
+                    </div>
+                  </div>
+                  <p className="text-xs text-foreground/60 italic font-content leading-relaxed">
+                    Kamu telah menyumbang <strong className="text-primary">{contributionPercentage}%</strong> dari total poin yang dimiliki oleh {team.name} sejauh ini!
+                  </p>
+                </div>
+
+                {/* Achievements / Badges */}
+                {badges.length > 0 && (
+                  <div className="mt-6 pt-6 border-t border-primary/20">
+                    <p className="text-[10px] uppercase font-adventure text-primary tracking-widest opacity-70 mb-4">Achievements</p>
+                    <div className="grid grid-cols-1 gap-3">
+                      {badges.map(badge => (
+                        <div key={badge.id} className="flex items-center gap-3 bg-black/40 border border-primary/10 p-3 rounded-lg">
+                          <div className="bg-primary/10 p-2 rounded-full border border-primary/20 flex-shrink-0">
+                            {badge.icon}
+                          </div>
+                          <div>
+                            <p className="font-adventure text-sm text-primary">{badge.name}</p>
+                            <p className="text-[10px] text-foreground/50 leading-tight mt-0.5">{badge.description}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </motion.div>
 
               {/* ── Team Members (collapsible) ── */}
@@ -402,6 +544,60 @@ export default function MemberPortal() {
                           </motion.div>
                         );
                       })
+                    )}
+                  </div>
+                )}
+              </motion.div>
+
+              {/* ── My Journey ── */}
+              <motion.div
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.45 }}
+                className="adventure-card overflow-hidden"
+              >
+                <button
+                  onClick={() => setExpanded(p => ({ ...p, journey: !p.journey }))}
+                  className="flex items-center gap-3 px-5 py-4 border-b border-primary/10 w-full text-left"
+                >
+                  <MapPin className="w-4 h-4 text-primary" />
+                  <span className="font-adventure text-xs uppercase tracking-[0.2em] flex-1">My Journey</span>
+                  <ChevronDown className={`w-4 h-4 text-primary/40 transition-transform ${expanded.journey ? 'rotate-180' : ''}`} />
+                </button>
+                {expanded.journey && (
+                  <div className="p-5 space-y-4 max-h-[300px] overflow-y-auto custom-scrollbar bg-black/20">
+                    {myScoreLogs.length === 0 ? (
+                      <p className="text-sm text-foreground/40 italic text-center py-6">
+                        Belum ada aktivitas pribadi yang tercatat. Selesaikan wahana untuk mulai perjalananmu!
+                      </p>
+                    ) : (
+                      <div className="relative pl-4 border-l border-primary/30 space-y-6 my-2">
+                        {myScoreLogs.map((log) => {
+                          const pts = log.participant_ids && log.participant_ids.length > 0 
+                            ? Math.round(log.points_awarded / log.participant_ids.length) 
+                            : 0;
+                          return (
+                            <div key={log.id} className="relative">
+                              {/* Timeline dot */}
+                              <div className="absolute -left-[21px] top-1 w-3 h-3 bg-black border-2 border-primary rounded-full shadow-[0_0_8px_rgba(var(--primary-rgb),0.8)]" />
+                              
+                              <div className="bg-primary/5 border border-primary/20 rounded p-3 text-left">
+                                <div className="flex justify-between items-start mb-1">
+                                  <p className="font-adventure text-lg text-primary gold-engraving">
+                                    {log.activities?.name ?? 'Unknown Activity'}
+                                  </p>
+                                  <span className="font-adventure text-sm text-green-400 bg-green-400/10 px-2 py-0.5 rounded">
+                                    +{pts}
+                                  </span>
+                                </div>
+                                <p className="text-[10px] uppercase font-adventure tracking-wider text-foreground/40">
+                                  {new Date(log.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+                                </p>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
                     )}
                   </div>
                 )}

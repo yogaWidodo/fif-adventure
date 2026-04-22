@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Camera, BookOpen, Compass, ShieldAlert, QrCode, X, MapPin, Flame, Sword, Gem } from 'lucide-react';
+import { Camera, BookOpen, Compass, ShieldAlert, QrCode, X, MapPin, Flame, Sword, Gem, Crown } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { useAuth } from '@/context/AuthContext';
 import { useTimerContext } from '@/context/TimerContext';
@@ -216,23 +216,45 @@ export default function CaptainPortal() {
               >
                 <button
                   onClick={() => setShowQR(false)}
-                  className="absolute top-4 right-4 text-foreground/40 hover:text-foreground transition-colors"
+                  className="absolute top-4 right-4 z-50 text-foreground/40 hover:text-primary transition-colors bg-black/80 p-2 rounded-full"
                 >
-                  <X className="w-5 h-5" />
+                  <X className="w-4 h-4" />
                 </button>
-                <p className="text-[10px] uppercase font-adventure tracking-widest text-primary opacity-60 mb-2">Team QR Code</p>
-                <h2 className="font-adventure text-2xl gold-engraving mb-6">{user.name}</h2>
-                <div className="bg-white p-4 rounded-lg inline-block mb-6">
-                  <QRCodeSVG
-                    value={generateTeamBarcode(user.team_id)}
-                    size={200}
-                    level="M"
-                    includeMargin={false}
-                  />
+                
+                {/* Digital Pass Aesthetic - Optimized */}
+                <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-black to-black opacity-80 rounded-lg pointer-events-none" />
+                <div className="absolute top-0 left-1/2 -translate-x-1/2 w-24 h-1 bg-primary/50 rounded-b" />
+                
+                <div className="relative z-10">
+                  <div className="flex items-center justify-center gap-2 mb-4">
+                    <span className="h-px w-6 bg-primary/40" />
+                    <p className="text-[10px] uppercase font-adventure tracking-[0.4em] text-primary">Access Pass</p>
+                    <span className="h-px w-6 bg-primary/40" />
+                  </div>
+
+                  <h2 className="font-adventure text-3xl gold-engraving mb-1">{user.name}</h2>
+                  <p className="text-[11px] uppercase tracking-widest text-primary/70 mb-6 font-adventure flex items-center justify-center gap-2">
+                    <Crown className="w-3 h-3 text-primary" />
+                    Captain • FIF Expedition
+                  </p>
+
+                  <div className="bg-white/95 p-5 rounded-xl inline-block mb-6 border border-primary/20 relative">
+                    <div className="absolute -inset-1 border border-primary/30 rounded-xl pointer-events-none opacity-50" />
+                    <QRCodeSVG
+                      value={generateTeamBarcode(user.team_id)}
+                      size={180}
+                      level="M"
+                      includeMargin={false}
+                    />
+                  </div>
+                  
+                  <div className="bg-primary/5 border border-primary/10 p-3 rounded-lg text-left">
+                    <p className="text-[9px] uppercase font-adventure text-primary/50 tracking-widest mb-1">Pass Instructions</p>
+                    <p className="text-xs text-foreground/60 italic font-content leading-relaxed">
+                      Tunjukkan pass ini kepada Station Officer di wahana untuk memvalidasi partisipasi Anda dan mewakili tim.
+                    </p>
+                  </div>
                 </div>
-                <p className="text-xs text-foreground/40 italic font-content">
-                  Show this to the Location Officer to check in your team.
-                </p>
               </motion.div>
             </motion.div>
           )}

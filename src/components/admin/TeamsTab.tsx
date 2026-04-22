@@ -9,6 +9,7 @@ import {
 import { supabase } from '@/lib/supabase';
 import { generateTeamBarcode } from '@/lib/auth';
 import EventSelector from '@/components/admin/EventSelector';
+import { calculateBadges, ScoreLog } from '@/lib/badges';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -122,12 +123,18 @@ function MemberCard({
   member,
   teamId,
   onAssign,
+  teamScoreLogs,
+  teamTotalPoints,
 }: {
   member: Member;
   teamId: string;
   onAssign: (teamId: string, userId: string, role: 'captain' | 'vice_captain') => void;
+  teamScoreLogs: ScoreLog[];
+  teamTotalPoints: number;
 }) {
   const [open, setOpen] = useState(false);
+
+  const badges = calculateBadges(member.id, teamScoreLogs, teamTotalPoints);
 
   const roleStyle: Record<string, string> = {
     captain: 'bg-primary/20 text-primary border-primary/30',
@@ -157,9 +164,16 @@ function MemberCard({
           </span>
           <span className="text-[11px] text-foreground/80 truncate">{member.name}</span>
         </div>
-        {member.birth_date && (
-          <span className="shrink-0 text-[9px] font-mono text-foreground/30 ml-1">#{member.birth_date}</span>
-        )}
+        <div className="flex items-center gap-1 ml-auto shrink-0">
+          {badges.map(badge => (
+            <div key={badge.id} title={`${badge.name}: ${badge.description}`} className="opacity-80 scale-75 origin-right">
+              {badge.icon}
+            </div>
+          ))}
+          {member.birth_date && (
+            <span className="text-[9px] font-mono text-foreground/30 ml-1">#{member.birth_date}</span>
+          )}
+        </div>
       </button>
 
       <AnimatePresence>
@@ -207,6 +221,7 @@ export default function TeamsTab() {
   const [newSlogan, setNewSlogan] = useState('');
   const [saving, setSaving] = useState(false);
   const [membersMap, setMembersMap] = useState<Record<string, Member[]>>({});
+  const [scoreLogsMap, setScoreLogsMap] = useState<Record<string, ScoreLog[]>>({});
 
   const [editingTeam, setEditingTeam] = useState<TeamWithDetails | null>(null);
   const [editName, setEditName] = useState('');
@@ -266,9 +281,29 @@ export default function TeamsTab() {
     setMembersMap(map);
   }, []);
 
+  const fetchAllScoreLogs = useCallback(async (teamList: TeamWithDetails[]) => {
+    if (teamList.length === 0) return;
+    const { data } = await supabase
+      .from('score_logs')
+      .select('id, team_id, activity_id, points_awarded, created_at, participant_ids')
+      .in('team_id', teamList.map(t => t.id));
+    
+    if (!data) return;
+    const map: Record<string, ScoreLog[]> = {};
+    for (const log of data) {
+      if (!log.team_id) continue;
+      if (!map[log.team_id]) map[log.team_id] = [];
+      map[log.team_id].push(log as ScoreLog);
+    }
+    setScoreLogsMap(map);
+  }, []);
+
   useEffect(() => {
-    if (teams.length > 0) fetchAllMembers(teams);
-  }, [teams, fetchAllMembers]);
+    if (teams.length > 0) {
+      fetchAllMembers(teams);
+      fetchAllScoreLogs(teams);
+    }
+  }, [teams, fetchAllMembers, fetchAllScoreLogs]);
 
   const handleCreate = async () => {
     if (!newName) return;
@@ -430,7 +465,13 @@ export default function TeamsTab() {
                     <>
                       {/* Captain slot */}
                       {captain ? (
-                        <MemberCard member={captain} teamId={team.id} onAssign={handleAssignCaptain} />
+                        <MemberCard 
+                          member={captain} 
+                          teamId={team.id} 
+                          onAssign={handleAssignCaptain} 
+                          teamScoreLogs={scoreLogsMap[team.id] ?? []}
+                          teamTotalPoints={team.total_points}
+                        />
                       ) : (
                         <div className="border border-dashed border-primary/15 p-2 text-center">
                           <p className="text-[9px] text-foreground/20 font-adventure uppercase tracking-wider">No Captain</p>
@@ -439,7 +480,13 @@ export default function TeamsTab() {
 
                       {/* Vice Captain slot */}
                       {vice_captain ? (
-                        <MemberCard member={vice_captain} teamId={team.id} onAssign={handleAssignCaptain} />
+                        <MemberCard 
+                          member={vice_captain} 
+                          teamId={team.id} 
+                          onAssign={handleAssignCaptain} 
+                          teamScoreLogs={scoreLogsMap[team.id] ?? []}
+                          teamTotalPoints={team.total_points}
+                        />
                       ) : (
                         <div className="border border-dashed border-foreground/10 p-2 text-center">
                           <p className="text-[9px] text-foreground/20 font-adventure uppercase tracking-wider">No Vice Captain</p>
@@ -456,7 +503,14 @@ export default function TeamsTab() {
                       )}
 
                       {rest.map(m => (
-                        <MemberCard key={m.id} member={m} teamId={team.id} onAssign={handleAssignCaptain} />
+                        <MemberCard 
+                          key={m.id} 
+                          member={m} 
+                          teamId={team.id} 
+                          onAssign={handleAssignCaptain} 
+                          teamScoreLogs={scoreLogsMap[team.id] ?? []}
+                          teamTotalPoints={team.total_points}
+                        />
                       ))}
                     </>
                   )}

@@ -22,6 +22,9 @@ import {
   Star,
   Gem,
   Skull,
+  Users,
+  CheckSquare,
+  Square
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { isTeamBarcode } from '@/lib/auth';
@@ -67,6 +70,12 @@ interface TeamInfo {
   barcodeData: string;
 }
 
+interface TeamMember {
+  id: string;
+  name: string;
+  role: string;
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function ScanModal({
@@ -83,7 +92,8 @@ export default function ScanModal({
 
   const [phase, setPhase] = useState<Phase>('scanning');
   const [team, setTeam] = useState<TeamInfo | null>(null);
-  const [participantCount, setParticipantCount] = useState(1);
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
   const [errorMsg, setErrorMsg] = useState('');
   const [cameraError, setCameraError] = useState<string | null>(null);
 
@@ -195,7 +205,16 @@ export default function ScanModal({
       return;
     }
 
+    // Fetch team members
+    const { data: membersRecord } = await supabase
+      .from('users')
+      .select('id, name, role')
+      .eq('team_id', extractedTeamId)
+      .in('role', ['captain', 'vice_captain', 'member'])
+      .order('role', { ascending: true }); // captain usually first alphabetically, or close
+
     setTeam({ id: teamRecord.id, name: teamRecord.name, barcodeData: rawValue });
+    setTeamMembers(membersRecord ?? []);
     setPhase('choosing');
     processingRef.current = false;
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -238,20 +257,28 @@ export default function ScanModal({
   };
 
   const handleGivePointClick = () => {
-    setParticipantCount(1);
+    // Select all members by default
+    setSelectedMemberIds(teamMembers.map(m => m.id));
     setPhase('giving_point');
   };
 
   const submitPoint = async () => {
     if (!team) return;
-    if (participantCount < 1) {
-      setErrorMsg('Jumlah peserta minimal 1 orang.');
+    if (selectedMemberIds.length < 1) {
+      setErrorMsg('Pilih minimal 1 peserta.');
       setPhase('error');
       return;
     }
 
     setPhase('submitting');
-    const calculatedPoints = activityPoints * participantCount;
+    const calculatedPoints = activityPoints * selectedMemberIds.length;
+    
+    // Create detailed note
+    const selectedNames = teamMembers
+      .filter(m => selectedMemberIds.includes(m.id))
+      .map(m => m.name)
+      .join(', ');
+    const note = `Partisipan (${selectedMemberIds.length} orang): ${selectedNames}. (${activityPoints} poin/orang)`;
 
     try {
       const token = await getAccessToken();
@@ -265,7 +292,8 @@ export default function ScanModal({
           team_id: team.id, 
           points: calculatedPoints, 
           activity_id: activityId,
-          note: `${participantCount} anggota berpartisipasi (${activityPoints} poin/anggota)`
+          note: note,
+          participant_ids: selectedMemberIds
         }),
       });
 
@@ -292,7 +320,8 @@ export default function ScanModal({
   const handleRetry = () => {
     setPhase('scanning');
     setTeam(null);
-    setParticipantCount(1);
+    setTeamMembers([]);
+    setSelectedMemberIds([]);
     setErrorMsg('');
     processingRef.current = false;
     setTimeout(() => startCamera(), 150);
@@ -438,56 +467,104 @@ export default function ScanModal({
                 {phase === 'giving_point' && team && (
                   <motion.div
                     key="giving_point"
-                    initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-                    className="space-y-5"
+                    initial={{ opacity: 0, x: 20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -20 }}
+                    className="space-y-4"
                   >
-                    <div className="text-center">
-                      <p className="text-[10px] uppercase font-adventure tracking-widest text-primary/50 mb-1">
-                        Poin Partisipasi
+                    <div className="text-center mb-4">
+                      <p className="text-[10px] uppercase font-adventure tracking-widest text-primary/60 mb-2">
+                        Pilih Partisipan
                       </p>
-                      <h3 className="font-adventure text-2xl text-primary">{team.name}</h3>
+                      <h3 className="font-adventure text-xl text-primary gold-engraving">
+                        {team.name}
+                      </h3>
+                      <p className="text-xs text-foreground/50 italic mt-1 font-content">
+                        Centang anggota yang bermain di wahana ini
+                      </p>
                     </div>
 
-                    <div className="bg-primary/5 border border-primary/20 p-4 rounded-lg flex flex-col items-center gap-3">
-                      <label className="text-[11px] uppercase tracking-widest font-adventure text-foreground/60">
-                        Berapa orang yang berpartisipasi?
-                      </label>
-                      <div className="flex items-center gap-4">
-                        <button 
-                          onClick={() => setParticipantCount(Math.max(1, participantCount - 1))}
-                          className="w-10 h-10 flex items-center justify-center bg-primary/10 border border-primary/30 text-primary hover:bg-primary/20 rounded font-adventure text-xl"
+                    {/* Member Selection List */}
+                    <div className="bg-black/40 border border-primary/20 rounded-lg max-h-[300px] overflow-y-auto custom-scrollbar p-2 space-y-1">
+                      <div className="flex justify-between items-center mb-2 px-2 pt-1 pb-2 border-b border-primary/10">
+                        <button
+                          onClick={() => setSelectedMemberIds(teamMembers.map(m => m.id))}
+                          className="text-[10px] font-adventure uppercase tracking-wider text-primary/70 hover:text-primary transition-colors"
                         >
-                          -
+                          Select All
                         </button>
-                        <input
-                          type="number"
-                          value={participantCount}
-                          onChange={(e) => setParticipantCount(Math.max(1, parseInt(e.target.value) || 1))}
-                          className="w-20 bg-black/50 border border-primary/30 text-center font-mono text-xl py-2 text-primary focus:outline-none focus:border-primary"
-                          min="1"
-                        />
-                        <button 
-                          onClick={() => setParticipantCount(participantCount + 1)}
-                          className="w-10 h-10 flex items-center justify-center bg-primary/10 border border-primary/30 text-primary hover:bg-primary/20 rounded font-adventure text-xl"
+                        <button
+                          onClick={() => setSelectedMemberIds([])}
+                          className="text-[10px] font-adventure uppercase tracking-wider text-foreground/40 hover:text-foreground transition-colors"
                         >
-                          +
+                          Clear All
                         </button>
                       </div>
-                      
-                      <div className="mt-2 w-full pt-3 border-t border-primary/20 text-center">
-                        <p className="text-[10px] text-foreground/40 font-mono mb-1">
-                          {participantCount} orang × {activityPoints} poin
+
+                      {teamMembers.length === 0 ? (
+                        <p className="text-sm text-foreground/40 text-center py-4 italic">
+                          Tidak ada data member
                         </p>
-                        <p className="font-adventure text-2xl text-green-400">
-                          Total: {participantCount * activityPoints}
+                      ) : (
+                        teamMembers.map(member => {
+                          const isSelected = selectedMemberIds.includes(member.id);
+                          return (
+                            <button
+                              key={member.id}
+                              onClick={() => {
+                                setSelectedMemberIds(prev =>
+                                  isSelected
+                                    ? prev.filter(id => id !== member.id)
+                                    : [...prev, member.id]
+                                );
+                              }}
+                              className={`w-full flex items-center justify-between p-3 rounded transition-all border ${
+                                isSelected 
+                                  ? 'bg-primary/20 border-primary/40' 
+                                  : 'bg-primary/5 border-transparent hover:bg-primary/10 hover:border-primary/20'
+                              }`}
+                            >
+                              <div className="flex items-center gap-3 text-left">
+                                {isSelected ? (
+                                  <CheckSquare className="w-5 h-5 text-primary flex-shrink-0" />
+                                ) : (
+                                  <Square className="w-5 h-5 text-primary/30 flex-shrink-0" />
+                                )}
+                                <div>
+                                  <p className={`font-content text-sm ${isSelected ? 'text-primary' : 'text-foreground/70'}`}>
+                                    {member.name}
+                                  </p>
+                                  <p className="text-[9px] uppercase font-adventure text-primary/40 tracking-wider">
+                                    {member.role.replace('_', ' ')}
+                                  </p>
+                                </div>
+                              </div>
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+
+                    <div className="bg-primary/10 p-4 border border-primary/20 flex justify-between items-center rounded-lg mt-4">
+                      <div className="text-left">
+                        <p className="text-[10px] uppercase font-adventure tracking-widest text-primary/60 mb-1">
+                          Total Kalkulasi
+                        </p>
+                        <p className="font-content text-sm text-foreground/80">
+                          {selectedMemberIds.length} <span className="text-xs text-foreground/50">orang</span> × {activityPoints} <span className="text-xs text-foreground/50">poin</span>
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-adventure text-2xl text-primary torch-glow">
+                          +{selectedMemberIds.length * activityPoints}
                         </p>
                       </div>
                     </div>
 
-                    <div className="flex gap-3">
+                    <div className="flex gap-3 pt-4">
                       <button
                         onClick={() => setPhase('choosing')}
-                        className="flex-1 py-3 font-adventure text-xs uppercase tracking-[0.2em] border border-primary/20 text-foreground/50 hover:text-foreground hover:bg-white/5 transition-all"
+                        className="flex-1 py-3 border border-primary/30 text-primary hover:bg-primary/10 font-adventure text-sm tracking-widest uppercase transition-colors"
                       >
                         Kembali
                       </button>

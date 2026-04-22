@@ -83,10 +83,10 @@ export default function LOPortal() {
                 </div>
                 <span className="h-px w-12 bg-primary/40" />
               </div>
-              <h1 className="font-adventure text-5xl md:text-6xl gold-engraving mb-4">
+              <h1 className="font-adventure text-4xl md:text-6xl gold-engraving mb-4">
                 Field Officer
               </h1>
-              <p className="text-muted-foreground italic font-content max-w-lg mx-auto opacity-70">
+              <p className="text-muted-foreground italic font-content max-w-lg mx-auto opacity-70 px-4">
                 "Select your post, Officer. The expedition teams await your guidance."
               </p>
               {user?.name && (

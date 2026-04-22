@@ -211,7 +211,7 @@ export default function CaptainPortal() {
                 initial={{ scale: 0.85, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 exit={{ scale: 0.85, opacity: 0 }}
-                className="adventure-card p-8 max-w-sm w-full text-center border-primary/30 relative"
+                className="adventure-card p-6 md:p-8 max-w-sm w-full text-center border-primary/30 relative"
                 onClick={(e) => e.stopPropagation()}
               >
                 <button
@@ -264,11 +264,11 @@ export default function CaptainPortal() {
           <motion.div
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="bg-primary/20 p-5 rounded-full w-fit mx-auto mb-6 border border-primary/20"
+            className="bg-primary/20 p-3 md:p-5 rounded-full w-fit mx-auto mb-4 md:mb-6 border border-primary/20"
           >
-            <Compass className="text-primary w-12 h-12 torch-glow" />
+            <Compass className="text-primary w-10 h-10 md:w-12 md:h-12 torch-glow" />
           </motion.div>
-          <h1 className="font-adventure text-5xl md:text-6xl gold-engraving mb-4">Captain's Log</h1>
+          <h1 className="font-adventure text-4xl md:text-6xl gold-engraving mb-4">Captain's Log</h1>
           <p className="text-muted-foreground italic text-sm opacity-70 px-4">
             "The path is treacherous, and the artifacts are well-hidden. Are you prepared to lead your team to victory?"
           </p>
@@ -281,13 +281,13 @@ export default function CaptainPortal() {
               whileHover={{ scale: 1.02, translateY: -5 }}
               whileTap={{ scale: 0.98 }}
               disabled={isExpired}
-              className={`w-full adventure-card p-10 flex flex-col items-center justify-center text-center group border-primary/30 bg-primary/5 hover:bg-primary/10 transition-all shadow-[0_0_50px_rgba(var(--primary-rgb),0.2)] ${isExpired ? 'opacity-40 grayscale pointer-events-none' : ''}`}
+              className={`w-full adventure-card p-6 md:p-10 flex flex-col items-center justify-center text-center group border-primary/30 bg-primary/5 hover:bg-primary/10 transition-all shadow-[0_0_50px_rgba(var(--primary-rgb),0.2)] ${isExpired ? 'opacity-40 grayscale pointer-events-none' : ''}`}
             >
-              <div className="bg-primary/10 p-5 rounded-full mb-6 group-hover:bg-primary/20 transition-colors border border-primary/20">
-                <Camera className="w-12 h-12 text-primary torch-glow" />
+              <div className="bg-primary/10 p-4 md:p-5 rounded-full mb-4 md:mb-6 group-hover:bg-primary/20 transition-colors border border-primary/20">
+                <Camera className="w-10 h-10 md:w-12 md:h-12 text-primary torch-glow" />
               </div>
-              <h3 className="font-adventure text-3xl gold-engraving mb-2 tracking-widest">Mystical Lens</h3>
-              <p className="text-[10px] uppercase font-adventure tracking-[0.3em] text-foreground/50 italic">Scan for Ancient Artifacts</p>
+              <h3 className="font-adventure text-2xl md:text-3xl gold-engraving mb-2 tracking-widest">Mystical Lens</h3>
+              <p className="text-[9px] md:text-[10px] uppercase font-adventure tracking-[0.3em] text-foreground/50 italic">Scan for Ancient Artifacts</p>
             </motion.button>
           </Link>
 

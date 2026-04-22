@@ -147,8 +147,8 @@ export default function LeaderboardPage() {
               </div>
               <span className="h-px w-12 bg-primary/40" />
             </div>
-            <h1 className="font-adventure text-5xl md:text-6xl gold-engraving mb-4">Hall of Records</h1>
-            <p className="text-muted-foreground italic font-content max-w-lg mx-auto opacity-70">
+            <h1 className="font-adventure text-4xl md:text-6xl gold-engraving mb-4 px-2">Hall of Records</h1>
+            <p className="text-muted-foreground italic font-content max-w-lg mx-auto opacity-70 px-4 text-sm md:text-base">
               &quot;Witness the prestige of the daring expeditions currently traversing the unknown.&quot;
             </p>
           </motion.div>
@@ -181,20 +181,20 @@ export default function LeaderboardPage() {
 
         {/* Leaderboard Table */}
         <div className="adventure-card border-primary/20 bg-card/90 shadow-2xl overflow-hidden">
-          <div className="grid grid-cols-12 gap-4 px-8 py-5 border-b border-primary/20 bg-primary/5">
-            <div className="col-span-2 font-adventure text-[10px] uppercase tracking-[0.3em] text-primary">Rank</div>
-            <div className="col-span-7 font-adventure text-[10px] uppercase tracking-[0.3em] text-primary">Expedition Group</div>
-            <div className="col-span-3 font-adventure text-[10px] uppercase tracking-[0.3em] text-primary text-right">Prestige</div>
+          <div className="grid grid-cols-12 gap-2 md:gap-4 px-4 md:px-8 py-4 md:py-5 border-b border-primary/20 bg-primary/5">
+            <div className="col-span-3 md:col-span-2 font-adventure text-[9px] md:text-[10px] uppercase tracking-[0.2em] md:tracking-[0.3em] text-primary">Rank</div>
+            <div className="col-span-6 md:col-span-7 font-adventure text-[9px] md:text-[10px] uppercase tracking-[0.2em] md:tracking-[0.3em] text-primary">Expedition Group</div>
+            <div className="col-span-3 font-adventure text-[9px] md:text-[10px] uppercase tracking-[0.2em] md:tracking-[0.3em] text-primary text-right">Prestige</div>
           </div>
 
           <div className="divide-y divide-primary/10">
             {loading ? (
-              <div className="p-32 flex flex-col items-center justify-center opacity-40 italic">
-                <Compass className="w-12 h-12 text-primary animate-spin mb-4" />
+              <div className="p-20 md:p-32 flex flex-col items-center justify-center opacity-40 italic">
+                <Compass className="w-10 h-10 md:w-12 md:h-12 text-primary animate-spin mb-4" />
                 Deciphering the scrolls...
               </div>
             ) : teams.length === 0 ? (
-              <div className="p-32 text-center text-muted-foreground italic opacity-40">No expeditions found in these parts.</div>
+              <div className="p-20 md:p-32 text-center text-muted-foreground italic opacity-40">No expeditions found in these parts.</div>
             ) : (
               teams.map((team, index) => (
                 <motion.div
@@ -203,30 +203,30 @@ export default function LeaderboardPage() {
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: index * 0.05, layout: { duration: 0.4 } }}
-                  className={`grid grid-cols-12 gap-4 px-8 py-6 items-center transition-all group hover:bg-white/5 ${
+                  className={`grid grid-cols-12 gap-2 md:gap-4 px-4 md:px-8 py-4 md:py-6 items-center transition-all group hover:bg-white/5 ${
                     index === 0 ? 'bg-primary/10 border-l-4 border-l-primary' :
                     index === 1 ? 'bg-primary/5 border-l-4 border-l-stone-400' :
                     index === 2 ? 'bg-primary/5 border-l-4 border-l-orange-800' : ''
                   }`}
                 >
-                  <div className="col-span-2 flex items-center gap-3">
+                  <div className="col-span-3 md:col-span-2 flex items-center gap-2 md:gap-3">
                     <span className={`font-adventure ${
-                      index === 0 ? 'text-3xl gold-engraving' :
-                      index === 1 ? 'text-2xl text-stone-400' :
-                      index === 2 ? 'text-2xl text-orange-800' : 'text-lg text-foreground/40'
+                      index === 0 ? 'text-2xl md:text-3xl gold-engraving' :
+                      index === 1 ? 'text-xl md:text-2xl text-stone-400' :
+                      index === 2 ? 'text-xl md:text-2xl text-orange-800' : 'text-base md:text-lg text-foreground/40'
                     }`}>
                       #{team.rank}
                     </span>
-                    {index === 0 && <Shield className="w-4 h-4 text-primary animate-pulse" />}
+                    {index === 0 && <Shield className="w-3 h-3 md:w-4 md:h-4 text-primary animate-pulse" />}
                   </div>
 
-                  <div className="col-span-7">
+                  <div className="col-span-6 md:col-span-7">
                     <h3 className={`font-adventure tracking-tighter uppercase transition-all group-hover:translate-x-1 ${
-                      index < 3 ? 'text-2xl' : 'text-lg opacity-80'
-                    }`}>
+                      index < 3 ? 'text-lg md:text-2xl' : 'text-sm md:text-lg opacity-80'
+                    } truncate`}>
                       {team.name}
                     </h3>
-                    {index < 3 && <p className="text-[10px] text-primary/50 font-adventure tracking-widest">Master Explorer</p>}
+                    {index < 3 && <p className="text-[8px] md:text-[10px] text-primary/50 font-adventure tracking-widest">Master Explorer</p>}
                   </div>
 
                   <div className="col-span-3 text-right">
@@ -235,9 +235,9 @@ export default function LeaderboardPage() {
                       initial={{ scale: 1.2, color: '#d4af37' }}
                       animate={{ scale: 1 }}
                       transition={{ duration: 0.3 }}
-                      className="inline-flex items-center justify-center min-w-[80px] px-6 py-2 bg-black/40 border border-primary/20 rounded-none shadow-inner group-hover:border-primary/60 transition-colors"
+                      className="inline-flex items-center justify-center min-w-[60px] md:min-w-[80px] px-3 md:px-6 py-1.5 md:py-2 bg-black/40 border border-primary/20 rounded-none shadow-inner group-hover:border-primary/60 transition-colors"
                     >
-                      <span className="font-adventure text-xl text-primary font-bold">{team.total_points}</span>
+                      <span className="font-adventure text-base md:text-xl text-primary font-bold">{team.total_points}</span>
                     </motion.div>
                   </div>
                 </motion.div>

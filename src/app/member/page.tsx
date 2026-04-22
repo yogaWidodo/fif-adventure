@@ -189,7 +189,7 @@ export default function MemberPortal() {
                   initial={{ scale: 0.85, opacity: 0 }}
                   animate={{ scale: 1, opacity: 1 }}
                   exit={{ scale: 0.85, opacity: 0 }}
-                  className="adventure-card p-8 max-w-sm w-full text-center border-primary/30 relative"
+                  className="adventure-card p-6 md:p-8 max-w-sm w-full text-center border-primary/30 relative"
                   onClick={(e) => e.stopPropagation()}
                 >
                   <button
@@ -242,18 +242,18 @@ export default function MemberPortal() {
           <motion.header
             initial={{ opacity: 0, y: -16 }}
             animate={{ opacity: 1, y: 0 }}
-            className="text-center mb-2"
+            className="text-center mb-4 md:mb-8"
           >
-            <div className="inline-flex p-4 rounded-full bg-primary/10 border border-primary/20 mb-4">
-              <Compass className="w-10 h-10 text-primary torch-glow" />
+            <div className="inline-flex p-3 md:p-4 rounded-full bg-primary/10 border border-primary/20 mb-3 md:mb-4">
+              <Compass className="w-8 h-8 md:w-10 md:h-10 text-primary torch-glow" />
             </div>
-            <h1 className="font-adventure text-4xl gold-engraving tracking-widest">Expedition Log</h1>
-            <p className="text-muted-foreground text-xs uppercase tracking-[0.3em] font-adventure opacity-50 mt-1 mb-4">
+            <h1 className="font-adventure text-3xl md:text-4xl gold-engraving tracking-widest">Expedition Log</h1>
+            <p className="text-muted-foreground text-[10px] md:text-xs uppercase tracking-[0.2em] md:tracking-[0.3em] font-adventure opacity-50 mt-1 mb-4">
               {user?.name ?? 'Explorer'}
             </p>
             <button
               onClick={() => setShowQR(true)}
-              className="inline-flex items-center gap-2 px-6 py-2 bg-primary/20 border border-primary/40 text-primary font-adventure tracking-widest text-xs uppercase hover:bg-primary/30 transition-all rounded shadow-[0_0_15px_rgba(var(--primary-rgb),0.2)]"
+              className="inline-flex items-center gap-2 px-4 md:px-6 py-2 bg-primary/20 border border-primary/40 text-primary font-adventure tracking-widest text-[10px] md:text-xs uppercase hover:bg-primary/30 transition-all rounded shadow-[0_0_15px_rgba(var(--primary-rgb),0.2)]"
             >
               <Users className="w-4 h-4" />
               Tampilkan Barcode Tim
@@ -277,7 +277,7 @@ export default function MemberPortal() {
                 initial={{ opacity: 0, y: 16 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.1 }}
-                className="adventure-card p-6 border-primary/20"
+                className="adventure-card p-4 md:p-6 border-primary/20"
               >
                 <div className="flex justify-between items-start mb-4">
                   <div>

@@ -156,17 +156,18 @@ export default function ActivityDashboard({
 
   return (
     <AuthGuard allowedRoles={['lo']}>
-      <div className="relative min-h-screen flex flex-col bg-black overflow-hidden font-content selection:bg-primary selection:text-primary-foreground">
+      <div className="relative min-h-screen flex flex-col overflow-hidden font-content selection:bg-primary selection:text-primary-foreground">
         {/* Immersive Background */}
         <div
-          className="fixed inset-0 z-0 bg-cover bg-center opacity-30"
+          className="fixed inset-0 z-0 bg-cover bg-center opacity-30 mix-blend-luminosity"
           style={{
             backgroundImage: 'url("/images/expedition_map_bg.png")',
-            filter: 'brightness(0.4) contrast(1.1)',
+            filter: 'brightness(0.4) contrast(1.3) saturate(0.5)',
           }}
         />
-        <div className="fixed inset-0 z-0 bg-gradient-to-b from-black/80 via-transparent to-black" />
-        <div className="fixed inset-0 z-10 jungle-overlay opacity-10 pointer-events-none" />
+        {/* Vignette Overlay for deeper immersion */}
+        <div className="fixed inset-0 z-0 bg-[radial-gradient(circle_at_center,rgba(18,29,23,0.4)_0%,rgba(10,20,15,0.95)_100%)]" />
+        <div className="fixed inset-0 z-10 jungle-overlay opacity-5 pointer-events-none" />
 
         <div className="relative z-20 w-full max-w-6xl mx-auto p-6 md:p-10 pb-28">
           {/* Back navigation */}

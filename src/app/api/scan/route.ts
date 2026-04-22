@@ -7,6 +7,7 @@ import { getAccessToken } from '@/lib/serverAuth';
 interface ScanResult {
   success: boolean;
   message: string;
+  location_name?: string;
   location_type?: string;
   points_awarded?: number;
   description?: string | null;
@@ -79,24 +80,19 @@ export async function POST(request: NextRequest): Promise<Response> {
     return Response.json({ error: 'Insufficient permissions' }, { status: 403 });
   }
 
-  // ── 3. Look up activity by barcode_data or ID ────────────────────────────
+  // ── 3. Look up activity by ID ──────────────────────────────────────────
   const trimmedCode = barcode_data.trim();
-  let { data: activity, error: activityError } = await supabase
+  const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmedCode);
+  
+  if (!isUUID) {
+    return Response.json({ success: false, message: 'Format kode tidak valid' }, { status: 400 });
+  }
+
+  const { data: activity } = await supabase
     .from('activities')
     .select('id, name, type, max_points, description, how_to_play')
-    .eq('barcode_data', trimmedCode)
+    .eq('id', trimmedCode)
     .maybeSingle();
-
-  // Fallback: If not found by barcode_data, check if it's a UUID and matches primary ID
-  const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmedCode);
-  if (!activity && isUUID) {
-    const { data: idActivity } = await supabase
-      .from('activities')
-      .select('id, name, type, max_points, description, how_to_play')
-      .eq('id', trimmedCode)
-      .maybeSingle();
-    activity = idActivity;
-  }
 
   if (!activity) {
     return Response.json({ success: false, message: 'Lokasi tidak ditemukan' }, { status: 404 });
@@ -119,7 +115,10 @@ export async function POST(request: NextRequest): Promise<Response> {
   // ── 6. Return ScanResult ──────────────────────────────────────────────────
   const result: ScanResult = {
     success: true,
-    message: `Berhasil! Intel recovered for ${activity.name}`,
+    message: existingReg 
+      ? `Lokasi Terdeteksi: ${activity.name}`
+      : `Berhasil! Intel recovered for ${activity.name}`,
+    location_name: activity.name,
     location_type: activity.type,
     points_awarded: 0,
     description: activity.description,

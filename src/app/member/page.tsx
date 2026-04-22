@@ -89,7 +89,7 @@ export default function MemberPortal() {
       supabase.from('users').select('id, name, role').eq('team_id', teamId).order('role'),
       supabase.from('activities').select('id, name, type, max_points').order('name'),
       supabase.from('activity_registrations').select('activity_id, checked_in_at').eq('team_id', teamId),
-      // Only fetch hints this team received from gacha
+      // Fetch hints this team has discovered through activity scans
       supabase
         .from('treasure_hunt_hints')
         .select('id, treasure_hunt_id, received_at, treasure_hunts(id, name, hint_text, points)')
@@ -350,7 +350,7 @@ export default function MemberPortal() {
                     {hints.length === 0 ? (
                       <div className="py-8 text-center">
                         <Lock className="w-6 h-6 text-foreground/20 mx-auto mb-2" />
-                        <p className="text-xs italic opacity-30">Belum ada hint. Selesaikan wahana untuk memutar gacha!</p>
+                        <p className="text-xs italic opacity-30">Belum ada hint rahasia. Temukan wahana tersembunyi untuk membukanya!</p>
                       </div>
                     ) : (
                       hints.map((hint, i) => {

@@ -22,72 +22,78 @@ export async function POST(request: NextRequest): Promise<Response> {
 
   const { supabase, userId } = auth;
 
-  try {
-    await assertEventRunning(supabase);
-  } catch {
-    return Response.json({ error: 'Event sedang tidak berlangsung.' }, { status: 403 });
-  }
-
-  let body: { team_id?: unknown; points?: unknown; note?: unknown };
+  // 2. Parse request body
+  let body: { team_id?: unknown; points?: unknown; activity_id?: unknown; note?: unknown };
   try {
     body = await request.json();
   } catch {
     return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
   }
 
-  const { team_id, points, note } = body;
-  const pointsAwarded = Number(points);
-
-  if (typeof team_id !== 'string' || isNaN(pointsAwarded)) {
-    return Response.json({ error: 'team_id and valid points are required' }, { status: 400 });
+  const { team_id, points, activity_id, note } = body;
+  if (typeof team_id !== 'string' || !team_id.trim()) {
+    return Response.json({ error: 'team_id is required' }, { status: 400 });
+  }
+  if (typeof points !== 'number') {
+    return Response.json({ error: 'points must be a number' }, { status: 400 });
+  }
+  if (typeof activity_id !== 'string' || !activity_id.trim()) {
+    return Response.json({ error: 'activity_id is required' }, { status: 400 });
   }
 
-  // Get LO Profile & Assignment
+  // 3. Validate Event Status (Requirement 4.0)
+  const { data: statusData } = await supabase
+    .from('settings')
+    .select('value')
+    .eq('key', 'event_status')
+    .single();
+
+  if (statusData?.value !== 'running') {
+    return Response.json({ error: 'Event sedang tidak berlangsung.' }, { status: 403 });
+  }
+
+  // 4. Get LO profile and verify assignment
   const { data: userProfile } = await supabase
     .from('users')
-    .select('id, role, npk')
+    .select('id, role')
     .eq('auth_id', userId)
     .single();
 
   if (!userProfile || userProfile.role !== 'lo') {
-    return Response.json({ error: 'Forbidden' }, { status: 403 });
+    return Response.json({ error: 'Forbidden: Role LO diperlukan' }, { status: 403 });
   }
 
   const { data: assignment } = await supabase
     .from('lo_assignments')
-    .select('activity_id, activities(max_points)')
+    .select('activity_id')
     .eq('lo_id', userProfile.id)
-    .single();
+    .eq('activity_id', activity_id)
+    .maybeSingle();
 
-  const activity = assignment?.activities as any;
-  if (!assignment || !activity) {
-    return Response.json({ error: 'LO assignment not found' }, { status: 403 });
+  if (!assignment) {
+    return Response.json({ error: 'Anda tidak di-assign ke aktivitas ini' }, { status: 403 });
   }
 
-  if (pointsAwarded < 0 || pointsAwarded > activity.max_points) {
-    return Response.json({ error: `Poin maksimal: ${activity.max_points}` }, { status: 400 });
-  }
-
-  // Verify Check-in
+  // 5. Check if Team has checked in (Requirement 7.2)
   const { data: checkin } = await supabase
     .from('activity_registrations')
     .select('id')
     .eq('team_id', team_id)
-    .eq('activity_id', assignment.activity_id)
+    .eq('activity_id', activity_id)
     .single();
 
   if (!checkin) {
-    return Response.json({ error: 'Tim belum check-in di aktivitas ini' }, { status: 422 });
+    return Response.json({ error: 'Tim belum check-in di aktivitas ini.' }, { status: 422 });
   }
 
-  // Insert Score
+  // 6. Insert Score Log
   const { error: insertError } = await supabase
     .from('score_logs')
     .insert({
       team_id,
-      activity_id: assignment.activity_id,
+      activity_id,
       lo_id: userProfile.id,
-      points_awarded: pointsAwarded,
+      points_awarded: points,
       note: note as string
     });
 
@@ -105,19 +111,23 @@ export async function PATCH(request: NextRequest): Promise<Response> {
 
   const { supabase, userId } = auth;
 
-  let body: { team_id?: unknown; points?: unknown; note?: unknown };
+  let body: { team_id?: unknown; points?: unknown; activity_id?: unknown; note?: unknown };
   try {
     body = await request.json();
   } catch {
     return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
   }
 
-  const { team_id, points, note } = body;
+  const { team_id, points, activity_id, note } = body;
   const pointsAwarded = Number(points);
+
+  if (!team_id || !activity_id || isNaN(pointsAwarded)) {
+    return Response.json({ error: 'team_id, activity_id and valid points are required' }, { status: 400 });
+  }
 
   const { data: userProfile } = await supabase
     .from('users')
-    .select('id, role, npk')
+    .select('id, role')
     .eq('auth_id', userId)
     .single();
 
@@ -125,16 +135,12 @@ export async function PATCH(request: NextRequest): Promise<Response> {
 
   const { data: assignment } = await supabase
     .from('lo_assignments')
-    .select('activity_id, activities(max_points)')
+    .select('activity_id')
     .eq('lo_id', userProfile.id)
-    .single();
+    .eq('activity_id', activity_id)
+    .maybeSingle();
 
-  const activity = assignment?.activities as any;
-  if (!assignment || !activity) return Response.json({ error: 'Forbidden' }, { status: 403 });
-
-  if (pointsAwarded < 0 || pointsAwarded > activity.max_points) {
-    return Response.json({ error: `Poin maksimal: ${activity.max_points}` }, { status: 400 });
-  }
+  if (!assignment) return Response.json({ error: 'Anda tidak di-assign ke aktivitas ini' }, { status: 403 });
 
   const { error: updateError } = await supabase
     .from('score_logs')
@@ -145,7 +151,7 @@ export async function PATCH(request: NextRequest): Promise<Response> {
       updated_at: new Date().toISOString()
     })
     .eq('team_id', team_id)
-    .eq('activity_id', assignment.activity_id);
+    .eq('activity_id', activity_id);
 
   if (updateError) return Response.json({ error: 'Gagal mengupdate poin' }, { status: 500 });
 

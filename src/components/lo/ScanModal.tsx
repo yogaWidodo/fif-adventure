@@ -49,8 +49,8 @@ interface ScanModalProps {
   activityName: string;
   activityPoints: number;
   onClose: () => void;
-  onCheckinSuccess: (teamName: string) => void;
-  onScoringSuccess: (teamName: string, score: number, gachaWon?: boolean) => void;
+  onCheckinSuccess: (teamName: string, hintGranted?: boolean) => void;
+  onScoringSuccess: (teamName: string, score: number) => void;
 }
 
 type Phase =
@@ -70,7 +70,7 @@ interface TeamInfo {
 
 export default function ScanModal({
   isOpen,
-  activityId: _activityId, // prefix with _ if unused in component but kept for prop consistency
+  activityId,
   activityName: _activityName,
   activityPoints,
   onClose,
@@ -213,12 +213,13 @@ export default function ScanModal({
           'Content-Type': 'application/json',
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ team_id: team.id }),
+        body: JSON.stringify({ team_id: team.id, activity_id: activityId }),
       });
 
       if (res.ok) {
+        const data = await res.json();
         setPhase('success');
-        setTimeout(() => onCheckinSuccess(team.name), 800);
+        setTimeout(() => onCheckinSuccess(team.name, data.hint_granted), 800);
       } else {
         const data = await res.json().catch(() => ({}));
         setErrorMsg(
@@ -246,7 +247,7 @@ export default function ScanModal({
           'Content-Type': 'application/json',
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ team_id: team.id, points: activityPoints }),
+        body: JSON.stringify({ team_id: team.id, points: activityPoints, activity_id: activityId }),
       });
 
       if (res.ok) {

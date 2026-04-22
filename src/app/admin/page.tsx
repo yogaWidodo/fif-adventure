@@ -5,9 +5,6 @@ import dynamic from 'next/dynamic';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import AuthGuard from '@/components/AuthGuard';
-import QRCodeDisplay from '@/components/admin/QRCodeDisplay';
-import CSVImporter from '@/components/admin/CSVImporter';
-import EventSelector from '@/components/admin/EventSelector';
 import UsersTab from '@/components/admin/UsersTab';
 
 // Dynamically import chart components to avoid SSR issues with recharts
@@ -15,7 +12,7 @@ const TopTeamsChart = dynamic(() => import('@/components/admin/AnalyticsCharts')
 const WahanaActivityChart = dynamic(() => import('@/components/admin/AnalyticsCharts').then(m => m.WahanaActivityChart), { ssr: false });
 const ScanTimelineChart = dynamic(() => import('@/components/admin/AnalyticsCharts').then(m => m.ScanTimelineChart), { ssr: false });
 import TeamsTabComponent from '@/components/admin/TeamsTab';
-import { generateBarcodeData } from '@/lib/auth';
+import QRCodeDisplay from '@/components/admin/QRCodeDisplay';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plus, Trophy, Users, Map as MapIcon,
@@ -26,15 +23,7 @@ import {
   CheckCircle, Edit2, Save, UserCheck, FileText,
   Clock, Filter, Play, Pause, RotateCcw, Square, UserCog, Trash2
 } from 'lucide-react';
-import {
-  validateDuration,
-  buildStartPayload,
-  buildPausePayload,
-  buildResumePayload,
-  buildResetPayload,
-  isTransitionAllowed,
-  computeRemaining,
-} from '@/lib/timerUtils';
+
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -65,6 +54,8 @@ interface Activity {
   barcode_data?: string;
   type: 'wahana' | 'challenge_regular' | 'challenge_popup' | 'challenge_additional';
   max_points: number;
+  difficulty_level: 'Easy' | 'Medium' | 'Hard';
+  treasure_hunt_id?: string;
   created_at: string;
 }
 
@@ -75,6 +66,7 @@ interface TreasureHunt {
   points: number;
   quota: number;
   remaining_quota: number;
+  is_public: boolean;
 }
 
 interface ScoreLogEntry {
@@ -199,7 +191,6 @@ function EventControlTab({
   onUpdate: () => void;
 }) {
   const [durationMinutes, setDurationMinutes] = useState(status?.durationMinutes || 480);
-  const [gachaProb, setGachaProb] = useState('0.3');
   const [mapUrl, setMapUrl] = useState('');
   const [saving, setSaving] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -209,18 +200,23 @@ function EventControlTab({
   const [top3, setTop3] = useState<{ name: string; total_points: number }[]>([]);
   const [loadingTop3, setLoadingTop3] = useState(false);
 
+  // Sync state with props when status is loaded
+  useEffect(() => {
+    if (status?.durationMinutes) {
+      setDurationMinutes(status.durationMinutes);
+    }
+  }, [status?.durationMinutes]);
+
   // Reset "Saved" state when any input changes
   useEffect(() => {
     setIsSaved(false);
-  }, [durationMinutes, gachaProb, mapUrl]);
+  }, [durationMinutes, mapUrl]);
 
   // Fetch from settings
   useEffect(() => {
-    supabase.from('settings').select('*').in('key', ['gacha_probability', 'map_image_url']).then(({ data }) => {
+    supabase.from('settings').select('*').in('key', ['map_image_url']).then(({ data }) => {
       if (data) {
-        const g = data.find(d => d.key === 'gacha_probability')?.value;
         const m = data.find(d => d.key === 'map_image_url')?.value;
-        if (g) setGachaProb(g);
         if (m) setMapUrl(m);
       }
     });
@@ -228,14 +224,14 @@ function EventControlTab({
 
   useEffect(() => {
     if (status?.status === 'finished') {
-       setLoadingTop3(true);
-       fetch('/api/leaderboard')
-         .then(res => res.json())
-         .then(data => {
-            const list = Array.isArray(data) ? data : data.leaderboard || [];
-            setTop3(list.slice(0, 3));
-         })
-         .finally(() => setLoadingTop3(false));
+      setLoadingTop3(true);
+      fetch('/api/leaderboard')
+        .then(res => res.json())
+        .then(data => {
+          const list = Array.isArray(data) ? data : data.leaderboard || [];
+          setTop3(list.slice(0, 3));
+        })
+        .finally(() => setLoadingTop3(false));
     }
   }, [status?.status]);
 
@@ -246,7 +242,6 @@ function EventControlTab({
     try {
       const updates = [
         { key: 'event_duration_minutes', value: String(durationMinutes) },
-        { key: 'gacha_probability', value: gachaProb },
         { key: 'map_image_url', value: mapUrl },
       ];
       for (const item of updates) {
@@ -268,7 +263,7 @@ function EventControlTab({
     try {
       setSaving(true);
       setError('');
-      
+
       const fileName = `map_${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
       const { error: uploadError } = await supabase.storage
         .from('maps')
@@ -327,9 +322,8 @@ function EventControlTab({
 
     // Auto-finish safety: if time is up and status is still running, mark as finished
     if (status.status === 'running' && initial >= maxSeconds) {
-       handleTimerAction('reset'); // Rest resets to idle, we need a 'finish' action.
-       // Actually I'll use a direct supabase update for finish if no API exists.
-       supabase.from('settings').update({ value: 'finished' }).eq('key', 'event_status').then(() => onUpdate());
+      // Direct update to finished to avoid race with reset/idle
+      supabase.from('settings').update({ value: 'finished' }).eq('key', 'event_status').then(() => onUpdate());
     }
 
     if (status.status === 'running' && initial < maxSeconds) {
@@ -345,7 +339,7 @@ function EventControlTab({
     }
   }, [status]);
 
-  if (!status) return <LoadingState />;
+  if (!status) return <div className="p-10 text-white">Loading...</div>;
 
   const formatTime = (totalSeconds: number) => {
     const hrs = Math.floor(totalSeconds / 3600);
@@ -355,13 +349,11 @@ function EventControlTab({
   };
 
   return (
-    <div className="p-10 space-y-8">
-      <header>
-        <h2 className="text-4xl font-adventure gold-engraving">Event Control</h2>
-        <p className="text-muted-foreground text-sm italic">Pusat komando waktu dan probabilitas</p>
-      </header>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+    <TabLayout
+      title="Event Control"
+      subtitle="Pusat komando waktu dan manajemen ekspedisi"
+    >
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* Timer Panel */}
         <div className="adventure-card p-8 flex flex-col items-center justify-center text-center space-y-6">
           <div className="space-y-2">
@@ -376,7 +368,7 @@ function EventControlTab({
             <p className="text-6xl font-mono tracking-tight text-foreground/90">{formatTime(localElapsed)}</p>
           </div>
 
-          <div className="flex gap-4 w-full justify-center">
+          <div className="flex flex-wrap gap-4 w-full justify-center">
             {status.status === 'idle' && (
               <button onClick={() => handleTimerAction('start')} disabled={!!actionLoading} className="bg-primary/20 border border-primary/40 px-8 py-3 font-adventure text-primary hover:bg-primary/30 flex items-center gap-2">
                 <Play className="w-4 h-4" /> START EXPEDITION
@@ -404,45 +396,45 @@ function EventControlTab({
         <div className="adventure-card p-8 space-y-8 flex flex-col">
           {status.status === 'finished' ? (
             <div className="flex-1 flex flex-col">
-               <div className="flex items-center gap-3 mb-6">
-                 <div className="p-3 bg-primary/20 border border-primary/40 rounded-lg">
-                   <Trophy className="w-6 h-6 text-primary" />
-                 </div>
-                 <div>
-                   <h4 className="font-adventure text-primary text-sm uppercase tracking-widest">Mission Accomplished</h4>
-                   <p className="text-[10px] text-foreground/40 italic">Final reports from the field</p>
-                 </div>
-               </div>
+              <div className="flex items-center gap-3 mb-6">
+                <div className="p-3 bg-primary/20 border border-primary/40 rounded-lg">
+                  <Trophy className="w-6 h-6 text-primary" />
+                </div>
+                <div>
+                  <h4 className="font-adventure text-primary text-sm uppercase tracking-widest">Mission Accomplished</h4>
+                  <p className="text-[10px] text-foreground/40 italic">Final reports from the field</p>
+                </div>
+              </div>
 
-               <div className="space-y-4 flex-1">
-                 <p className="text-[10px] uppercase tracking-widest font-adventure text-foreground/40 border-b border-primary/10 pb-2">Top 3 Expeditions</p>
-                 {loadingTop3 ? (
-                   <div className="py-8 animate-pulse text-center font-adventure text-xs opacity-30">Deciphering Results...</div>
-                 ) : top3.length === 0 ? (
-                    <div className="py-8 text-center text-xs italic opacity-30">No teams found.</div>
-                 ) : (
-                    <div className="space-y-3">
-                      {top3.map((team, i) => (
-                        <div key={team.name} className={`flex items-center justify-between p-3 border ${i === 0 ? 'bg-primary/10 border-primary/30' : 'bg-white/5 border-white/10'}`}>
-                          <div className="flex items-center gap-3">
-                            <span className={`font-adventure text-xl ${i === 0 ? 'text-yellow-500' : i === 1 ? 'text-gray-400' : 'text-amber-700'}`}>
-                              #{i + 1}
-                            </span>
-                            <span className="font-adventure text-xs uppercase tracking-tight">{team.name}</span>
-                          </div>
-                          <span className="font-adventure text-lg text-primary">{team.total_points}</span>
+              <div className="space-y-4 flex-1">
+                <p className="text-[10px] uppercase tracking-widest font-adventure text-foreground/40 border-b border-primary/10 pb-2">Top 3 Expeditions</p>
+                {loadingTop3 ? (
+                  <div className="py-8 animate-pulse text-center font-adventure text-xs opacity-30">Deciphering Results...</div>
+                ) : top3.length === 0 ? (
+                  <div className="py-8 text-center text-xs italic opacity-30">No teams found.</div>
+                ) : (
+                  <div className="space-y-3">
+                    {top3.map((team, i) => (
+                      <div key={team.name} className={`flex items-center justify-between p-3 border ${i === 0 ? 'bg-primary/10 border-primary/30' : 'bg-white/5 border-white/10'}`}>
+                        <div className="flex items-center gap-3">
+                          <span className={`font-adventure text-xl ${i === 0 ? 'text-yellow-500' : i === 1 ? 'text-gray-400' : 'text-amber-700'}`}>
+                            #{i + 1}
+                          </span>
+                          <span className="font-adventure text-xs uppercase tracking-tight">{team.name}</span>
                         </div>
-                      ))}
-                    </div>
-                 )}
-               </div>
+                        <span className="font-adventure text-lg text-primary">{team.total_points}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
 
-               <button 
-                 onClick={() => handleTimerAction('reset')}
-                 className="mt-8 py-3 border border-red-500/40 text-red-400 font-adventure uppercase text-[10px] tracking-widest hover:bg-red-500/10 transition-all"
-               >
-                 Archive & Reset for New Expedition
-               </button>
+              <button
+                onClick={() => handleTimerAction('reset')}
+                className="mt-8 py-3 border border-red-500/40 text-red-400 font-adventure uppercase text-[10px] tracking-widest hover:bg-red-500/10 transition-all"
+              >
+                Archive & Reset for New Expedition
+              </button>
             </div>
           ) : (
             <>
@@ -452,10 +444,6 @@ function EventControlTab({
                   <div>
                     <label className="block text-[10px] uppercase text-foreground/40 font-adventure mb-2">Duration (Minutes)</label>
                     <input type="number" value={durationMinutes} onChange={e => setDurationMinutes(parseInt(e.target.value))} className="w-full bg-transparent border-b border-primary/20 py-2 font-mono text-xl focus:outline-none focus:border-primary" />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] uppercase text-foreground/40 font-adventure mb-2">Treasure Hunt Probability (0.0 - 1.0)</label>
-                    <input type="text" value={gachaProb} onChange={e => setGachaProb(e.target.value)} className="w-full bg-transparent border-b border-primary/20 py-2 font-mono text-xl focus:outline-none focus:border-primary" />
                   </div>
                   <div>
                     <label className="block text-[10px] uppercase text-foreground/40 font-adventure mb-2">Expedition Map URL</label>
@@ -471,23 +459,22 @@ function EventControlTab({
                   </div>
                 </div>
                 {error && <p className="text-red-400 text-xs mt-4">{error}</p>}
-                <button 
-                  onClick={handleUpdateSettings} 
+                <button
+                  onClick={handleUpdateSettings}
                   onMouseEnter={() => setIsHovering(true)}
                   onMouseLeave={() => setIsHovering(false)}
-                  disabled={saving} 
-                  className={`mt-8 w-full py-3 font-adventure border tracking-widest uppercase text-xs transition-all duration-300 ${
-                    isSaved && !isHovering 
-                      ? 'bg-green-500/20 text-green-400 border-green-500/40' 
+                  disabled={saving}
+                  className={`mt-8 w-full py-3 font-adventure border tracking-widest uppercase text-xs transition-all duration-300 ${isSaved && !isHovering
+                      ? 'bg-green-500/20 text-green-400 border-green-500/40'
                       : 'bg-primary/20 text-primary border-primary/40 hover:bg-primary/30'
-                  }`}
+                    }`}
                 >
-                  {saving 
-                    ? 'Saving...' 
-                    : isHovering 
-                      ? 'Edit Parameter' 
-                      : isSaved 
-                        ? 'Saved' 
+                  {saving
+                    ? 'Saving...'
+                    : isHovering
+                      ? 'Edit Parameter'
+                      : isSaved
+                        ? 'Saved'
                         : 'Save Parameters'
                   }
                 </button>
@@ -496,7 +483,7 @@ function EventControlTab({
           )}
         </div>
       </div>
-    </div>
+    </TabLayout>
   );
 }
 
@@ -507,15 +494,24 @@ function EventControlTab({
 function WahanaTab() {
   const [activities, setActivities] = useState<Activity[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
+  const [editingActivity, setEditingActivity] = useState<Activity | null>(null);
+  const [privateTreasures, setPrivateTreasures] = useState<TreasureHunt[]>([]);
+  const [selectedTreasureId, setSelectedTreasureId] = useState<string>('');
   const [newName, setNewName] = useState('');
   const [newDesc, setNewDesc] = useState('');
   const [newHowTo, setNewHowTo] = useState('');
-  const [newBarcode, setNewBarcode] = useState('');
   const [newPoints, setNewPoints] = useState('');
+  const [newLevel, setNewLevel] = useState<'Easy' | 'Medium' | 'Hard'>('Medium');
   const [saving, setSaving] = useState(false);
-  const [editingActivity, setEditingActivity] = useState<Activity | null>(null);
-  const [expandedQR, setExpandedQR] = useState<string | null>(null);
+  const [showModal, setShowModal] = useState(false);
+  const [error, setError] = useState('');
+
+  const fetchPrivateTreasures = async () => {
+    const { data } = await supabase.from('treasure_hunts').select('*').eq('is_public', false).order('name');
+    setPrivateTreasures(data || []);
+  };
+
+  useEffect(() => { fetchPrivateTreasures(); }, []);
 
   const fetchWahana = useCallback(async () => {
     setLoading(true);
@@ -536,15 +532,17 @@ function WahanaTab() {
       setNewName(act.name);
       setNewDesc(act.description || '');
       setNewHowTo(act.how_to_play || '');
-      setNewBarcode(act.barcode_data || '');
       setNewPoints(act.max_points.toString());
+      setNewLevel(act.difficulty_level || 'Medium');
+      setSelectedTreasureId(act.treasure_hunt_id || '');
     } else {
       setEditingActivity(null);
       setNewName('');
       setNewDesc('');
       setNewHowTo('');
-      setNewBarcode('');
       setNewPoints('');
+      setNewLevel('Medium');
+      setSelectedTreasureId('');
     }
     setShowModal(true);
   };
@@ -552,13 +550,14 @@ function WahanaTab() {
   const handleSave = async () => {
     if (!newName || !newPoints) return;
     setSaving(true);
-    
+
     const payload = {
       name: newName,
       description: newDesc || null,
       how_to_play: newHowTo || null,
-      barcode_data: newBarcode || null,
       max_points: parseInt(newPoints, 10),
+      difficulty_level: newLevel,
+      treasure_hunt_id: selectedTreasureId || null,
       type: 'wahana' as const,
     };
 
@@ -606,38 +605,26 @@ function WahanaTab() {
                   <MapIcon className="w-5 h-5 text-primary" />
                 </div>
                 <div className="flex items-center gap-2">
-                   <button 
+                  <button
                     onClick={() => handleOpenModal(act)}
                     className="p-1.5 hover:bg-primary/10 text-primary/60 hover:text-primary transition-colors rounded-md"
                   >
                     <Edit2 className="w-4 h-4" />
                   </button>
-                  <button 
+                  <button
                     onClick={() => handleDelete(act.id)}
                     className="p-1.5 hover:bg-red-500/10 text-red-400/60 hover:text-red-400 transition-colors rounded-md"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
+                  <DifficultyBadge level={act.difficulty_level} />
                   <span className="text-[10px] font-adventure text-primary bg-primary/10 px-2 py-0.5">{act.max_points} MAX PTS</span>
                 </div>
               </div>
               <h3 className="font-adventure text-lg text-foreground mb-1 group-hover:text-primary transition-colors">{act.name}</h3>
               <p className="text-xs text-muted-foreground/60 mb-4 line-clamp-2">{act.description}</p>
 
-              <button onClick={() => setExpandedQR(expandedQR === act.id ? null : act.id)} className="flex items-center gap-2 text-[10px] font-adventure uppercase tracking-widest text-primary/60 hover:text-primary transition-colors">
-                <QrCode className="w-3 h-3" />
-                {expandedQR === act.id ? 'Hide QR' : 'Show QR'}
-              </button>
 
-              <AnimatePresence>
-                {expandedQR === act.id && (
-                  <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden mt-4 flex flex-col items-center">
-                    <div className="bg-white p-3 rounded-xl mb-2">
-                       <QRCodeDisplay barcodeData={act.barcode_data || act.id} label={act.name} size={150} />
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
             </motion.div>
           ))}
         </div>
@@ -648,8 +635,21 @@ function WahanaTab() {
           <ModalField label="Wahana Name" value={newName} onChange={setNewName} placeholder="e.g. Temple of Doom" />
           <ModalField label="Description (Lore)" value={newDesc} onChange={setNewDesc} placeholder="What happens here?" />
           <ModalField label="How to Play (Steps)" value={newHowTo} onChange={setNewHowTo} placeholder="1. Walk in\n2. Solve... " />
-          <ModalField label="Barcode Data (Optional)" value={newBarcode} onChange={setNewBarcode} placeholder="Custom code or leave empty for ID" />
           <ModalField label="Max Points" value={newPoints} onChange={setNewPoints} placeholder="e.g. 100" type="number" />
+          <DifficultySelector value={newLevel} onChange={setNewLevel} />
+          <div>
+            <label className="block text-[10px] uppercase tracking-widest font-adventure text-[#2b1d0e]/60 mb-2">Linked Private Treasure Hunt</label>
+            <select
+              value={selectedTreasureId}
+              onChange={e => setSelectedTreasureId(e.target.value)}
+              className="w-full bg-transparent border-b-2 border-[#2b1d0e]/20 p-3 font-adventure text-[#2b1d0e] focus:outline-none focus:border-[#8b4513] transition-colors appearance-none"
+            >
+              <option value="">None / No Hint</option>
+              {privateTreasures.map(t => (
+                <option key={t.id} value={t.id}>{t.name} ({t.quota} quota)</option>
+              ))}
+            </select>
+          </div>
           <ModalSubmit label={editingActivity ? 'Update Wahana' : 'Establish Wahana'} onClick={handleSave} disabled={!newName || !newPoints || saving} loading={saving} />
         </div>
       </AdventureModal>
@@ -666,16 +666,24 @@ const CHALLENGE_LIMITS = { regular: 6, popup: 2, additional: 3 };
 function ChallengesTab() {
   const [activities, setActivities] = useState<Activity[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
+  const [editingChallenge, setEditingChallenge] = useState<Activity | null>(null);
+  const [privateTreasures, setPrivateTreasures] = useState<TreasureHunt[]>([]);
+  const [selectedTreasureId, setSelectedTreasureId] = useState<string>('');
   const [newName, setNewName] = useState('');
   const [newDesc, setNewDesc] = useState('');
   const [newHowTo, setNewHowTo] = useState('');
-  const [newBarcode, setNewBarcode] = useState('');
   const [newPoints, setNewPoints] = useState('');
+  const [newLevel, setNewLevel] = useState<'Easy' | 'Medium' | 'Hard'>('Medium');
   const [newType, setNewType] = useState<Activity['type']>('challenge_regular');
   const [saving, setSaving] = useState(false);
-  const [editingChallenge, setEditingChallenge] = useState<Activity | null>(null);
-  const [expandedQR, setExpandedQR] = useState<string | null>(null);
+  const [showModal, setShowModal] = useState(false);
+
+  const fetchPrivateTreasures = async () => {
+    const { data } = await supabase.from('treasure_hunts').select('*').eq('is_public', false).order('name');
+    setPrivateTreasures(data || []);
+  };
+
+  useEffect(() => { fetchPrivateTreasures(); }, []);
 
   const fetchChallenges = useCallback(async () => {
     setLoading(true);
@@ -696,17 +704,19 @@ function ChallengesTab() {
       setNewName(act.name);
       setNewDesc(act.description || '');
       setNewHowTo(act.how_to_play || '');
-      setNewBarcode(act.barcode_data || '');
       setNewPoints(act.max_points.toString());
+      setNewLevel(act.difficulty_level || 'Medium');
       setNewType(act.type);
+      setSelectedTreasureId(act.treasure_hunt_id || '');
     } else {
       setEditingChallenge(null);
       setNewName('');
       setNewDesc('');
       setNewHowTo('');
-      setNewBarcode('');
       setNewPoints('');
+      setNewLevel('Medium');
       setNewType('challenge_regular');
+      setSelectedTreasureId('');
     }
     setShowModal(true);
   };
@@ -719,8 +729,9 @@ function ChallengesTab() {
       name: newName,
       description: newDesc || null,
       how_to_play: newHowTo || null,
-      barcode_data: newBarcode || null,
       max_points: parseInt(newPoints, 10),
+      difficulty_level: newLevel,
+      treasure_hunt_id: selectedTreasureId || null,
       type: newType,
     };
 
@@ -775,41 +786,28 @@ function ChallengesTab() {
                   <Sword className="w-5 h-5 text-primary" />
                 </div>
                 <div className="flex items-center gap-2">
-                   <button 
+                  <button
                     onClick={() => handleOpenModal(act)}
                     className="p-1.5 hover:bg-primary/10 text-primary/60 hover:text-primary transition-colors rounded-md"
                   >
                     <Edit2 className="w-4 h-4" />
                   </button>
-                  <button 
+                  <button
                     onClick={() => handleDelete(act.id)}
                     className="p-1.5 hover:bg-red-500/10 text-red-400/60 hover:text-red-400 transition-colors rounded-md"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
-                   <span className={`text-[9px] font-adventure uppercase px-2 py-0.5 ${typeColor(act.type)}`}>
+                  <span className={`text-[9px] font-adventure uppercase px-2 py-0.5 ${typeColor(act.type)}`}>
                     {act.type.replace('challenge_', '')}
                   </span>
+                  <DifficultyBadge level={act.difficulty_level} />
                   <span className="text-[10px] font-adventure text-primary bg-primary/10 px-2 py-0.5">{act.max_points} MAX PTS</span>
                 </div>
               </div>
               <h3 className="font-adventure text-lg text-foreground mb-1 group-hover:text-primary transition-colors">{act.name}</h3>
               <p className="text-xs text-muted-foreground/60 mb-4 line-clamp-2">{act.description}</p>
 
-              <button onClick={() => setExpandedQR(expandedQR === act.id ? null : act.id)} className="flex items-center gap-2 text-[10px] font-adventure uppercase tracking-widest text-primary/60 hover:text-primary transition-colors">
-                <QrCode className="w-3 h-3" />
-                {expandedQR === act.id ? 'Hide QR' : 'Show QR'}
-              </button>
-
-              <AnimatePresence>
-                {expandedQR === act.id && (
-                  <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden mt-4 flex flex-col items-center">
-                    <div className="bg-white p-3 rounded-xl mb-2">
-                       <QRCodeDisplay barcodeData={act.barcode_data || act.id} label={act.name} size={150} />
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
             </motion.div>
           ))}
         </div>
@@ -820,8 +818,8 @@ function ChallengesTab() {
           <ModalField label="Challenge Name" value={newName} onChange={setNewName} placeholder="e.g. Bridge of Doom" />
           <ModalField label="Description (Lore)" value={newDesc} onChange={setNewDesc} placeholder="Misi apa ini?" />
           <ModalField label="How to Play (Steps)" value={newHowTo} onChange={setNewHowTo} placeholder="1. Cross... " />
-          <ModalField label="Barcode Data (Optional)" value={newBarcode} onChange={setNewBarcode} placeholder="Custom code or leave empty for ID" />
           <ModalField label="Points" value={newPoints} onChange={setNewPoints} placeholder="e.g. 50" type="number" />
+          <DifficultySelector value={newLevel} onChange={setNewLevel} />
           <div>
             <label className="block text-[10px] uppercase tracking-widest font-adventure text-[#2b1d0e]/60 mb-2">Challenge Type</label>
             <div className="flex gap-2">
@@ -829,14 +827,26 @@ function ChallengesTab() {
                 <button
                   key={t}
                   onClick={() => setNewType(t)}
-                  className={`flex-1 py-2 text-[8px] font-adventure uppercase tracking-widest border transition-all ${
-                    newType === t ? 'bg-[#8b4513] text-[#f4e4bc] border-[#8b4513]' : 'bg-transparent text-[#2b1d0e]/60 border-[#2b1d0e]/20'
-                  }`}
+                  className={`flex-1 py-2 text-[8px] font-adventure uppercase tracking-widest border transition-all ${newType === t ? 'bg-[#8b4513] text-[#f4e4bc] border-[#8b4513]' : 'bg-transparent text-[#2b1d0e]/60 border-[#2b1d0e]/20'
+                    }`}
                 >
                   {t.replace('challenge_', '')}
                 </button>
               ))}
             </div>
+          </div>
+          <div>
+            <label className="block text-[10px] uppercase tracking-widest font-adventure text-[#2b1d0e]/60 mb-2">Linked Private Treasure Hunt</label>
+            <select
+              value={selectedTreasureId}
+              onChange={e => setSelectedTreasureId(e.target.value)}
+              className="w-full bg-transparent border-b-2 border-[#2b1d0e]/20 p-3 font-adventure text-[#2b1d0e] focus:outline-none focus:border-[#8b4513] transition-colors appearance-none"
+            >
+              <option value="">None / No Hint</option>
+              {privateTreasures.map(t => (
+                <option key={t.id} value={t.id}>{t.name} ({t.quota} quota)</option>
+              ))}
+            </select>
           </div>
           <ModalSubmit label={editingChallenge ? 'Update Challenge' : 'Create Challenge'} onClick={handleSave} disabled={!newName || !newPoints || saving} loading={saving} />
         </div>
@@ -859,6 +869,7 @@ function TreasureTab() {
   const [newPoints, setNewPoints] = useState('');
   const [newHint, setNewHint] = useState('');
   const [newQuota, setNewQuota] = useState('');
+  const [isPublic, setIsPublic] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editingTreasure, setEditingTreasure] = useState<TreasureHunt | null>(null);
   const [expandedQR, setExpandedQR] = useState<string | null>(null);
@@ -891,12 +902,14 @@ function TreasureTab() {
       setNewPoints(th.points.toString());
       setNewHint(th.hint_text || '');
       setNewQuota(th.quota.toString());
+      setIsPublic(th.is_public);
     } else {
       setEditingTreasure(null);
       setNewName('');
       setNewPoints('');
       setNewHint('');
       setNewQuota('');
+      setIsPublic(false);
     }
     setShowModal(true);
   };
@@ -904,7 +917,7 @@ function TreasureTab() {
   const handleSave = async () => {
     if (!newName || !newPoints || !newQuota) return;
     setSaving(true);
-    
+
     const quotaVal = parseInt(newQuota, 10);
     const pointsVal = parseInt(newPoints, 10);
 
@@ -922,6 +935,7 @@ function TreasureTab() {
           hint_text: newHint || null,
           quota: quotaVal,
           remaining_quota: newRemaining,
+          is_public: isPublic,
         })
         .eq('id', editingTreasure.id);
       error = err;
@@ -932,6 +946,7 @@ function TreasureTab() {
         hint_text: newHint || null,
         quota: quotaVal,
         remaining_quota: quotaVal,
+        is_public: isPublic,
       });
       error = err;
     }
@@ -966,18 +981,21 @@ function TreasureTab() {
                   <Gem className="w-5 h-5 text-primary" />
                 </div>
                 <div className="flex items-center gap-2">
-                   <button 
+                  <button
                     onClick={() => handleOpenModal(th)}
                     className="p-1.5 hover:bg-primary/10 text-primary/60 hover:text-primary transition-colors rounded-md"
                   >
                     <Edit2 className="w-4 h-4" />
                   </button>
-                  <button 
+                  <button
                     onClick={() => handleDelete(th.id)}
                     className="p-1.5 hover:bg-red-500/10 text-red-400/60 hover:text-red-400 transition-colors rounded-md"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
+                  <span className={`text-[8px] font-adventure uppercase px-2 py-0.5 rounded-sm ${th.is_public ? 'bg-green-500/20 text-green-400' : 'bg-blue-500/20 text-blue-400'}`}>
+                    {th.is_public ? 'Public' : 'Private'}
+                  </span>
                   <div className="text-right ml-2">
                     <p className="text-[10px] font-adventure text-primary">{th.points} PTS</p>
                     <p className="text-[9px] text-muted-foreground/40">{th.remaining_quota}/{th.quota} REMAINING</p>
@@ -1009,7 +1027,7 @@ function TreasureTab() {
                 {expandedQR === th.id && (
                   <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden mt-4 flex flex-col items-center">
                     <div className="bg-white p-3 rounded-xl mb-2">
-                       <QRCodeDisplay barcodeData={`fif-treasure-${th.id}`} label={th.name} size={150} />
+                      <QRCodeDisplay barcodeData={`fif-treasure-${th.id}`} label={th.name} size={150} />
                     </div>
                   </motion.div>
                 )}
@@ -1033,6 +1051,36 @@ function TreasureTab() {
           <ModalField label="Points" value={newPoints} onChange={setNewPoints} placeholder="e.g. 500" type="number" />
           <ModalField label="Hint" value={newHint} onChange={setNewHint} placeholder="Di mana dia berada?" />
           <ModalField label="Quota" value={newQuota} onChange={setNewQuota} placeholder="e.g. 1" type="number" />
+
+          <div className="pt-2">
+            <label className="block text-[10px] uppercase tracking-widest font-adventure text-[#2b1d0e]/60 mb-3">Discovery Type</label>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setIsPublic(false)}
+                className={`flex-1 py-3 flex flex-col items-center gap-1 border transition-all ${!isPublic
+                    ? 'bg-[#8b4513] text-[#f4e4bc] border-[#8b4513] shadow-lg'
+                    : 'bg-transparent text-[#2b1d0e]/40 border-[#2b1d0e]/20 hover:border-[#2b1d0e]/40'
+                  }`}
+              >
+                <span className="text-[9px] font-adventure uppercase tracking-tighter">Private / Hidden</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsPublic(true)}
+                className={`flex-1 py-3 flex flex-col items-center gap-1 border transition-all ${isPublic
+                    ? 'bg-[#8b4513] text-[#f4e4bc] border-[#8b4513] shadow-lg'
+                    : 'bg-transparent text-[#2b1d0e]/40 border-[#2b1d0e]/20 hover:border-[#2b1d0e]/40'
+                  }`}
+              >
+                <span className="text-[9px] font-adventure uppercase tracking-tighter">Public / Global</span>
+              </button>
+            </div>
+            <p className="mt-2 text-[9px] italic text-[#2b1d0e]/40">
+              {isPublic ? "Visible to all teams in the Global menu." : "Hidden until earned through a specific Wahana scan."}
+            </p>
+          </div>
+
           <ModalSubmit label={editingTreasure ? 'Update Treasure' : 'Bury Treasure'} onClick={handleSave} disabled={!newName || !newPoints || !newQuota || saving} loading={saving} />
         </div>
       </AdventureModal>
@@ -1363,7 +1411,7 @@ function TabLayout({
 }: {
   title: string;
   subtitle: string;
-  onAdd: () => void;
+  onAdd?: () => void;
   extraActions?: React.ReactNode;
   children: React.ReactNode;
 }) {
@@ -1386,16 +1434,18 @@ function TabLayout({
 
         <div className="flex items-center gap-3">
           {extraActions}
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            onClick={onAdd}
-            className="flex items-center gap-3 bg-secondary hover:bg-secondary/80 text-white px-8 py-4 rounded-none font-adventure shadow-[0_10px_30px_rgba(139,69,19,0.4)] border border-primary/20 relative group overflow-hidden"
-          >
-            <div className="absolute inset-0 bg-primary/10 opacity-0 group-hover:opacity-100 transition-opacity" />
-            <Plus className="w-5 h-5 text-primary" />
-            New Entry
-          </motion.button>
+          {onAdd && (
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={onAdd}
+              className="flex items-center gap-3 bg-secondary hover:bg-secondary/80 text-white px-8 py-4 rounded-none font-adventure shadow-[0_10px_30px_rgba(139,69,19,0.4)] border border-primary/20 relative group overflow-hidden"
+            >
+              <div className="absolute inset-0 bg-primary/10 opacity-0 group-hover:opacity-100 transition-opacity" />
+              <Plus className="w-5 h-5 text-primary" />
+              New Entry
+            </motion.button>
+          )}
         </div>
       </header>
 
@@ -1510,9 +1560,8 @@ function SidebarLink({ icon, label, active, onClick }: { icon: React.ReactNode; 
   return (
     <button
       onClick={onClick}
-      className={`w-full group flex items-center gap-4 px-5 py-3 rounded-none transition-all duration-300 relative ${
-        active ? 'text-primary' : 'text-foreground/40 hover:text-foreground'
-      }`}
+      className={`w-full group flex items-center gap-4 px-5 py-3 rounded-none transition-all duration-300 relative ${active ? 'text-primary' : 'text-foreground/40 hover:text-foreground'
+        }`}
     >
       {active && (
         <motion.div
@@ -1559,5 +1608,51 @@ function StatCard({ count, label, sub }: { count: number; label: string; sub: st
       <p className="text-[10px] uppercase font-adventure tracking-wider text-primary mb-2">{label}</p>
       <p className="text-[10px] text-muted-foreground italic opacity-50">{sub}</p>
     </motion.div>
+  );
+}
+
+function DifficultyBadge({ level }: { level: string }) {
+  const colorClass = level === 'Easy' ? 'bg-green-600 text-white' : level === 'Hard' ? 'bg-red-600 text-white' : 'bg-amber-500 text-white';
+  const flames = level === 'Easy' ? 1 : level === 'Hard' ? 3 : 2;
+
+  return (
+    <div className={`flex items-center gap-1.5 px-3 py-1 rounded-sm shadow-lg ${colorClass}`}>
+      <div className="flex -space-x-0.5">
+        {Array.from({ length: flames }).map((_, i) => (
+          <Flame key={i} className="w-2.5 h-2.5 fill-current" />
+        ))}
+      </div>
+      <span className="text-[9px] font-adventure uppercase tracking-widest">{level}</span>
+    </div>
+  );
+}
+
+function DifficultySelector({ value, onChange }: { value: 'Easy' | 'Medium' | 'Hard'; onChange: (v: 'Easy' | 'Medium' | 'Hard') => void }) {
+  const levels: ('Easy' | 'Medium' | 'Hard')[] = ['Easy', 'Medium', 'Hard'];
+
+  return (
+    <div className="pt-2">
+      <label className="block text-[10px] uppercase tracking-widest font-adventure text-[#2b1d0e]/60 mb-3">Difficulty Level</label>
+      <div className="flex gap-2">
+        {levels.map(lvl => (
+          <button
+            key={lvl}
+            type="button"
+            onClick={() => onChange(lvl)}
+            className={`flex-1 py-3 flex flex-col items-center gap-1 border transition-all duration-300 ${value === lvl
+                ? 'bg-[#8b4513] text-[#f4e4bc] border-[#8b4513] shadow-lg scale-105 z-10'
+                : 'bg-transparent text-[#2b1d0e]/40 border-[#2b1d0e]/20 hover:border-[#2b1d0e]/40'
+              }`}
+          >
+            <div className="flex gap-0.5">
+              {Array.from({ length: lvl === 'Easy' ? 1 : lvl === 'Hard' ? 3 : 2 }).map((_, i) => (
+                <Flame key={i} className={`w-3 h-3 ${value === lvl ? 'fill-current' : 'opacity-40'}`} />
+              ))}
+            </div>
+            <span className="text-[9px] font-adventure uppercase tracking-tighter">{lvl}</span>
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }

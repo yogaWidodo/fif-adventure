@@ -12,17 +12,20 @@ export async function POST(request: NextRequest): Promise<Response> {
 
   const { supabase, userId } = auth;
 
-  // 2. Parse request body (team_id from QR)
-  let body: { team_id?: unknown };
+  // 2. Parse request body
+  let body: { team_id?: unknown; activity_id?: unknown };
   try {
     body = await request.json();
   } catch {
     return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
   }
 
-  const { team_id } = body;
+  const { team_id, activity_id } = body;
   if (typeof team_id !== 'string' || !team_id.trim()) {
     return Response.json({ error: 'team_id is required' }, { status: 400 });
+  }
+  if (typeof activity_id !== 'string' || !activity_id.trim()) {
+    return Response.json({ error: 'activity_id is required' }, { status: 400 });
   }
 
   // 3. Validate Event Status (Requirement 4.0)
@@ -36,11 +39,10 @@ export async function POST(request: NextRequest): Promise<Response> {
     return Response.json({ error: 'Event sedang tidak berlangsung.' }, { status: 403 });
   }
 
-  // 4. Get LO profile and assignment
-  // In V2, we link auth user to public user via auth_id
+  // 4. Get LO profile and verify assignment for this SPECIFIC activity
   const { data: userProfile } = await supabase
     .from('users')
-    .select('id, role, npk')
+    .select('id, role')
     .eq('auth_id', userId)
     .single();
 
@@ -52,10 +54,11 @@ export async function POST(request: NextRequest): Promise<Response> {
     .from('lo_assignments')
     .select('activity_id')
     .eq('lo_id', userProfile.id)
-    .single();
+    .eq('activity_id', activity_id)
+    .maybeSingle();
 
   if (!assignment) {
-    return Response.json({ error: 'LO belum di-assign ke aktivitas manapun' }, { status: 403 });
+    return Response.json({ error: 'Anda tidak di-assign ke aktivitas ini' }, { status: 403 });
   }
 
   // 5. Insert Registration (Check-in)
@@ -63,7 +66,7 @@ export async function POST(request: NextRequest): Promise<Response> {
     .from('activity_registrations')
     .insert({
       team_id,
-      activity_id: assignment.activity_id,
+      activity_id,
       checked_in_by: userProfile.id
     })
     .select()
@@ -76,5 +79,29 @@ export async function POST(request: NextRequest): Promise<Response> {
     return Response.json({ error: 'Gagal melakukan check-in' }, { status: 500 });
   }
 
-  return Response.json({ success: true, registration });
+  // 6. AUTOMATED TREASURE HINT (New Requirement)
+  // Check if this activity has a linked private treasure hunt
+  const { data: activityData } = await supabase
+    .from('activities')
+    .select('treasure_hunt_id')
+    .eq('id', activity_id)
+    .single();
+
+  let hint_granted = false;
+  if (activityData?.treasure_hunt_id) {
+    // Grant the hint to the team automatically
+    const { error: upsertError } = await supabase
+      .from('treasure_hunt_hints')
+      .upsert({
+        team_id,
+        treasure_hunt_id: activityData.treasure_hunt_id,
+        triggered_by_activity_id: activity_id
+      }, { onConflict: 'team_id, treasure_hunt_id' });
+    
+    if (!upsertError) {
+      hint_granted = true;
+    }
+  }
+
+  return Response.json({ success: true, registration, hint_granted });
 }

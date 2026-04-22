@@ -8,7 +8,6 @@ import PauseModal from "@/components/PauseModal";
 import FinishedModal from "@/components/FinishedModal";
 import SoundManager from "@/components/SoundManager";
 import { Analytics } from "@vercel/analytics/next";
-import CaptainGachaListener from "@/components/captain/CaptainGachaListener";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -35,7 +34,6 @@ export default function RootLayout({
             <PauseModal />
             <FinishedModal />
             <SoundManager />
-            <CaptainGachaListener />
             {children}
             <Analytics />
           </TimerProvider>

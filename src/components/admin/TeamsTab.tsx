@@ -286,13 +286,6 @@ export default function TeamsTab() {
       .single();
 
     if (!error && newTeam) {
-      // Generate and persist the unique barcode for this team (Requirement 1.1, 1.2)
-      const barcodeData = generateTeamBarcode(newTeam.id);
-      await supabase
-        .from('teams')
-        .update({ barcode_data: barcodeData })
-        .eq('id', newTeam.id);
-
       setShowModal(false);
       setNewName('');
       setNewSlogan('');

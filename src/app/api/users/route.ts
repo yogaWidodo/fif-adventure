@@ -43,8 +43,8 @@ export async function GET() {
   }
 
   const users = (data ?? []).map((u: any) => {
-    const assignment = u.lo_assignments?.[0]; // lo_assignments is one-to-one
-    const activity = assignment?.activities;
+    const assignments = Array.isArray(u.lo_assignments) ? u.lo_assignments : (u.lo_assignments ? [u.lo_assignments] : []);
+    const activityNames = assignments.map((a: any) => a.activities?.name).filter(Boolean);
 
     return {
       id: u.id,
@@ -55,8 +55,9 @@ export async function GET() {
       birth_date: u.birth_date ?? null,
       team_id: u.team_id ?? null,
       team_name: u.teams?.name ?? null,
-      activity_id: assignment?.activity_id ?? null,
-      activity_name: activity?.name ?? null,
+      activity_id: assignments[0]?.activity_id ?? null,
+      activity_name: activityNames.join(', ') || null,
+      activity_ids: assignments.map((a: any) => a.activity_id),
       created_at: u.created_at,
     };
   });

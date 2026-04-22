@@ -2,8 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { motion } from 'framer-motion';
-import { Book, Compass, Trophy, MapPin, CheckCircle2, Circle, Flame, Gem, ScrollText, Lock } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Book, Compass, Trophy, MapPin, CheckCircle2, Circle, Flame, Gem, ScrollText, Lock, X, Sword, ChevronRight } from 'lucide-react';
 import AuthGuard from '@/components/AuthGuard';
 import { useAuth } from '@/context/AuthContext';
 
@@ -15,6 +15,7 @@ export default function TeamJournal() {
   const [registrations, setRegistrations] = useState<any[]>([]);
   const [claims, setClaims] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedActivity, setSelectedActivity] = useState<any>(null);
 
   useEffect(() => {
     if (user?.team_id) fetchJournalData(user.team_id);
@@ -25,11 +26,11 @@ export default function TeamJournal() {
 
     const [teamRes, activitiesRes, hintsRes, regRes, claimRes] = await Promise.all([
       supabase.from('teams').select('*').eq('id', teamId).maybeSingle(),
-      supabase.from('activities').select('*').order('name'),
+      supabase.from('activities').select('id, name, description, how_to_play, type, max_points, difficulty_level').order('name'),
       // Only fetch hints this team has received from gacha — joined with treasure_hunts for details
       supabase
         .from('treasure_hunt_hints')
-        .select('id, treasure_hunt_id, received_at, treasure_hunts(id, name, hint_text, points)')
+        .select('id, treasure_hunt_id, received_at, treasure_hunts(id, name, hint_text, points, is_public)')
         .eq('team_id', teamId)
         .order('received_at', { ascending: false }),
       supabase.from('activity_registrations').select('*').eq('team_id', teamId),
@@ -128,15 +129,22 @@ export default function TeamJournal() {
             ) : (
               <div className="grid gap-4">
                 {activities.map((act, idx) => (
-                  <motion.div 
-                    key={act.id}
-                    initial={{ opacity: 0, x: -10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: idx * 0.05 }}
-                    className={`parchment p-5 flex items-center justify-between border-l-[6px] transition-all ${
-                      isActivityDone(act.id) ? 'border-l-primary opacity-100 shadow-lg' : 'border-l-stone-400/20 opacity-40'
-                    }`}
-                  >
+                    <motion.div 
+                      key={act.id}
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: idx * 0.05 }}
+                      onClick={() => isActivityDone(act.id) && setSelectedActivity(act)}
+                      className={`parchment p-5 flex items-center justify-between border-l-[6px] transition-all relative overflow-hidden group ${
+                        isActivityDone(act.id) 
+                          ? 'opacity-100 shadow-lg cursor-pointer hover:translate-x-1 active:scale-[0.98]' 
+                          : 'opacity-40 grayscale pointer-events-none'
+                      } ${
+                        act.difficulty_level === 'Easy' ? 'border-l-green-600' :
+                        act.difficulty_level === 'Hard' ? 'border-l-red-600' :
+                        'border-l-amber-600'
+                      }`}
+                    >
                     <div className="flex items-center gap-4">
                       {isActivityDone(act.id) ? (
                         <CheckCircle2 className="w-6 h-6 text-primary" />
@@ -144,18 +152,36 @@ export default function TeamJournal() {
                         <Circle className="w-6 h-6 text-stone-400/30" />
                       )}
                       <div>
-                        <h4 className="font-adventure text-lg tracking-tight leading-none text-[#2b1d0e] mb-1">{act.name}</h4>
-                        <p className="text-[10px] uppercase font-adventure text-[#8b4513]/60 italic tracking-tighter">
-                          {act.type} • {act.max_points} Pts Max
-                        </p>
+                        <h4 className="font-adventure text-lg tracking-tight leading-none text-[#2b1d0e] mb-1.5">{act.name}</h4>
+                        <div className="flex items-center gap-3">
+                          <p className="text-[10px] uppercase font-adventure text-[#8b4513]/60 italic tracking-tighter">
+                            {act.type.replace('challenge_', '')} • {act.max_points} Pts
+                          </p>
+                          <div className={`px-2 py-0.5 rounded-full text-[8px] font-adventure uppercase border ${
+                            act.difficulty_level === 'Easy' ? 'bg-green-100 border-green-200 text-green-700' :
+                            act.difficulty_level === 'Hard' ? 'bg-red-100 border-red-200 text-red-700' :
+                            'bg-amber-100 border-amber-200 text-amber-700'
+                          }`}>
+                            {act.difficulty_level}
+                          </div>
+                        </div>
                       </div>
                     </div>
                     
-                    {isActivityDone(act.id) && (
-                      <div className="flex flex-col items-end">
-                        <p className="text-[8px] font-mono text-[#8b4513]/40">SECURED</p>
-                        <MapPin className="w-4 h-4 text-[#8b4513]/60" />
+                    {isActivityDone(act.id) ? (
+                      <div className="flex items-center gap-2">
+                        <div className="flex flex-col items-end opacity-40">
+                          <p className="text-[8px] font-mono text-[#8b4513]">DISCOVERED</p>
+                          <ChevronRight className="w-4 h-4 text-[#8b4513]" />
+                        </div>
                       </div>
+                    ) : (
+                       <Lock className="w-4 h-4 text-stone-400/30" />
+                    )}
+
+                    {/* Subtle discovery glow for done items */}
+                    {isActivityDone(act.id) && (
+                      <div className="absolute inset-0 bg-primary/5 pointer-events-none group-hover:bg-primary/10 transition-colors" />
                     )}
                   </motion.div>
                 ))}
@@ -172,7 +198,7 @@ export default function TeamJournal() {
                 <span className="text-[10px] font-adventure text-primary/50">{claimedHints}/{totalHints} claimed</span>
               </div>
               <div className="grid gap-4">
-                {hints.map((hint, idx) => {
+                {hints.filter(h => !(h.treasure_hunts as any)?.is_public).map((hint, idx) => {
                   const thRaw = hint.treasure_hunts as any;
                   const th = Array.isArray(thRaw) ? thRaw[0] : thRaw;
                   if (!th) return null;
@@ -229,7 +255,7 @@ export default function TeamJournal() {
           )}
 
           {/* No hints yet message */}
-          {!loading && hints.length === 0 && (
+          {!loading && hints.filter(h => !(h.treasure_hunts as any)?.is_public).length === 0 && (
             <div className="space-y-4">
               <div className="flex items-center gap-4 mb-6">
                 <span className="h-px w-8 bg-primary/40" />
@@ -238,12 +264,111 @@ export default function TeamJournal() {
               <div className="parchment p-8 text-center">
                 <Lock className="w-8 h-8 text-[#8b4513]/30 mx-auto mb-3" />
                 <p className="font-adventure text-sm text-[#2b1d0e]/50 italic">
-                  Belum ada hint. Selesaikan wahana untuk memutar gacha!
+                  Belum ada hint rahasia. Temukan wahana tersembunyi untuk membukanya!
                 </p>
               </div>
             </div>
           )}
         </div>
+
+        {/* Activity Detail Modal */}
+        <AnimatePresence>
+          {selectedActivity && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/90 backdrop-blur-sm"
+              onClick={() => setSelectedActivity(null)}
+            >
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0, y: 20 }}
+                animate={{ scale: 1, opacity: 1, y: 0 }}
+                exit={{ scale: 0.9, opacity: 0, y: 20 }}
+                className="adventure-card w-full max-w-lg overflow-hidden border-primary/30"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {/* Modal Header */}
+                <div className="relative h-32 bg-primary/20 flex items-center justify-center overflow-hidden">
+                  <div className="absolute inset-0 bg-[url('/images/expedition_map_bg.png')] bg-cover bg-center opacity-30 mix-blend-overlay" />
+                  <div className="relative z-10 flex flex-col items-center">
+                    <div className="bg-primary/20 p-3 rounded-full border border-primary/30 mb-2">
+                       {selectedActivity.type === 'wahana' ? (
+                         <MapPin className="w-6 h-6 text-primary torch-glow" />
+                       ) : (
+                         <Sword className="w-6 h-6 text-primary torch-glow" />
+                       )}
+                    </div>
+                    <h2 className="font-adventure text-2xl gold-engraving tracking-widest uppercase mb-1">
+                      {selectedActivity.name}
+                    </h2>
+                    <DifficultyBadge level={selectedActivity.difficulty_level} />
+                  </div>
+                  <button
+                    onClick={() => setSelectedActivity(null)}
+                    className="absolute top-4 right-4 z-20 text-foreground/40 hover:text-foreground transition-colors"
+                  >
+                    <X className="w-6 h-6" />
+                  </button>
+                </div>
+
+                {/* Modal Body */}
+                <div className="p-8 max-h-[60vh] overflow-y-auto custom-scrollbar">
+                  <div className="space-y-8">
+                    {/* Lore Section */}
+                    <section>
+                      <div className="flex items-center gap-3 mb-3">
+                        <span className="h-px flex-1 bg-primary/20" />
+                        <h3 className="font-adventure text-[10px] uppercase tracking-[0.4em] text-primary/60">Discovery Lore</h3>
+                        <span className="h-px flex-1 bg-primary/20" />
+                      </div>
+                      <p className="text-sm font-content text-foreground/80 italic leading-relaxed text-center px-4">
+                        "{selectedActivity.description || 'No lore recorded for this discovery.'}"
+                      </p>
+                    </section>
+
+                    {/* How to Play Section */}
+                    <section>
+                      <div className="flex items-center gap-3 mb-4">
+                        <span className="h-px flex-1 bg-primary/20" />
+                        <h3 className="font-adventure text-[10px] uppercase tracking-[0.4em] text-primary/60">Instructions</h3>
+                        <span className="h-px flex-1 bg-primary/20" />
+                      </div>
+                      <div className="bg-black/40 border border-primary/10 p-6 rounded-sm">
+                        <div className="text-xs font-content text-foreground/70 leading-relaxed whitespace-pre-line">
+                          {selectedActivity.how_to_play || 'Search the area for clues. The field officer will provide further guidance.'}
+                        </div>
+                      </div>
+                    </section>
+
+                    {/* Reward Section */}
+                    <div className="flex items-center justify-between pt-6 border-t border-primary/10">
+                      <div className="flex items-center gap-2">
+                        <Flame className="w-4 h-4 text-primary" />
+                        <span className="text-[10px] font-adventure text-primary/60 uppercase tracking-widest">
+                          Potential Prestige
+                        </span>
+                      </div>
+                      <span className="text-lg font-adventure text-primary">
+                        {selectedActivity.max_points} pts
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Modal Footer */}
+                <div className="p-6 bg-primary/5 border-t border-primary/10">
+                  <button
+                    onClick={() => setSelectedActivity(null)}
+                    className="w-full py-4 font-adventure text-xs uppercase tracking-[0.3em] bg-primary text-primary-foreground hover:bg-primary/90 transition-all shadow-lg active:scale-95"
+                  >
+                    Close Journal
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Floating Back Button */}
         <nav className="fixed bottom-8 left-6 right-6 z-30 flex justify-center">
@@ -254,5 +379,21 @@ export default function TeamJournal() {
         </nav>
       </div>
     </AuthGuard>
+  );
+}
+
+function DifficultyBadge({ level }: { level: string }) {
+  const colorClass = level === 'Easy' ? 'bg-green-600 text-white' : level === 'Hard' ? 'bg-red-600 text-white' : 'bg-amber-500 text-white';
+  const flames = level === 'Easy' ? 1 : level === 'Hard' ? 3 : 2;
+  
+  return (
+    <div className={`flex items-center gap-1.5 px-3 py-1 rounded-sm shadow-md ${colorClass}`}>
+      <div className="flex -space-x-0.5">
+        {Array.from({ length: flames }).map((_, i) => (
+          <Flame key={i} className="w-2.5 h-2.5 fill-current" />
+        ))}
+      </div>
+      <span className="text-[9px] font-adventure uppercase tracking-widest">{level}</span>
+    </div>
   );
 }

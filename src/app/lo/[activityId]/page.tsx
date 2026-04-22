@@ -16,6 +16,7 @@ interface ActivityInfo {
   name: string;
   description: string | null;
   points: number;
+  difficulty_level: string;
 }
 
 type ToastState = {
@@ -54,21 +55,22 @@ export default function ActivityDashboard({
     const fetchAndVerify = async () => {
       setLoadingActivity(true);
 
-      // Step 1: Fetch LO assignment from lo_assignments — Requirement 4.1
-      const { data: assignment, error: assignmentError } = await supabase
+      // Step 1: Fetch ALL assignments for this LO
+      const { data: assignments, error: assignmentError } = await supabase
         .from('lo_assignments')
-        .select('activity_id, activities(id, name, description, max_points)')
-        .eq('lo_id', user.id)
-        .maybeSingle();
+        .select('activity_id, activities(id, name, description, max_points, difficulty_level)')
+        .eq('lo_id', user.id);
 
-      if (assignmentError || !assignment) {
+      if (assignmentError || !assignments || assignments.length === 0) {
         // No assignment — redirect back to LO portal
         router.replace('/lo');
         return;
       }
 
-      // Step 2: Access check — Requirement 4.3, 9.6
-      if (assignment.activity_id !== activityId) {
+      // Step 2: Access check — find the specific activity the LO is accessing
+      const currentAssignment = assignments.find(a => a.activity_id === activityId);
+
+      if (!currentAssignment) {
         setAccessDenied(true);
         setLoadingActivity(false);
         setTimeout(() => {
@@ -78,13 +80,14 @@ export default function ActivityDashboard({
       }
 
       // Step 3: Set activity details
-      const act = assignment.activities as any;
+      const act = currentAssignment.activities as any;
       if (act) {
         setActivity({
           id: act.id,
           name: act.name,
           description: act.description,
-          points: act.max_points
+          points: act.max_points,
+          difficulty_level: act.difficulty_level || 'Medium'
         });
       }
       setLoadingActivity(false);
@@ -99,9 +102,12 @@ export default function ActivityDashboard({
   const handleScanModalClose = () => setIsScanModalOpen(false);
 
   // Requirement 6.6: close modal, show success toast, refresh queue
-  const handleCheckinSuccess = (teamName: string) => {
+  const handleCheckinSuccess = (teamName: string, hintGranted?: boolean) => {
     setIsScanModalOpen(false);
-    setToast({ type: 'success', message: `Check-in berhasil: Tim ${teamName} telah tiba!` });
+    const message = hintGranted 
+      ? `Check-in berhasil: Tim ${teamName} telah tiba & mendapatkan hint rahasia! 💎`
+      : `Check-in berhasil: Tim ${teamName} telah tiba!`;
+    setToast({ type: 'success', message });
     setRefreshTrigger((prev) => prev + 1);
   };
 
@@ -203,9 +209,14 @@ export default function ActivityDashboard({
                       <MapPin className="w-6 h-6 text-primary torch-glow" />
                     </div>
                     <div>
-                      <h1 className="font-adventure text-4xl md:text-5xl gold-engraving mb-2">
-                        {activity.name}
-                      </h1>
+                      <div className="flex items-center gap-3">
+                        <h1 className="font-adventure text-4xl md:text-5xl gold-engraving mb-2">
+                          {activity.name}
+                        </h1>
+                        <div className="mb-2">
+                          <DifficultyBadge level={activity.difficulty_level} />
+                        </div>
+                      </div>
                       <div className="flex items-center gap-4">
                         {activity.description && (
                           <p className="text-muted-foreground text-sm italic opacity-70">
@@ -304,5 +315,21 @@ export default function ActivityDashboard({
         )}
       </div>
     </AuthGuard>
+  );
+}
+
+function DifficultyBadge({ level }: { level: string }) {
+  const colorClass = level === 'Easy' ? 'bg-green-600 text-white' : level === 'Hard' ? 'bg-red-600 text-white' : 'bg-amber-500 text-white';
+  const flames = level === 'Easy' ? 1 : level === 'Hard' ? 3 : 2;
+  
+  return (
+    <div className={`flex items-center gap-1.5 px-3 py-1 rounded-sm shadow-lg ${colorClass}`}>
+      <div className="flex -space-x-0.5">
+        {Array.from({ length: flames }).map((_, i) => (
+          <Flame key={i} className="w-2.5 h-2.5 fill-current" />
+        ))}
+      </div>
+      <span className="text-[9px] font-adventure uppercase tracking-widest">{level}</span>
+    </div>
   );
 }

@@ -47,8 +47,8 @@ export default function AssignLocationModal({
   onClose,
 }: AssignLocationModalProps) {
   const [activities, setActivities] = useState<ActivityOption[]>([]);
-  const [selectedActivityId, setSelectedActivityId] = useState('');
-  const [currentAssignment, setCurrentAssignment] = useState<{ id: string; name: string } | null>(null);
+  const [selectedActivityIds, setSelectedActivityIds] = useState<string[]>([]);
+  const [currentAssignments, setCurrentAssignments] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(false);
   const [assigning, setAssigning] = useState(false);
   const [removing, setRemoving] = useState(false);
@@ -63,26 +63,25 @@ export default function AssignLocationModal({
       setLoading(true);
       setError('');
       try {
-        // 1. Fetch current assignment for this user (Fresh from DB to avoid prop staleness)
+        // 1. Fetch current assignments for this user
         const { data: current, error: currentError } = await supabase
           .from('lo_assignments')
           .select('activity_id, activities(name)')
-          .eq('lo_id', user.id)
-          .maybeSingle();
+          .eq('lo_id', user.id);
 
         if (currentError) throw currentError;
 
-        if (current) {
-          const assignment = {
-            id: current.activity_id,
-            name: (current.activities as any)?.name || 'Unknown'
-          };
-          setCurrentAssignment(assignment);
-          setSelectedActivityId(assignment.id);
+        if (current && current.length > 0) {
+          const assignments = current.map(c => ({
+            id: c.activity_id,
+            name: (c.activities as any)?.name || 'Unknown'
+          }));
+          setCurrentAssignments(assignments);
+          setSelectedActivityIds(assignments.map(a => a.id));
           setIsChanging(false);
         } else {
-          setCurrentAssignment(null);
-          setSelectedActivityId('');
+          setCurrentAssignments([]);
+          setSelectedActivityIds([]);
           setIsChanging(true); // Show selector if no assignment
         }
 
@@ -93,20 +92,7 @@ export default function AssignLocationModal({
           .order('name');
         
         if (actError) throw actError;
-
-        // 3. Fetch all current assignments to see which ones are taken by OTHERS
-        const { data: allAssignments, error: allAssignError } = await supabase
-          .from('lo_assignments')
-          .select('lo_id, activity_id');
-
-        if (allAssignError) throw allAssignError;
-
-        const takenByOthers = (allAssignments ?? [])
-          .filter(a => a.lo_id !== user.id)
-          .map(a => a.activity_id);
-
-        const available = (actData ?? []).filter(act => !takenByOthers.includes(act.id));
-        setActivities(available);
+        setActivities(actData ?? []);
 
       } catch (err: any) {
         setError('Gagal sinkronisasi data wahana');
@@ -120,20 +106,25 @@ export default function AssignLocationModal({
   }, [isOpen, user.id]);
 
   const handleAssign = async () => {
-    if (!selectedActivityId) {
-      setError('Pilih wahana terlebih dahulu');
+    if (selectedActivityIds.length === 0) {
+      setError('Pilih minimal satu wahana');
       return;
     }
     setAssigning(true);
     setError('');
     try {
-      // Step 1: Remove old assignment
+      // Step 1: Remove old assignments
       await supabase.from('lo_assignments').delete().eq('lo_id', user.id);
 
-      // Step 2: Insert new one
+      // Step 2: Insert new ones
+      const payload = selectedActivityIds.map(id => ({
+        lo_id: user.id,
+        activity_id: id
+      }));
+
       const { error: assignError } = await supabase
         .from('lo_assignments')
-        .insert({ lo_id: user.id, activity_id: selectedActivityId });
+        .insert(payload);
 
       if (assignError) throw assignError;
 
@@ -205,21 +196,28 @@ export default function AssignLocationModal({
             ) : (
               <>
                 {/* ─── Penempatan Saat Ini ─── */}
-                {currentAssignment && !isChanging && (
+                {currentAssignments.length > 0 && !isChanging && (
                   <div className="animate-in fade-in zoom-in-95 duration-300">
                     <div className="mb-8 p-6 bg-blue-900/10 border border-blue-500/20 rounded-sm text-center relative overflow-hidden">
                       <div className="absolute top-0 right-0 p-2 opacity-10">
                         <Compass className="w-16 h-16" />
                       </div>
-                      <p className="text-[10px] uppercase tracking-[0.2em] font-adventure text-blue-400/60 mb-2">Penempatan Saat Ini</p>
-                      <h4 className="text-2xl font-adventure gold-engraving mb-6 break-words px-4">{currentAssignment.name}</h4>
+                      <p className="text-[10px] uppercase tracking-[0.2em] font-adventure text-blue-400/60 mb-4">Penempatan Saat Ini</p>
+                      
+                      <div className="flex flex-wrap justify-center gap-2 mb-8">
+                        {currentAssignments.map(a => (
+                          <span key={a.id} className="bg-primary/20 text-primary px-3 py-1 text-xs font-adventure border border-primary/30">
+                            {a.name}
+                          </span>
+                        ))}
+                      </div>
                       
                       <div className="flex gap-3 relative z-10">
                         <button
                           onClick={() => setIsChanging(true)}
                           className="flex-1 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 text-blue-400 text-[10px] font-adventure uppercase tracking-widest px-4 py-2.5 transition-all"
                         >
-                          Pindah Lokasi
+                          Ubah Penempatan
                         </button>
                         <button
                           onClick={handleRemove}
@@ -227,7 +225,7 @@ export default function AssignLocationModal({
                           className="flex-1 bg-red-900/10 hover:bg-red-900/20 border border-red-500/30 text-red-500 text-[10px] font-adventure uppercase tracking-widest px-4 py-2.5 transition-all disabled:opacity-40"
                         >
                           {removing && <Loader2 className="w-3 h-3 animate-spin mr-2" />}
-                          Hapus Tugas
+                          Hapus Semua
                         </button>
                       </div>
                     </div>
@@ -235,7 +233,7 @@ export default function AssignLocationModal({
                 )}
 
                 {/* ─── Belum Terassign ─── */}
-                {!currentAssignment && !isChanging && (
+                {currentAssignments.length === 0 && !isChanging && (
                   <div className="mb-8 p-8 border border-white/5 bg-white/5 text-center">
                     <AlertCircle className="w-10 h-10 mx-auto text-primary/20 mb-3" />
                     <p className="text-[11px] font-adventure uppercase tracking-widest text-foreground/40">Belum ada penempatan</p>
@@ -243,26 +241,45 @@ export default function AssignLocationModal({
                   </div>
                 )}
 
-                {/* ─── Form Pindah / Assign Baru ─── */}
+                {/* ─── Form Pindah / Assign Baru (Multi-select) ─── */}
                 {isChanging && (
                   <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
                     <div className="bg-primary/5 p-4 border border-primary/10">
-                      <label className="block text-[10px] uppercase tracking-widest font-adventure text-primary/60 mb-3">Pilih Wahana Tersedia</label>
-                      <select
-                        value={selectedActivityId}
-                        onChange={e => setSelectedActivityId(e.target.value)}
-                        disabled={isWorking}
-                        className="w-full bg-transparent border-b border-primary/30 py-2 text-sm text-foreground focus:outline-none focus:border-primary transition-colors appearance-none cursor-pointer"
-                      >
-                        <option value="" className="bg-card">— Pilih wahana yang belum ada LO —</option>
-                        {activities.map(act => (
-                          <option key={act.id} value={act.id} className="bg-card">
-                            {act.name} ({act.type.replace('_', ' ')})
-                          </option>
-                        ))}
-                      </select>
+                      <label className="block text-[10px] uppercase tracking-widest font-adventure text-primary/60 mb-4">Pilih Wahana & Challenge (Bisa &gt; 1)</label>
+                      
+                      <div className="grid grid-cols-1 gap-2 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                        {activities.map(act => {
+                          const isSelected = selectedActivityIds.includes(act.id);
+                          return (
+                            <button
+                              key={act.id}
+                              onClick={() => {
+                                if (isSelected) {
+                                  setSelectedActivityIds(selectedActivityIds.filter(id => id !== act.id));
+                                } else {
+                                  setSelectedActivityIds([...selectedActivityIds, act.id]);
+                                }
+                              }}
+                              className={`flex items-center justify-between p-3 border transition-all text-left ${
+                                isSelected 
+                                  ? 'bg-primary/20 border-primary text-primary' 
+                                  : 'bg-black/20 border-white/10 text-foreground/60 hover:border-primary/40'
+                              }`}
+                            >
+                              <div>
+                                <p className="text-xs font-adventure">{act.name}</p>
+                                <p className="text-[9px] uppercase opacity-60 font-content">{act.type.replace('challenge_', '')}</p>
+                              </div>
+                              <div className={`w-4 h-4 border flex items-center justify-center ${isSelected ? 'border-primary bg-primary' : 'border-white/20'}`}>
+                                {isSelected && <X className="w-3 h-3 text-primary-foreground" />}
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+
                       {activities.length === 0 && (
-                        <p className="text-[9px] text-amber-500/60 mt-2 italic">* Semua wahana sudah memiliki LO</p>
+                        <p className="text-[9px] text-amber-500/60 mt-2 italic">* Tidak ada wahana yang tersedia</p>
                       )}
                     </div>
 
@@ -274,7 +291,7 @@ export default function AssignLocationModal({
                     )}
 
                     <div className="flex gap-3">
-                      {currentAssignment && (
+                      {currentAssignments.length > 0 && (
                         <button
                           onClick={() => setIsChanging(false)}
                           className="flex-1 border border-foreground/10 text-foreground/40 text-[10px] font-adventure uppercase tracking-widest px-4 py-2 transition-all"
@@ -284,7 +301,7 @@ export default function AssignLocationModal({
                       )}
                       <button
                         onClick={handleAssign}
-                        disabled={isWorking || !selectedActivityId}
+                        disabled={isWorking || selectedActivityIds.length === 0}
                         className="flex-[2] flex items-center justify-center gap-2 bg-primary/20 hover:bg-primary/30 border border-primary/40 text-primary text-[10px] font-adventure uppercase tracking-widest px-4 py-2 transition-all disabled:opacity-40"
                       >
                         {assigning && <Loader2 className="w-3 h-3 animate-spin" />}

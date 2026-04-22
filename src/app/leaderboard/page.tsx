@@ -24,6 +24,7 @@ export default function LeaderboardPage() {
   const [loading, setLoading] = useState(true);
   const [recentUpdate, setRecentUpdate] = useState<RecentUpdate | null>(null);
   const prevTeamsRef = useRef<TeamScore[]>([]);
+  const pendingUpdatesRef = useRef<Record<string, number>>({});
   const notifTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Fetch leaderboard from API ─────────────────────────────────────────────
@@ -67,23 +68,22 @@ export default function LeaderboardPage() {
         },
         (payload) => {
           const updated = payload.new as { id: string; name: string; total_points: number };
+          
+          // 1. Add to pending updates for throttled sorting
+          pendingUpdatesRef.current[updated.id] = updated.total_points;
 
+          // 2. Show immediate toast for excitement (only if points changed)
           setTeams((prev) => {
-            // Find if points actually changed
             const existing = prev.find(t => t.id === updated.id);
             if (existing && existing.total_points !== updated.total_points) {
-              // Show toast notification
               if (notifTimerRef.current) clearTimeout(notifTimerRef.current);
-              setRecentUpdate({ teamName: updated.name, points: updated.total_points - existing.total_points });
+              setRecentUpdate({ 
+                teamName: updated.name, 
+                points: updated.total_points - existing.total_points 
+              });
               notifTimerRef.current = setTimeout(() => setRecentUpdate(null), 4000);
             }
-
-            // Update the team in the list and re-rank
-            const newList = prev.map(t =>
-              t.id === updated.id ? { ...t, total_points: updated.total_points } : t
-            );
-            const sorted = [...newList].sort((a, b) => b.total_points - a.total_points);
-            return sorted.map((t, i) => ({ ...t, rank: i + 1 }));
+            return prev; // Don't trigger resort here yet
           });
         }
       )
@@ -93,6 +93,35 @@ export default function LeaderboardPage() {
       supabase.removeChannel(channel);
       if (notifTimerRef.current) clearTimeout(notifTimerRef.current);
     };
+  }, []);
+
+  // ── Throttled Ranking: Flush updates every 3 seconds ───────────────────────
+  // Prevents browser lag when many teams are updated simultaneously
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const updates = pendingUpdatesRef.current;
+      if (Object.keys(updates).length === 0) return;
+
+      setTeams((prev) => {
+        // Collect all updates from the ref
+        const currentUpdates = { ...pendingUpdatesRef.current };
+        pendingUpdatesRef.current = {}; // Clear for next batch
+
+        // Map updates to existing list
+        const newList = prev.map(t => {
+          if (currentUpdates[t.id] !== undefined) {
+            return { ...t, total_points: currentUpdates[t.id] };
+          }
+          return t;
+        });
+
+        // Re-sort and re-rank
+        const sorted = [...newList].sort((a, b) => b.total_points - a.total_points);
+        return sorted.map((t, i) => ({ ...t, rank: i + 1 }));
+      });
+    }, 3000); // Batch every 3 seconds
+
+    return () => clearInterval(interval);
   }, []);
 
   return (

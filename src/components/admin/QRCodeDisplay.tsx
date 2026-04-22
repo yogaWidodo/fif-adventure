@@ -86,10 +86,7 @@ export default function QRCodeDisplay({ barcodeData, label, size = 160 }: QRCode
         </p>
       )}
 
-      {/* Barcode data (truncated) */}
-      <p className="text-[9px] font-mono text-muted-foreground/40 text-center max-w-[160px] truncate">
-        {barcodeData}
-      </p>
+
 
       {/* Download button */}
       <button

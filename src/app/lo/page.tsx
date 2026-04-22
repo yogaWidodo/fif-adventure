@@ -57,7 +57,7 @@ export default function LOPortal() {
 
   return (
     <AuthGuard allowedRoles={['lo']}>
-      <div className="relative min-h-screen flex flex-col items-center bg-black overflow-hidden font-content selection:bg-primary selection:text-primary-foreground">
+      <div className="fixed inset-0 overflow-y-auto overflow-x-hidden flex flex-col items-center bg-black font-content selection:bg-primary selection:text-primary-foreground">
         {/* Immersive Background */}
         <div
           className="fixed inset-0 z-0 bg-cover bg-center opacity-30"

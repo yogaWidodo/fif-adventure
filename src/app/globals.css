@@ -107,7 +107,7 @@ body {
     radial-gradient(circle at 50% 50%, rgba(20, 40, 30, 0.8) 0%, rgba(10, 20, 15, 1) 100%);
   min-height: 100vh;
   margin: 0;
-  overflow-x: hidden;
+  overflow: hidden;
 }
 
 h1, h2, h3, h4, .font-adventure {
@@ -179,4 +179,23 @@ h1, h2, h3, h4, .font-adventure {
 
 ::-webkit-scrollbar-thumb:hover {
   background: #d4af37;
+}
+
+/* ─── Leaflet Map Overrides ──────────────────────────────────────────────────── */
+.leaflet-container img.leaflet-tile {
+  filter: none !important;
+  opacity: 1 !important;
+  mix-blend-mode: normal !important;
+}
+.leaflet-container {
+  background: #e8e0d5 !important;
+}
+.leaflet-control-attribution {
+  font-size: 9px !important;
+  opacity: 0.6;
+}
+
+/* Fix: Tailwind Preflight sets max-width:100% on all img, breaking Leaflet tiles */
+.leaflet-container img {
+  max-width: none !important;
 }

@@ -16,7 +16,7 @@ export default function Home() {
   };
 
   return (
-    <div className="relative min-h-screen flex flex-col items-center justify-center overflow-hidden bg-black selection:bg-primary selection:text-primary-foreground">
+    <div className="fixed inset-0 overflow-y-auto overflow-x-hidden flex flex-col items-center justify-center bg-black selection:bg-primary selection:text-primary-foreground">
       {/* Background Image with Overlay */}
       <div
         className="absolute inset-0 z-0 bg-cover bg-center"

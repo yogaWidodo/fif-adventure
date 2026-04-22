@@ -34,7 +34,7 @@ export default function TreasuryMenu() {
 
   return (
     <AuthGuard allowedRoles={['captain', 'vice_captain', 'member']}>
-      <div className="relative min-h-screen flex flex-col bg-black overflow-hidden font-content p-6 pb-24">
+      <div className="fixed inset-0 overflow-y-auto overflow-x-hidden flex flex-col bg-black font-content p-6 pb-24">
         {/* Background */}
         <div 
           className="fixed inset-0 z-0 bg-cover bg-center opacity-30"

@@ -17,7 +17,7 @@ interface User {
 interface AuthContextType {
   userRole: Role;
   user: User | null;
-  login: (npk: string, birthDate: string) => Promise<{ success: boolean; role?: Role }>;
+  login: (npk: string, birthDate: string) => Promise<{ success: boolean; role?: Role; userId?: string }>;
   logout: () => Promise<void>;
   isLoading: boolean;
 }
@@ -74,7 +74,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => subscription.unsubscribe();
   }, []);
 
-  const login = async (npk: string, birthDate: string): Promise<{ success: boolean; role?: Role }> => {
+  const login = async (npk: string, birthDate: string): Promise<{ success: boolean; role?: Role; userId?: string }> => {
     try {
       const response = await fetch('/api/auth/login', {
         method: 'POST',
@@ -109,7 +109,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setUser(userData);
           localStorage.setItem('fif_user', JSON.stringify(userData));
           localStorage.setItem('fif_access_token', data.session.access_token);
-          return { success: true, role };
+          return { success: true, role, userId: data.user.id };
         }
       }
 

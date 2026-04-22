@@ -76,7 +76,7 @@ export default function CaptainPortal() {
 
   return (
     <AuthGuard allowedRoles={['admin', 'captain', 'vice_captain']}>
-      <div className="relative min-h-screen flex flex-col items-center p-6 bg-black overflow-hidden font-content">
+      <div className="fixed inset-0 overflow-y-auto overflow-x-hidden flex flex-col items-center p-6 bg-black font-content">
         {/* Background */}
         <div 
           className="fixed inset-0 z-0 bg-cover bg-center opacity-30"

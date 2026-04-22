@@ -80,9 +80,9 @@ export default function CaptainPortal() {
         {/* Background */}
         <div 
           className="fixed inset-0 z-0 bg-cover bg-center opacity-30"
-          style={{ backgroundImage: 'url("/images/jungle_hq_bg.png")', filter: 'brightness(0.2)' }}
+          style={{ backgroundImage: 'url("/images/jungle_hq_bg.png")', filter: 'brightness(0.2)', transform: 'translateZ(0)' }}
         />
-        <div className="fixed inset-0 z-10 jungle-overlay opacity-5 pointer-events-none" />
+        <div className="fixed inset-0 z-10 jungle-overlay opacity-5 pointer-events-none" style={{ transform: 'translateZ(0)' }} />
 
         {/* Hint Discovery Modal — Cinematic reveal for Private Hints */}
         <AnimatePresence>
@@ -91,7 +91,7 @@ export default function CaptainPortal() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 z-[110] bg-black/95 flex items-center justify-center p-6 backdrop-blur-md"
+              className="fixed inset-0 z-[110] bg-black/95 flex items-center justify-center p-6"
             >
               <motion.div
                 initial={{ scale: 0.8, opacity: 0, rotateY: 30 }}
@@ -144,7 +144,7 @@ export default function CaptainPortal() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center p-6 backdrop-blur-md"
+              className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center p-6"
             >
               <motion.div
                 initial={{ scale: 0.8, opacity: 0, rotateX: 30 }}

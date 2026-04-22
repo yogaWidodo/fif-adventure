@@ -408,6 +408,8 @@ export default function UsersTab() {
   const [assigningUser, setAssigningUser] = useState<UserRecord | null>(null);
   const [assigningLocationUser, setAssigningLocationUser] = useState<UserRecord | null>(null);
   const [showBulkUpload, setShowBulkUpload] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const PAGE_SIZE = 25;
 
   const fetchUsers = useCallback(async () => {
     setLoading(true);
@@ -432,6 +434,14 @@ export default function UsersTab() {
     const matchesRole = activeRoleTab === 'all' || u.role === activeRoleTab;
     return matchesSearch && matchesRole;
   });
+
+  const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
+  const paginated = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+
+  // Reset to first page when filtering
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, activeRoleTab]);
 
   const roleTabs: { key: string; label: string }[] = [
     { key: 'all', label: 'All' },
@@ -490,54 +500,78 @@ export default function UsersTab() {
             <p className="font-adventure text-sm tracking-widest lowercase">no explorers found</p>
           </div>
         ) : (
-          filtered.map(user => (
-            <div key={user.id} className="adventure-card p-4 flex items-center justify-between group">
-              <div className="flex items-center gap-6">
-                <div className="text-left">
-                  <p className="text-sm font-adventure tracking-wider">{user.name}</p>
-                  <p className="text-[10px] text-foreground/40 font-mono">{user.npk} • {user.birth_date}</p>
+          <div className="space-y-2">
+            {paginated.map(user => (
+              <div key={user.id} className="adventure-card p-4 flex items-center justify-between group">
+                <div className="flex items-center gap-6">
+                  <div className="text-left">
+                    <p className="text-sm font-adventure tracking-wider">{user.name}</p>
+                    <p className="text-[10px] text-foreground/40 font-mono">{user.npk} • {user.birth_date}</p>
+                  </div>
+                  <RoleBadge role={user.role} />
+                  {user.role !== 'lo' ? (
+                    <div className="text-[10px] text-foreground/40 uppercase font-adventure">
+                      {user.team_name ? <span className="text-primary/60">Team: {user.team_name}</span> : <span>Solo</span>}
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1 text-[10px] text-blue-400 uppercase font-adventure">
+                      <MapPin className="w-3 h-3" />
+                      {user.activity_name || <span className="opacity-40">No Assignment</span>}
+                    </div>
+                  )}
                 </div>
-                <RoleBadge role={user.role} />
-                {user.role !== 'lo' ? (
-                  <div className="text-[10px] text-foreground/40 uppercase font-adventure">
-                    {user.team_name ? <span className="text-primary/60">Team: {user.team_name}</span> : <span>Solo</span>}
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-1 text-[10px] text-blue-400 uppercase font-adventure">
-                    <MapPin className="w-3 h-3" />
-                    {user.activity_name || <span className="opacity-40">No Assignment</span>}
-                  </div>
-                )}
+                <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button onClick={() => setEditingUser(user)} title="Edit User" className="p-2 hover:bg-primary/10 rounded-full text-primary/60 hover:text-primary transition-all"><Edit2 className="w-4 h-4" /></button>
+                  {user.role !== 'lo' && (
+                    <button onClick={() => setAssigningUser(user)} title="Assign Team" className="p-2 hover:bg-primary/10 rounded-full text-primary/60 hover:text-primary transition-all"><UserCheck className="w-4 h-4" /></button>
+                  )}
+                  {user.team_id && (
+                     <button 
+                       onClick={async () => {
+                         if (confirm(`Apakah Anda yakin ingin mengeluarkan ${user.name} dari tim?`)) {
+                           const res = await fetch(`/api/users/${user.id}`, {
+                             method: 'PATCH',
+                             headers: { 'Content-Type': 'application/json' },
+                             body: JSON.stringify({ team_id: null, role: 'member' }),
+                           });
+                           if (res.ok) fetchUsers();
+                         }
+                       }} 
+                       title="Unassign Team"
+                       className="p-2 hover:bg-red-900/20 rounded-full text-red-500/60 hover:text-red-500 transition-all"
+                     >
+                       <UserMinus className="w-4 h-4" />
+                     </button>
+                  )}
+                  {user.role === 'lo' && (
+                    <button onClick={() => setAssigningLocationUser(user)} title="Assign Activity" className="p-2 hover:bg-primary/10 rounded-full text-blue-400/60 hover:text-blue-400 transition-all"><MapPin className="w-4 h-4" /></button>
+                  )}
+                </div>
               </div>
-              <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                <button onClick={() => setEditingUser(user)} title="Edit User" className="p-2 hover:bg-primary/10 rounded-full text-primary/60 hover:text-primary transition-all"><Edit2 className="w-4 h-4" /></button>
-                {user.role !== 'lo' && (
-                  <button onClick={() => setAssigningUser(user)} title="Assign Team" className="p-2 hover:bg-primary/10 rounded-full text-primary/60 hover:text-primary transition-all"><UserCheck className="w-4 h-4" /></button>
-                )}
-                {user.team_id && (
-                   <button 
-                     onClick={async () => {
-                       if (confirm(`Apakah Anda yakin ingin mengeluarkan ${user.name} dari tim?`)) {
-                         const res = await fetch(`/api/users/${user.id}`, {
-                           method: 'PATCH',
-                           headers: { 'Content-Type': 'application/json' },
-                           body: JSON.stringify({ team_id: null, role: 'member' }),
-                         });
-                         if (res.ok) fetchUsers();
-                       }
-                     }} 
-                     title="Unassign Team"
-                     className="p-2 hover:bg-red-900/20 rounded-full text-red-500/60 hover:text-red-500 transition-all"
-                   >
-                     <UserMinus className="w-4 h-4" />
-                   </button>
-                )}
-                {user.role === 'lo' && (
-                  <button onClick={() => setAssigningLocationUser(user)} title="Assign Activity" className="p-2 hover:bg-primary/10 rounded-full text-blue-400/60 hover:text-blue-400 transition-all"><MapPin className="w-4 h-4" /></button>
-                )}
+            ))}
+
+            {totalPages > 1 && (
+              <div className="flex justify-center gap-2 mt-8 py-4 border-t border-primary/10">
+                <button
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="px-4 py-2 text-[10px] font-adventure uppercase tracking-widest border border-primary/20 text-primary disabled:opacity-20"
+                >
+                  Prev
+                </button>
+                <span className="flex items-center px-4 font-adventure text-[10px] text-primary/60">
+                  Page {currentPage} of {totalPages}
+                </span>
+                <button
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                  className="px-4 py-2 text-[10px] font-adventure uppercase tracking-widest border border-primary/20 text-primary disabled:opacity-20"
+                >
+                  Next
+                </button>
               </div>
-            </div>
-          ))
+            )}
+          </div>
         )}
       </div>
 

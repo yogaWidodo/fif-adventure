@@ -123,10 +123,10 @@ export default function AdminDashboard() {
         {/* Immersive Background */}
         <div
           className="absolute inset-0 z-0 bg-cover bg-center opacity-40"
-          style={{ backgroundImage: 'url("/images/jungle_hq_bg.png")' }}
+          style={{ backgroundImage: 'url("/images/jungle_hq_bg.png")', transform: 'translateZ(0)' }}
         />
-        <div className="absolute inset-0 z-0 bg-gradient-to-r from-black via-transparent to-black opacity-80" />
-        <div className="absolute inset-0 z-10 jungle-overlay opacity-10 pointer-events-none" />
+        <div className="absolute inset-0 z-0 bg-gradient-to-r from-black via-transparent to-black opacity-80" style={{ transform: 'translateZ(0)' }} />
+        <div className="absolute inset-0 z-10 jungle-overlay opacity-10 pointer-events-none" style={{ transform: 'translateZ(0)' }} />
 
         {/* Sidebar */}
         <aside className="relative z-20 w-72 bg-card border-r border-primary/20 p-8 flex flex-col shadow-2xl overflow-y-auto">
@@ -505,10 +505,13 @@ function WahanaTab() {
   const [saving, setSaving] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [error, setError] = useState('');
+  const [linkedTreasureIds, setLinkedTreasureIds] = useState<Set<string>>(new Set());
 
   const fetchPrivateTreasures = async () => {
-    const { data } = await supabase.from('treasure_hunts').select('*').eq('is_public', false).order('name');
-    setPrivateTreasures(data || []);
+    const { data: treasures } = await supabase.from("treasure_hunts").select("*").eq("is_public", false).order("name");
+    const { data: linked } = await supabase.from("activities").select("treasure_hunt_id").not("treasure_hunt_id", "is", null);
+    setPrivateTreasures(treasures || []);
+    setLinkedTreasureIds(new Set(linked?.map(a => a.treasure_hunt_id as string).filter(Boolean) || []));
   };
 
   useEffect(() => { fetchPrivateTreasures(); }, []);
@@ -645,9 +648,11 @@ function WahanaTab() {
               className="w-full bg-transparent border-b-2 border-[#2b1d0e]/20 p-3 font-adventure text-[#2b1d0e] focus:outline-none focus:border-[#8b4513] transition-colors appearance-none"
             >
               <option value="">None / No Hint</option>
-              {privateTreasures.map(t => (
-                <option key={t.id} value={t.id}>{t.name} ({t.quota} quota)</option>
-              ))}
+              {privateTreasures
+                .filter(t => !linkedTreasureIds.has(t.id) || t.id === selectedTreasureId)
+                .map(t => (
+                  <option key={t.id} value={t.id}>{t.name} ({t.quota} quota)</option>
+                ))}
             </select>
           </div>
           <ModalSubmit label={editingActivity ? 'Update Wahana' : 'Establish Wahana'} onClick={handleSave} disabled={!newName || !newPoints || saving} loading={saving} />
@@ -677,10 +682,13 @@ function ChallengesTab() {
   const [newType, setNewType] = useState<Activity['type']>('challenge_regular');
   const [saving, setSaving] = useState(false);
   const [showModal, setShowModal] = useState(false);
+  const [linkedTreasureIds, setLinkedTreasureIds] = useState<Set<string>>(new Set());
 
   const fetchPrivateTreasures = async () => {
-    const { data } = await supabase.from('treasure_hunts').select('*').eq('is_public', false).order('name');
-    setPrivateTreasures(data || []);
+    const { data: treasures } = await supabase.from("treasure_hunts").select("*").eq("is_public", false).order("name");
+    const { data: linked } = await supabase.from("activities").select("treasure_hunt_id").not("treasure_hunt_id", "is", null);
+    setPrivateTreasures(treasures || []);
+    setLinkedTreasureIds(new Set(linked?.map(a => a.treasure_hunt_id as string).filter(Boolean) || []));
   };
 
   useEffect(() => { fetchPrivateTreasures(); }, []);
@@ -843,9 +851,11 @@ function ChallengesTab() {
               className="w-full bg-transparent border-b-2 border-[#2b1d0e]/20 p-3 font-adventure text-[#2b1d0e] focus:outline-none focus:border-[#8b4513] transition-colors appearance-none"
             >
               <option value="">None / No Hint</option>
-              {privateTreasures.map(t => (
-                <option key={t.id} value={t.id}>{t.name} ({t.quota} quota)</option>
-              ))}
+              {privateTreasures
+                .filter(t => !linkedTreasureIds.has(t.id) || t.id === selectedTreasureId)
+                .map(t => (
+                  <option key={t.id} value={t.id}>{t.name} ({t.quota} quota)</option>
+                ))}
             </select>
           </div>
           <ModalSubmit label={editingChallenge ? 'Update Challenge' : 'Create Challenge'} onClick={handleSave} disabled={!newName || !newPoints || saving} loading={saving} />

@@ -95,8 +95,8 @@
 }
 
 @keyframes fog-drift {
-  from { background-position: 0 0; }
-  to { background-position: 100% 100%; }
+  from { transform: translate(0, 0); }
+  to { transform: translate(-50px, -50px); }
 }
 
 body {
@@ -149,10 +149,17 @@ h1, h2, h3, h4, .font-adventure {
 }
 
 .jungle-overlay {
+  position: absolute;
+  top: -20%;
+  left: -20%;
+  right: -20%;
+  bottom: -20%;
   background-image: url("https://www.transparenttextures.com/patterns/foggy-birds.png");
+  background-size: 200px 200px;
   animation: var(--animate-fog);
   pointer-events: none;
   opacity: 0.1;
+  will-change: transform;
 }
 
 /* Custom Scrollbar */

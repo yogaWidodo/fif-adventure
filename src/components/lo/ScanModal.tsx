@@ -56,6 +56,7 @@ interface ScanModalProps {
 type Phase =
   | 'scanning'                  // kamera aktif, menunggu scan
   | 'choosing'                  // QR berhasil di-scan, pilih aksi
+  | 'giving_point'              // input jumlah anggota yang berpartisipasi
   | 'submitting'                // sedang kirim ke API
   | 'error'                     // error, bisa retry
   | 'success';                  // berhasil, modal akan tutup
@@ -82,6 +83,7 @@ export default function ScanModal({
 
   const [phase, setPhase] = useState<Phase>('scanning');
   const [team, setTeam] = useState<TeamInfo | null>(null);
+  const [participantCount, setParticipantCount] = useState(1);
   const [errorMsg, setErrorMsg] = useState('');
   const [cameraError, setCameraError] = useState<string | null>(null);
 
@@ -235,9 +237,21 @@ export default function ScanModal({
     }
   };
 
-  const handleGivePoint = async () => {
+  const handleGivePointClick = () => {
+    setParticipantCount(1);
+    setPhase('giving_point');
+  };
+
+  const submitPoint = async () => {
     if (!team) return;
+    if (participantCount < 1) {
+      setErrorMsg('Jumlah peserta minimal 1 orang.');
+      setPhase('error');
+      return;
+    }
+
     setPhase('submitting');
+    const calculatedPoints = activityPoints * participantCount;
 
     try {
       const token = await getAccessToken();
@@ -247,12 +261,17 @@ export default function ScanModal({
           'Content-Type': 'application/json',
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ team_id: team.id, points: activityPoints, activity_id: activityId }),
+        body: JSON.stringify({ 
+          team_id: team.id, 
+          points: calculatedPoints, 
+          activity_id: activityId,
+          note: `${participantCount} anggota berpartisipasi (${activityPoints} poin/anggota)`
+        }),
       });
 
       if (res.ok) {
         setPhase('success');
-        setTimeout(() => onScoringSuccess(team.name, activityPoints), 800);
+        setTimeout(() => onScoringSuccess(team.name, calculatedPoints), 800);
       } else {
         const data = await res.json().catch(() => ({}));
         setErrorMsg(
@@ -273,6 +292,7 @@ export default function ScanModal({
   const handleRetry = () => {
     setPhase('scanning');
     setTeam(null);
+    setParticipantCount(1);
     setErrorMsg('');
     processingRef.current = false;
     setTimeout(() => startCamera(), 150);
@@ -394,7 +414,7 @@ export default function ScanModal({
                       </div>
                     </button>
                     <button
-                      onClick={handleGivePoint}
+                      onClick={handleGivePointClick}
                       className="w-full flex items-center gap-4 p-4 border border-primary/20 hover:border-primary hover:bg-primary/5 transition-all group"
                     >
                       <div className="bg-primary/10 p-2.5 rounded-lg group-hover:bg-primary/20 transition-colors">
@@ -402,7 +422,7 @@ export default function ScanModal({
                       </div>
                       <div className="text-left">
                         <p className="font-adventure text-sm text-primary tracking-wide">Give Point</p>
-                        <p className="text-[10px] text-foreground/40 font-content">{activityPoints} poin untuk tim ini</p>
+                        <p className="text-[10px] text-foreground/40 font-content">Beri poin berdasarkan partisipasi</p>
                       </div>
                     </button>
                     <button
@@ -411,6 +431,73 @@ export default function ScanModal({
                     >
                       Scan Ulang
                     </button>
+                  </motion.div>
+                )}
+
+                {/* Giving Point Phase */}
+                {phase === 'giving_point' && team && (
+                  <motion.div
+                    key="giving_point"
+                    initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                    className="space-y-5"
+                  >
+                    <div className="text-center">
+                      <p className="text-[10px] uppercase font-adventure tracking-widest text-primary/50 mb-1">
+                        Poin Partisipasi
+                      </p>
+                      <h3 className="font-adventure text-2xl text-primary">{team.name}</h3>
+                    </div>
+
+                    <div className="bg-primary/5 border border-primary/20 p-4 rounded-lg flex flex-col items-center gap-3">
+                      <label className="text-[11px] uppercase tracking-widest font-adventure text-foreground/60">
+                        Berapa orang yang berpartisipasi?
+                      </label>
+                      <div className="flex items-center gap-4">
+                        <button 
+                          onClick={() => setParticipantCount(Math.max(1, participantCount - 1))}
+                          className="w-10 h-10 flex items-center justify-center bg-primary/10 border border-primary/30 text-primary hover:bg-primary/20 rounded font-adventure text-xl"
+                        >
+                          -
+                        </button>
+                        <input
+                          type="number"
+                          value={participantCount}
+                          onChange={(e) => setParticipantCount(Math.max(1, parseInt(e.target.value) || 1))}
+                          className="w-20 bg-black/50 border border-primary/30 text-center font-mono text-xl py-2 text-primary focus:outline-none focus:border-primary"
+                          min="1"
+                        />
+                        <button 
+                          onClick={() => setParticipantCount(participantCount + 1)}
+                          className="w-10 h-10 flex items-center justify-center bg-primary/10 border border-primary/30 text-primary hover:bg-primary/20 rounded font-adventure text-xl"
+                        >
+                          +
+                        </button>
+                      </div>
+                      
+                      <div className="mt-2 w-full pt-3 border-t border-primary/20 text-center">
+                        <p className="text-[10px] text-foreground/40 font-mono mb-1">
+                          {participantCount} orang × {activityPoints} poin
+                        </p>
+                        <p className="font-adventure text-2xl text-green-400">
+                          Total: {participantCount * activityPoints}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-3">
+                      <button
+                        onClick={() => setPhase('choosing')}
+                        className="flex-1 py-3 font-adventure text-xs uppercase tracking-[0.2em] border border-primary/20 text-foreground/50 hover:text-foreground hover:bg-white/5 transition-all"
+                      >
+                        Kembali
+                      </button>
+                      <button
+                        onClick={submitPoint}
+                        className="flex-1 py-3 font-adventure text-xs uppercase tracking-[0.2em] bg-primary/20 border border-primary/40 text-primary hover:bg-primary/30 transition-all shadow-[0_0_15px_rgba(var(--primary-rgb),0.2)]"
+                      >
+                        Kirim Poin
+                      </button>
+                    </div>
                   </motion.div>
                 )}
 

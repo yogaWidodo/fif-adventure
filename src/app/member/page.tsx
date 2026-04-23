@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Users, Trophy, MapPin, CheckCircle2, Circle,
-  Compass, Flame, LogOut, Crown, Shield, Gem, ScrollText, Lock, ChevronDown, X
+  Compass, Flame, LogOut, Crown, Shield, Gem, ScrollText, Lock, ChevronDown, X,QrCode
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import AuthGuard from '@/components/AuthGuard';
@@ -12,7 +12,7 @@ import MapPanel from '@/components/MapPanel';
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
 import { QRCodeSVG } from 'qrcode.react';
-import { generateTeamBarcode } from '@/lib/auth';
+import { generateUserBarcode } from '@/lib/auth';
 import { calculateBadges } from '@/lib/badges';
 
 interface TeamMember {
@@ -206,7 +206,7 @@ export default function MemberPortal() {
                   <div className="relative z-10">
                     <div className="flex items-center justify-center gap-2 mb-4">
                       <span className="h-px w-6 bg-primary/40" />
-                      <p className="text-[10px] uppercase font-adventure tracking-[0.4em] text-primary">Access Pass</p>
+                      <p className="text-[10px] uppercase font-adventure tracking-[0.4em] text-primary">Member Pass</p>
                       <span className="h-px w-6 bg-primary/40" />
                     </div>
 
@@ -219,7 +219,7 @@ export default function MemberPortal() {
                     <div className="bg-white/95 p-5 rounded-xl inline-block mb-6 border border-primary/20 relative">
                       <div className="absolute -inset-1 border border-primary/30 rounded-xl pointer-events-none opacity-50" />
                       <QRCodeSVG
-                        value={user.team_id ? generateTeamBarcode(user.team_id) : ''}
+                        value={user.id ? generateUserBarcode(user.id) : ''}
                         size={180}
                         level="M"
                         includeMargin={false}
@@ -227,9 +227,9 @@ export default function MemberPortal() {
                     </div>
                     
                     <div className="bg-primary/5 border border-primary/10 p-3 rounded-lg text-left">
-                      <p className="text-[9px] uppercase font-adventure text-primary/50 tracking-widest mb-1">Pass Instructions</p>
+                      <p className="text-[9px] uppercase font-adventure text-primary/50 tracking-widest mb-1">Individual Pass Instructions</p>
                       <p className="text-xs text-foreground/60 italic font-content leading-relaxed">
-                        Tunjukkan pass ini kepada Station Officer di wahana untuk memvalidasi partisipasi Anda dan mewakili tim.
+                        Tunjukkan pass individu ini kepada Station Officer di wahana. Setiap anggota tim harus di-scan satu per satu.
                       </p>
                     </div>
                   </div>
@@ -255,8 +255,8 @@ export default function MemberPortal() {
               onClick={() => setShowQR(true)}
               className="inline-flex items-center gap-2 px-4 md:px-6 py-2 bg-primary/20 border border-primary/40 text-primary font-adventure tracking-widest text-[10px] md:text-xs uppercase hover:bg-primary/30 transition-all rounded shadow-[0_0_15px_rgba(var(--primary-rgb),0.2)]"
             >
-              <Users className="w-4 h-4" />
-              Tampilkan Barcode Tim
+              <QrCode className="w-4 h-4" />
+              Tampilkan Barcode Saya
             </button>
           </motion.header>
 

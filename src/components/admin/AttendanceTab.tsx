@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { Users, UserCheck, UserX, MapPin, RefreshCw, Download, Search, Loader2 } from 'lucide-react';
+import { Users, UserCheck, UserX, MapPin, RefreshCw, Download, Search, Loader2, FileText } from 'lucide-react';
+import { supabase } from '@/lib/supabase';
 import Pagination from '@/components/admin/Pagination';
 
 interface AttendanceUser {
@@ -98,7 +99,7 @@ export default function AttendanceTab() {
       `"${u.name}"`,
       u.role,
       u.is_login ? 'Hadir' : 'Tidak Hadir',
-      u.login_at ? new Date(u.login_at).toLocaleString('id-ID') : '-',
+      u.login_at ? `"${new Date(u.login_at).toLocaleString('id-ID')}"` : '-',
       u.login_lat ?? '-',
       u.login_lng ?? '-',
     ].join(','));
@@ -107,9 +108,74 @@ export default function AttendanceTab() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `attendance_${new Date().toISOString().split('T')[0]}.csv`;
+    a.download = `attendance_login_${new Date().toISOString().split('T')[0]}.csv`;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const exportActivityCSV = async () => {
+    setLoading(true);
+    try {
+      // Fetch detailed participation logs
+      const { data, error } = await supabase
+        .from('score_logs')
+        .select(`
+          created_at,
+          points_awarded,
+          participant_ids,
+          teams(name),
+          activities(name)
+        `)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      if (!data) return;
+
+      // Since participant_ids is a JSONB array, we need to handle it.
+      // For Option 1, it usually has 1 element.
+      // To get names, we'll fetch all users once for mapping (more efficient than joining in a complex query here)
+      const { data: allUsers } = await supabase.from('users').select('id, name, npk');
+      const userMap = new Map(allUsers?.map(u => [u.id, u]) ?? []);
+
+      const headers = 'Waktu,Nama,NPK,Tim,Wahana,Poin';
+      const rows: string[] = [];
+
+      data.forEach(log => {
+        const pIds = log.participant_ids as string[] || [];
+        const teamName = (log.teams as any)?.name || 'Unknown';
+        const activityName = (log.activities as any)?.name || 'Unknown';
+        const pointsPerPerson = pIds.length > 0 ? log.points_awarded / pIds.length : 0;
+        const timestamp = `"${new Date(log.created_at).toLocaleString('id-ID')}"`;
+
+        pIds.forEach(pId => {
+          const user = userMap.get(pId);
+          if (user) {
+            rows.push([
+              timestamp,
+              `"${user.name}"`,
+              user.npk,
+              `"${teamName}"`,
+              `"${activityName}"`,
+              pointsPerPerson
+            ].join(','));
+          }
+        });
+      });
+
+      const csv = [headers, ...rows].join('\n');
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `attendance_activity_${new Date().toISOString().split('T')[0]}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error('[AttendanceTab] export activity error:', e);
+      alert('Gagal mengunduh data aktivitas.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const attendanceRate = summary.total > 0
@@ -143,12 +209,24 @@ export default function AttendanceTab() {
             <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} />
             Refresh
           </button>
+          
+          <div className="h-10 w-px bg-primary/10 mx-1" />
+
           <button
             onClick={exportCSV}
-            className="bg-primary/20 border border-primary/40 px-4 py-2 text-[10px] font-adventure uppercase tracking-widest text-primary hover:bg-primary/30 flex items-center gap-2"
+            className="border border-primary/20 px-4 py-2 text-[10px] font-adventure uppercase tracking-widest text-foreground/40 hover:text-primary hover:border-primary/40 flex items-center gap-2 transition-all"
           >
             <Download className="w-3 h-3" />
-            Export CSV
+            Export Login
+          </button>
+          
+          <button
+            onClick={exportActivityCSV}
+            disabled={loading}
+            className="bg-primary/20 border border-primary/40 px-4 py-2 text-[10px] font-adventure uppercase tracking-widest text-primary hover:bg-primary/30 flex items-center gap-2 shadow-[0_0_15px_rgba(var(--primary-rgb),0.1)] transition-all"
+          >
+            {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileText className="w-3 h-3" />}
+            Export Activity
           </button>
         </div>
       </header>

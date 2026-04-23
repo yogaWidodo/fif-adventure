@@ -151,6 +151,14 @@ const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
+ * Generates a user barcode string in the format `fif-user-{userId}`.
+ * Requirements: 1.1, 1.7 (Option 1)
+ */
+export function generateUserBarcode(userId: string): string {
+  return generateBarcodeData('user', userId);
+}
+
+/**
  * Generates a team barcode string in the format `fif-team-{teamId}`.
  * Requirements: 1.1, 1.7
  */
@@ -169,6 +177,15 @@ export function isTeamBarcode(value: string): boolean {
 }
 
 /**
+ * Returns true if `value` is a valid user barcode (`fif-user-{uuid}`).
+ */
+export function isUserBarcode(value: string): boolean {
+  if (!value.startsWith('fif-user-')) return false;
+  const maybeUuid = value.slice('fif-user-'.length);
+  return UUID_REGEX.test(maybeUuid);
+}
+
+/**
  * Extracts the team UUID from a team barcode string.
  * Returns `null` if the barcode does not match the expected format.
  * Requirements: 1.7
@@ -176,6 +193,14 @@ export function isTeamBarcode(value: string): boolean {
 export function extractTeamIdFromBarcode(barcode: string): string | null {
   if (!isTeamBarcode(barcode)) return null;
   return barcode.slice('fif-team-'.length);
+}
+
+/**
+ * Extracts the user UUID from a user barcode string.
+ */
+export function extractUserIdFromBarcode(barcode: string): string | null {
+  if (!isUserBarcode(barcode)) return null;
+  return barcode.slice('fif-user-'.length);
 }
 
 /**

@@ -27,7 +27,7 @@ import {
   Square
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
-import { isTeamBarcode } from '@/lib/auth';
+import { isTeamBarcode, isUserBarcode } from '@/lib/auth';
 
 // Helper: get current access token from Supabase session or localStorage
 async function getAccessToken(): Promise<string | null> {
@@ -92,6 +92,7 @@ export default function ScanModal({
 
   const [phase, setPhase] = useState<Phase>('scanning');
   const [team, setTeam] = useState<TeamInfo | null>(null);
+  const [scannedUser, setScannedUser] = useState<TeamMember | null>(null); // Option 1
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
   const [errorMsg, setErrorMsg] = useState('');
@@ -157,6 +158,7 @@ export default function ScanModal({
       stopCamera();
       setPhase('scanning');
       setTeam(null);
+      setScannedUser(null);
       setErrorMsg('');
       setCameraError(null);
       processingRef.current = false;
@@ -175,50 +177,77 @@ export default function ScanModal({
     // Stop camera immediately after successful decode
     await stopCamera();
 
-    if (!isTeamBarcode(rawValue)) {
-      setErrorMsg('QR code tidak valid. Pastikan Anda scan QR code tim.');
+    const { extractTeamIdFromBarcode, extractUserIdFromBarcode } = await import('@/lib/auth');
+
+    // Case A: Team Barcode (Backward compatibility or fallback)
+    if (isTeamBarcode(rawValue)) {
+      const extractedTeamId = extractTeamIdFromBarcode(rawValue);
+      if (!extractedTeamId) {
+        setErrorMsg('Gagal mengekstrak ID tim.');
+        setPhase('error');
+        processingRef.current = false;
+        return;
+      }
+
+      const { data: teamRecord } = await supabase.from('teams').select('id, name').eq('id', extractedTeamId).maybeSingle();
+      if (!teamRecord) {
+        setErrorMsg('Tim tidak ditemukan.');
+        setPhase('error');
+        processingRef.current = false;
+        return;
+      }
+
+      const { data: membersRecord } = await supabase.from('users').select('id, name, role').eq('team_id', extractedTeamId).in('role', ['captain', 'vice_captain', 'member']);
+      
+      setTeam({ id: teamRecord.id, name: teamRecord.name, barcodeData: rawValue });
+      setTeamMembers(membersRecord ?? []);
+      setScannedUser(null);
+      setPhase('choosing');
+    } 
+    // Case B: User Barcode (Option 1 - New Primary Requirement)
+    else if (isUserBarcode(rawValue)) {
+      const extractedUserId = extractUserIdFromBarcode(rawValue);
+      if (!extractedUserId) {
+        setErrorMsg('Gagal mengekstrak ID user.');
+        setPhase('error');
+        processingRef.current = false;
+        return;
+      }
+
+      const { data: userRecord } = await supabase
+        .from('users')
+        .select('id, name, role, team_id, teams(id, name)')
+        .eq('id', extractedUserId)
+        .maybeSingle();
+
+      if (!userRecord) {
+        setErrorMsg('User tidak ditemukan.');
+        setPhase('error');
+        processingRef.current = false;
+        return;
+      }
+
+      const teamData = userRecord.teams as any;
+      if (!teamData) {
+        setErrorMsg('User belum masuk ke tim apapun.');
+        setPhase('error');
+        processingRef.current = false;
+        return;
+      }
+
+      setTeam({ id: teamData.id, name: teamData.name, barcodeData: rawValue });
+      setScannedUser({ id: userRecord.id, name: userRecord.name, role: userRecord.role });
+      setSelectedMemberIds([userRecord.id]); // Pre-select only the scanned user
+      setPhase('giving_point'); // Directly go to confirmation
+    } 
+    else {
+      setErrorMsg('QR code tidak dikenali. Gunakan barcode member atau tim.');
       setPhase('error');
-      processingRef.current = false;
-      return;
     }
 
-    const { extractTeamIdFromBarcode } = await import('@/lib/auth');
-    const extractedTeamId = extractTeamIdFromBarcode(rawValue);
-    if (!extractedTeamId) {
-      setErrorMsg('Gagal mengekstrak ID tim dari QR.');
-      setPhase('error');
-      processingRef.current = false;
-      return;
-    }
-
-    // Look up team
-    const { data: teamRecord } = await supabase
-      .from('teams')
-      .select('id, name')
-      .eq('id', extractedTeamId)
-      .maybeSingle();
-
-    if (!teamRecord) {
-      setErrorMsg('Tim tidak ditemukan.');
-      setPhase('error');
-      processingRef.current = false;
-      return;
-    }
-
-    // Fetch team members
-    const { data: membersRecord } = await supabase
-      .from('users')
-      .select('id, name, role')
-      .eq('team_id', extractedTeamId)
-      .in('role', ['captain', 'vice_captain', 'member'])
-      .order('role', { ascending: true }); // captain usually first alphabetically, or close
-
-    setTeam({ id: teamRecord.id, name: teamRecord.name, barcodeData: rawValue });
-    setTeamMembers(membersRecord ?? []);
-    setPhase('choosing');
     processingRef.current = false;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stopCamera]);
+  }, [stopCamera, activityId]);
 
   // ── Actions ─────────────────────────────────────────────────────────────────
 
@@ -272,12 +301,18 @@ export default function ScanModal({
 
     setPhase('submitting');
     const calculatedPoints = activityPoints * selectedMemberIds.length;
-    
+
     // Create detailed note
-    const selectedNames = teamMembers
-      .filter(m => selectedMemberIds.includes(m.id))
-      .map(m => m.name)
-      .join(', ');
+    let selectedNames = '';
+    if (scannedUser) {
+      selectedNames = scannedUser.name;
+    } else {
+      selectedNames = teamMembers
+        .filter(m => selectedMemberIds.includes(m.id))
+        .map(m => m.name)
+        .join(', ');
+    }
+    
     const note = `Partisipan (${selectedMemberIds.length} orang): ${selectedNames}. (${activityPoints} poin/orang)`;
 
     try {
@@ -288,9 +323,9 @@ export default function ScanModal({
           'Content-Type': 'application/json',
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ 
-          team_id: team.id, 
-          points: calculatedPoints, 
+        body: JSON.stringify({
+          team_id: team.id,
+          points: calculatedPoints,
           activity_id: activityId,
           note: note,
           participant_ids: selectedMemberIds
@@ -306,8 +341,8 @@ export default function ScanModal({
           res.status === 409
             ? 'Tim sudah mendapat poin di wahana ini.'
             : res.status === 422
-            ? 'Tim belum check-in di wahana ini.'
-            : (data as { error?: string }).error ?? 'Gagal memberikan poin.'
+              ? 'Tim belum check-in di wahana ini.'
+              : (data as { error?: string }).error ?? 'Gagal memberikan poin.'
         );
         setPhase('error');
       }
@@ -470,107 +505,83 @@ export default function ScanModal({
                     initial={{ opacity: 0, x: 20 }}
                     animate={{ opacity: 1, x: 0 }}
                     exit={{ opacity: 0, x: -20 }}
-                    className="space-y-4"
+                    className="space-y-6"
                   >
-                    <div className="text-center mb-4">
-                      <p className="text-[10px] uppercase font-adventure tracking-widest text-primary/60 mb-2">
-                        Pilih Partisipan
-                      </p>
-                      <h3 className="font-adventure text-xl text-primary gold-engraving">
-                        {team.name}
-                      </h3>
-                      <p className="text-xs text-foreground/50 italic mt-1 font-content">
-                        Centang anggota yang bermain di wahana ini
-                      </p>
-                    </div>
+                    {scannedUser ? (
+                      /* Individual Scan UI (Option 1) */
+                      <div className="text-center py-4 space-y-4">
+                        <div className="relative w-20 h-20 mx-auto mb-6">
+                           <div className="absolute inset-0 bg-primary/20 rounded-full animate-ping opacity-20" />
+                           <div className="relative z-10 bg-primary/10 p-5 rounded-full border border-primary/30 flex items-center justify-center">
+                              <Users className="w-10 h-10 text-primary" />
+                           </div>
+                        </div>
+                        <div>
+                          <p className="text-[10px] uppercase font-adventure tracking-widest text-primary/60 mb-1">
+                            Individual Identification
+                          </p>
+                          <h3 className="font-adventure text-2xl text-primary gold-engraving">
+                            {scannedUser.name}
+                          </h3>
+                          <p className="text-xs text-foreground/40 italic mt-1 font-content">
+                            {team.name} • {scannedUser.role.replace('_', ' ')}
+                          </p>
+                        </div>
 
-                    {/* Member Selection List */}
-                    <div className="bg-black/40 border border-primary/20 rounded-lg max-h-[300px] overflow-y-auto custom-scrollbar p-2 space-y-1">
-                      <div className="flex justify-between items-center mb-2 px-2 pt-1 pb-2 border-b border-primary/10">
-                        <button
-                          onClick={() => setSelectedMemberIds(teamMembers.map(m => m.id))}
-                          className="text-[10px] font-adventure uppercase tracking-wider text-primary/70 hover:text-primary transition-colors"
-                        >
-                          Select All
-                        </button>
-                        <button
-                          onClick={() => setSelectedMemberIds([])}
-                          className="text-[10px] font-adventure uppercase tracking-wider text-foreground/40 hover:text-foreground transition-colors"
-                        >
-                          Clear All
-                        </button>
+                        <div className="bg-primary/10 p-5 border border-primary/20 rounded-lg shadow-[inset_0_0_20px_rgba(var(--primary-rgb),0.1)]">
+                          <p className="font-adventure text-4xl text-primary torch-glow">
+                            +{activityPoints}
+                          </p>
+                          <p className="text-[9px] uppercase font-adventure tracking-[0.3em] text-primary/50 mt-1">
+                            Points for Team
+                          </p>
+                        </div>
                       </div>
-
-                      {teamMembers.length === 0 ? (
-                        <p className="text-sm text-foreground/40 text-center py-4 italic">
-                          Tidak ada data member
-                        </p>
-                      ) : (
-                        teamMembers.map(member => {
-                          const isSelected = selectedMemberIds.includes(member.id);
-                          return (
-                            <button
-                              key={member.id}
-                              onClick={() => {
-                                setSelectedMemberIds(prev =>
-                                  isSelected
-                                    ? prev.filter(id => id !== member.id)
-                                    : [...prev, member.id]
-                                );
-                              }}
-                              className={`w-full flex items-center justify-between p-3 rounded transition-all border ${
-                                isSelected 
-                                  ? 'bg-primary/20 border-primary/40' 
-                                  : 'bg-primary/5 border-transparent hover:bg-primary/10 hover:border-primary/20'
-                              }`}
-                            >
-                              <div className="flex items-center gap-3 text-left">
-                                {isSelected ? (
-                                  <CheckSquare className="w-5 h-5 text-primary flex-shrink-0" />
-                                ) : (
-                                  <Square className="w-5 h-5 text-primary/30 flex-shrink-0" />
-                                )}
-                                <div>
-                                  <p className={`font-content text-sm ${isSelected ? 'text-primary' : 'text-foreground/70'}`}>
-                                    {member.name}
-                                  </p>
-                                  <p className="text-[9px] uppercase font-adventure text-primary/40 tracking-wider">
-                                    {member.role.replace('_', ' ')}
-                                  </p>
+                    ) : (
+                      /* Team Checklist UI (Fallback) */
+                      <div className="space-y-4">
+                        <div className="text-center mb-4">
+                          <p className="text-[10px] uppercase font-adventure tracking-widest text-primary/60 mb-2">
+                            Pilih Partisipan
+                          </p>
+                          <h3 className="font-adventure text-xl text-primary gold-engraving">
+                            {team.name}
+                          </h3>
+                        </div>
+                        <div className="bg-black/40 border border-primary/20 rounded-lg max-h-[250px] overflow-y-auto custom-scrollbar p-2 space-y-1">
+                          {teamMembers.map(member => {
+                            const isSelected = selectedMemberIds.includes(member.id);
+                            return (
+                              <button
+                                key={member.id}
+                                onClick={() => {
+                                  setSelectedMemberIds(prev =>
+                                    isSelected ? prev.filter(id => id !== member.id) : [...prev, member.id]
+                                  );
+                                }}
+                                className={`w-full flex items-center justify-between p-3 rounded transition-all border ${isSelected ? 'bg-primary/20 border-primary/40' : 'bg-primary/5 border-transparent hover:bg-primary/10 hover:border-primary/20'}`}
+                              >
+                                <div className="flex items-center gap-3 text-left">
+                                  {isSelected ? <CheckSquare className="w-5 h-5 text-primary" /> : <Square className="w-5 h-5 text-primary/30" />}
+                                  <span className={`font-content text-sm ${isSelected ? 'text-primary' : 'text-foreground/70'}`}>{member.name}</span>
                                 </div>
-                              </div>
-                            </button>
-                          );
-                        })
-                      )}
-                    </div>
-
-                    <div className="bg-primary/10 p-4 border border-primary/20 flex justify-between items-center rounded-lg mt-4">
-                      <div className="text-left">
-                        <p className="text-[10px] uppercase font-adventure tracking-widest text-primary/60 mb-1">
-                          Total Kalkulasi
-                        </p>
-                        <p className="font-content text-sm text-foreground/80">
-                          {selectedMemberIds.length} <span className="text-xs text-foreground/50">orang</span> × {activityPoints} <span className="text-xs text-foreground/50">poin</span>
-                        </p>
+                              </button>
+                            );
+                          })}
+                        </div>
                       </div>
-                      <div className="text-right">
-                        <p className="font-adventure text-2xl text-primary torch-glow">
-                          +{selectedMemberIds.length * activityPoints}
-                        </p>
-                      </div>
-                    </div>
+                    )}
 
-                    <div className="flex gap-3 pt-4">
+                    <div className="flex gap-3 pt-2">
                       <button
-                        onClick={() => setPhase('choosing')}
-                        className="flex-1 py-3 border border-primary/30 text-primary hover:bg-primary/10 font-adventure text-sm tracking-widest uppercase transition-colors"
+                        onClick={handleRetry}
+                        className="flex-1 py-4 border border-primary/30 text-primary hover:bg-primary/10 font-adventure text-[10px] tracking-widest uppercase transition-colors"
                       >
-                        Kembali
+                        Batal
                       </button>
                       <button
                         onClick={submitPoint}
-                        className="flex-1 py-3 font-adventure text-xs uppercase tracking-[0.2em] bg-primary/20 border border-primary/40 text-primary hover:bg-primary/30 transition-all shadow-[0_0_15px_rgba(var(--primary-rgb),0.2)]"
+                        className="flex-[2] py-4 font-adventure text-xs uppercase tracking-[0.2em] bg-primary text-primary-foreground hover:bg-primary/90 transition-all shadow-[0_10px_20px_rgba(0,0,0,0.4)] active:scale-95"
                       >
                         Kirim Poin
                       </button>
@@ -583,11 +594,14 @@ export default function ScanModal({
                   <motion.div
                     key="submitting"
                     initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                    className="flex flex-col items-center gap-3 py-4"
+                    className="flex flex-col items-center gap-4 py-12"
                   >
-                    <Loader2 className="w-8 h-8 text-primary animate-spin" />
-                    <p className="text-xs font-adventure uppercase tracking-widest text-primary/60">
-                      Memproses...
+                    <div className="relative">
+                       <Loader2 className="w-12 h-12 text-primary animate-spin" />
+                       <div className="absolute inset-0 bg-primary/20 blur-xl animate-pulse rounded-full" />
+                    </div>
+                    <p className="text-xs font-adventure uppercase tracking-[0.3em] text-primary/60">
+                      Recording Participation...
                     </p>
                   </motion.div>
                 )}
@@ -598,13 +612,35 @@ export default function ScanModal({
                 {phase === 'success' && (
                   <motion.div
                     key="success"
-                    initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
-                    className="flex flex-col items-center gap-3 py-4"
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    className="flex flex-col items-center text-center gap-6 py-8"
                   >
-                    <div className="bg-green-500/20 p-4 rounded-full border border-green-500/30">
-                      <CheckCircle2 className="w-8 h-8 text-green-400" />
+                    <div className="w-20 h-20 bg-primary/20 rounded-full flex items-center justify-center border border-primary/30 relative">
+                       <div className="absolute inset-0 bg-primary/20 blur-2xl rounded-full" />
+                       <CheckCircle2 className="w-10 h-10 text-primary relative z-10" />
                     </div>
-                    <p className="font-adventure text-sm text-green-400 uppercase tracking-widest">Berhasil!</p>
+                    <div>
+                      <h3 className="font-adventure text-2xl gold-engraving mb-2">Points Recorded!</h3>
+                      <p className="text-sm font-content text-foreground/60">
+                        {scannedUser ? `${scannedUser.name} telah terdata.` : `Tim ${team?.name} berhasil mendapat poin.`}
+                      </p>
+                    </div>
+                    
+                    <div className="w-full space-y-3 pt-4">
+                      <button
+                        onClick={handleRetry}
+                        className="w-full py-4 bg-primary text-primary-foreground font-adventure text-xs uppercase tracking-[0.2em] hover:bg-primary/90 transition-all shadow-[0_10px_20px_rgba(0,0,0,0.3)]"
+                      >
+                        Scan Anggota Berikutnya
+                      </button>
+                      <button
+                        onClick={onClose}
+                        className="w-full py-3 text-[10px] font-adventure uppercase tracking-widest text-foreground/40 hover:text-foreground/70 transition-colors"
+                      >
+                        Selesai & Tutup
+                      </button>
+                    </div>
                   </motion.div>
                 )}
 

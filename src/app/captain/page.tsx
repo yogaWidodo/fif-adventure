@@ -10,7 +10,7 @@ import { useTimerContext } from '@/context/TimerContext';
 import AuthGuard from '@/components/AuthGuard';
 import MapPanel from '@/components/MapPanel';
 import { supabase } from '@/lib/supabase';
-import { generateTeamBarcode } from '@/lib/auth';
+import { generateUserBarcode } from '@/lib/auth';
 
 export default function CaptainPortal() {
   const { logout, user } = useAuth();
@@ -228,7 +228,7 @@ export default function CaptainPortal() {
                 <div className="relative z-10">
                   <div className="flex items-center justify-center gap-2 mb-4">
                     <span className="h-px w-6 bg-primary/40" />
-                    <p className="text-[10px] uppercase font-adventure tracking-[0.4em] text-primary">Access Pass</p>
+                    <p className="text-[10px] uppercase font-adventure tracking-[0.4em] text-primary">Captain Pass</p>
                     <span className="h-px w-6 bg-primary/40" />
                   </div>
 
@@ -241,7 +241,7 @@ export default function CaptainPortal() {
                   <div className="bg-white/95 p-5 rounded-xl inline-block mb-6 border border-primary/20 relative">
                     <div className="absolute -inset-1 border border-primary/30 rounded-xl pointer-events-none opacity-50" />
                     <QRCodeSVG
-                      value={generateTeamBarcode(user.team_id)}
+                      value={user?.id ? generateUserBarcode(user.id) : ''}
                       size={180}
                       level="M"
                       includeMargin={false}
@@ -249,9 +249,9 @@ export default function CaptainPortal() {
                   </div>
                   
                   <div className="bg-primary/5 border border-primary/10 p-3 rounded-lg text-left">
-                    <p className="text-[9px] uppercase font-adventure text-primary/50 tracking-widest mb-1">Pass Instructions</p>
+                    <p className="text-[9px] uppercase font-adventure text-primary/50 tracking-widest mb-1">Individual Pass Instructions</p>
                     <p className="text-xs text-foreground/60 italic font-content leading-relaxed">
-                      Tunjukkan pass ini kepada Station Officer di wahana untuk memvalidasi partisipasi Anda dan mewakili tim.
+                      Tunjukkan pass individu ini kepada Station Officer. Anda sekarang mewakili diri sendiri untuk akumulasi poin tim.
                     </p>
                   </div>
                 </div>

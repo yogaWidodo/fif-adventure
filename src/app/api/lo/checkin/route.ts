@@ -13,14 +13,14 @@ export async function POST(request: NextRequest): Promise<Response> {
   const { supabase, userId } = auth;
 
   // 2. Parse request body
-  let body: { team_id?: unknown; activity_id?: unknown };
+  let body: { team_id?: unknown; activity_id?: unknown; participant_id?: unknown };
   try {
     body = await request.json();
   } catch {
     return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
   }
 
-  const { team_id, activity_id } = body;
+  const { team_id, activity_id, participant_id } = body;
   if (typeof team_id !== 'string' || !team_id.trim()) {
     return Response.json({ error: 'team_id is required' }, { status: 400 });
   }
@@ -61,22 +61,46 @@ export async function POST(request: NextRequest): Promise<Response> {
     return Response.json({ error: 'Anda tidak di-assign ke aktivitas ini' }, { status: 403 });
   }
 
-  // 5. Insert Registration (Check-in)
-  const { data: registration, error: insertError } = await supabase
+  // 5. Check-in logic: Cumulative for individual scans
+  // Check if team already in queue
+  const { data: existingReg } = await supabase
     .from('activity_registrations')
-    .insert({
-      team_id,
-      activity_id,
-      checked_in_by: userProfile.id
-    })
-    .select()
-    .single();
+    .select('id, participant_ids')
+    .eq('team_id', team_id)
+    .eq('activity_id', activity_id)
+    .maybeSingle();
 
-  if (insertError) {
-    if (insertError.code === '23505') {
-      return Response.json({ error: 'Tim sudah check-in di aktivitas ini sebelumnya.' }, { status: 409 });
+  const newParticipantId = typeof participant_id === 'string' ? participant_id : null;
+
+  if (existingReg) {
+    const pIds = Array.isArray(existingReg.participant_ids) ? existingReg.participant_ids : [];
+    
+    // If we have a specific participant, add them if not already there
+    if (newParticipantId && !pIds.includes(newParticipantId)) {
+      const updatedPIds = [...pIds, newParticipantId];
+      const { error: updateError } = await supabase
+        .from('activity_registrations')
+        .update({ participant_ids: updatedPIds })
+        .eq('id', existingReg.id);
+      
+      if (updateError) return Response.json({ error: 'Gagal update partisipan antrean' }, { status: 500 });
+    } else if (newParticipantId) {
+      return Response.json({ error: 'Member sudah masuk antrean' }, { status: 409 });
     }
-    return Response.json({ error: 'Gagal melakukan check-in' }, { status: 500 });
+  } else {
+    // New registration
+    const { error: insertError } = await supabase
+      .from('activity_registrations')
+      .insert({
+        team_id,
+        activity_id,
+        checked_in_by: userProfile.id,
+        participant_ids: newParticipantId ? [newParticipantId] : []
+      });
+
+    if (insertError) {
+      return Response.json({ error: 'Gagal melakukan check-in' }, { status: 500 });
+    }
   }
 
   // 6. AUTOMATED TREASURE HINT (New Requirement)
@@ -103,5 +127,5 @@ export async function POST(request: NextRequest): Promise<Response> {
     }
   }
 
-  return Response.json({ success: true, registration, hint_granted });
+  return Response.json({ success: true, hint_granted });
 }

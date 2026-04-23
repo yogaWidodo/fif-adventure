@@ -99,11 +99,18 @@ export async function POST(request: NextRequest): Promise<Response> {
     });
 
   if (insertError) {
-    if (insertError.code === '23505') return Response.json({ error: 'Tim sudah dinilai' }, { status: 409 });
-    return Response.json({ error: 'Gagal menyimpan poin' }, { status: 500 });
+    if (insertError.code === '23505') return Response.json({ error: 'Tim ini sudah mendapatkan poin di wahana ini.' }, { status: 409 });
+    return Response.json({ error: 'Gagal menyimpan poin.' }, { status: 500 });
   }
 
-  return Response.json({ success: true, message: 'Points successfully awarded.' });
+  // 7. Cleanup: Remove team from queue after successful scoring
+  await supabase
+    .from('activity_registrations')
+    .delete()
+    .eq('team_id', team_id)
+    .eq('activity_id', activity_id);
+
+  return Response.json({ success: true, message: 'Poin berhasil dicatat untuk tim.' });
 }
 
 export async function PATCH(request: NextRequest): Promise<Response> {

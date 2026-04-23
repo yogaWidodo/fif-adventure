@@ -54,6 +54,7 @@ interface ScanModalProps {
   onClose: () => void;
   onCheckinSuccess: (teamName: string, hintGranted?: boolean) => void;
   onScoringSuccess: (teamName: string, score: number) => void;
+  preSelectedTeam?: { id: string, name: string, participantIds: string[] } | null;
 }
 
 type Phase =
@@ -86,6 +87,7 @@ export default function ScanModal({
   onClose,
   onCheckinSuccess,
   onScoringSuccess,
+  preSelectedTeam = null,
 }: ScanModalProps) {
   const reactId = useId();
   const scannerId = `qr-scanner-${reactId.replace(/:/g, '')}`;
@@ -95,8 +97,19 @@ export default function ScanModal({
   const [scannedUser, setScannedUser] = useState<TeamMember | null>(null); // Option 1
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
+  const [confirmedMemberIds, setConfirmedMemberIds] = useState<string[]>([]); // For scoring phase
   const [errorMsg, setErrorMsg] = useState('');
   const [cameraError, setCameraError] = useState<string | null>(null);
+
+  // Initialize if preSelectedTeam is provided (Scoring Mode)
+  useEffect(() => {
+    if (preSelectedTeam && isOpen) {
+      setTeam({ id: preSelectedTeam.id, name: preSelectedTeam.name, barcodeData: '' });
+      setSelectedMemberIds(preSelectedTeam.participantIds);
+      setConfirmedMemberIds([]);
+      setPhase('giving_point');
+    }
+  }, [preSelectedTeam, isOpen]);
 
   const scannerRef = useRef<import('html5-qrcode').Html5Qrcode | null>(null);
   const isScanningRef = useRef(false);
@@ -198,13 +211,13 @@ export default function ScanModal({
       }
 
       const { data: membersRecord } = await supabase.from('users').select('id, name, role').eq('team_id', extractedTeamId).in('role', ['captain', 'vice_captain', 'member']);
-      
+
       setTeam({ id: teamRecord.id, name: teamRecord.name, barcodeData: rawValue });
       setTeamMembers(membersRecord ?? []);
       setScannedUser(null);
       setPhase('choosing');
-    } 
-    // Case B: User Barcode (Option 1 - New Primary Requirement)
+    }
+    // Case B: User Barcode
     else if (isUserBarcode(rawValue)) {
       const extractedUserId = extractUserIdFromBarcode(rawValue);
       if (!extractedUserId) {
@@ -235,18 +248,82 @@ export default function ScanModal({
         return;
       }
 
+      // --- HYBRID FLOW LOGIC ---
+      
+      // 1. Check for existing registration in queue
+      const { data: existingReg } = await supabase
+        .from('activity_registrations')
+        .select('participant_ids')
+        .eq('team_id', teamData.id)
+        .eq('activity_id', activityId)
+        .maybeSingle();
+
+      const queueParticipantIds = Array.isArray(existingReg?.participant_ids) 
+        ? existingReg.participant_ids as string[] 
+        : [];
+
+      // 2. Fetch ALL team members for selection
+      const { data: membersRecord } = await supabase
+        .from('users')
+        .select('id, name, role')
+        .eq('team_id', teamData.id)
+        .in('role', ['captain', 'vice_captain', 'member'])
+        .order('role', { ascending: true });
+
+      // 3. If we are in 'giving_point' phase (Scoring Mode), scan is for confirmation
+      if (phase === 'giving_point' && team) {
+        if (userRecord.team_id !== team.id) {
+          setErrorMsg(`Member ini (${userRecord.name}) bukan dari tim ${team.name}`);
+          setPhase('error');
+          processingRef.current = false;
+          return;
+        }
+
+        // Must be in the current selection list to be confirmed
+        if (!selectedMemberIds.includes(userRecord.id)) {
+          setErrorMsg(`${userRecord.name} tidak ada dalam daftar antrean tim ini.`);
+          setPhase('error');
+          processingRef.current = false;
+          return;
+        }
+
+        if (confirmedMemberIds.includes(userRecord.id)) {
+          setErrorMsg(`${userRecord.name} sudah di-scan.`);
+          setPhase('error');
+          processingRef.current = false;
+          return;
+        }
+
+        setConfirmedMemberIds(prev => [...prev, userRecord.id]);
+        setScannedUser({ id: userRecord.id, name: userRecord.name, role: userRecord.role });
+        
+        // Return to scanning to allow next member confirmation
+        setPhase('scanning'); 
+        processingRef.current = false;
+        return;
+      }
+
+      // 4. Fresh Scan / Choice Phase
       setTeam({ id: teamData.id, name: teamData.name, barcodeData: rawValue });
+      setTeamMembers(membersRecord ?? []);
       setScannedUser({ id: userRecord.id, name: userRecord.name, role: userRecord.role });
-      setSelectedMemberIds([userRecord.id]); // Pre-select only the scanned user
-      setPhase('giving_point'); // Directly go to confirmation
-    } 
+      
+      // Use existing queue if available
+      if (queueParticipantIds.length > 0) {
+        setSelectedMemberIds(queueParticipantIds);
+      } else {
+        setSelectedMemberIds([userRecord.id]); 
+      }
+
+      setPhase('choosing'); 
+    }
     else {
       setErrorMsg('QR code tidak dikenali. Gunakan barcode member atau tim.');
       setPhase('error');
     }
 
     processingRef.current = false;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stopCamera, activityId]);
 
   // ── Actions ─────────────────────────────────────────────────────────────────
@@ -263,7 +340,11 @@ export default function ScanModal({
           'Content-Type': 'application/json',
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ team_id: team.id, activity_id: activityId }),
+        body: JSON.stringify({ 
+          team_id: team.id, 
+          activity_id: activityId,
+          participant_id: scannedUser?.id
+        }),
       });
 
       if (res.ok) {
@@ -286,49 +367,48 @@ export default function ScanModal({
   };
 
   const handleGivePointClick = () => {
-    // Select all members by default
-    setSelectedMemberIds(teamMembers.map(m => m.id));
+    // Only select all members if it was a TEAM scan (scannedUser is null)
+    if (!scannedUser) {
+      setSelectedMemberIds(teamMembers.map(m => m.id));
+    } else {
+      setSelectedMemberIds([scannedUser.id]);
+      setConfirmedMemberIds([scannedUser.id]);
+    }
     setPhase('giving_point');
   };
 
   const submitPoint = async () => {
     if (!team) return;
-    if (selectedMemberIds.length < 1) {
-      setErrorMsg('Pilih minimal 1 peserta.');
-      setPhase('error');
-      return;
-    }
-
-    setPhase('submitting');
-    const calculatedPoints = activityPoints * selectedMemberIds.length;
-
-    // Create detailed note
-    let selectedNames = '';
-    if (scannedUser) {
-      selectedNames = scannedUser.name;
-    } else {
-      selectedNames = teamMembers
-        .filter(m => selectedMemberIds.includes(m.id))
-        .map(m => m.name)
-        .join(', ');
-    }
     
-    const note = `Partisipan (${selectedMemberIds.length} orang): ${selectedNames}. (${activityPoints} poin/orang)`;
+    // For Two-Stage Scan, we only award points to those who were confirmed via scan
+    const finalParticipantIds = confirmedMemberIds.length > 0 ? confirmedMemberIds : selectedMemberIds;
+    const calculatedPoints = activityPoints * finalParticipantIds.length;
+    
+    // Create detailed note
+    const selectedNames = finalParticipantIds
+      .map(id => {
+        const found = teamMembers.find(m => m.id === id) || (scannedUser?.id === id ? scannedUser : null);
+        return found?.name || 'Unknown';
+      })
+      .join(', ');
+    
+    const note = `Partisipan (${finalParticipantIds.length} orang): ${selectedNames}. (${activityPoints} poin/orang)`;
 
     try {
+      setPhase('submitting');
       const token = await getAccessToken();
       const res = await fetch('/api/lo/score', {
         method: 'POST',
-        headers: {
+        headers: { 
           'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({
-          team_id: team.id,
+        body: JSON.stringify({ 
+          team_id: team.id, 
+          activity_id: activityId, 
           points: calculatedPoints,
-          activity_id: activityId,
-          note: note,
-          participant_ids: selectedMemberIds
+          participant_ids: finalParticipantIds,
+          note
         }),
       });
 
@@ -357,6 +437,7 @@ export default function ScanModal({
     setTeam(null);
     setTeamMembers([]);
     setSelectedMemberIds([]);
+    setConfirmedMemberIds([]);
     setErrorMsg('');
     processingRef.current = false;
     setTimeout(() => startCamera(), 150);
@@ -507,84 +588,70 @@ export default function ScanModal({
                     exit={{ opacity: 0, x: -20 }}
                     className="space-y-6"
                   >
-                    {scannedUser ? (
-                      /* Individual Scan UI (Option 1) */
-                      <div className="text-center py-4 space-y-4">
-                        <div className="relative w-20 h-20 mx-auto mb-6">
-                           <div className="absolute inset-0 bg-primary/20 rounded-full animate-ping opacity-20" />
-                           <div className="relative z-10 bg-primary/10 p-5 rounded-full border border-primary/30 flex items-center justify-center">
-                              <Users className="w-10 h-10 text-primary" />
-                           </div>
-                        </div>
-                        <div>
-                          <p className="text-[10px] uppercase font-adventure tracking-widest text-primary/60 mb-1">
-                            Individual Identification
-                          </p>
-                          <h3 className="font-adventure text-2xl text-primary gold-engraving">
-                            {scannedUser.name}
-                          </h3>
-                          <p className="text-xs text-foreground/40 italic mt-1 font-content">
-                            {team.name} • {scannedUser.role.replace('_', ' ')}
-                          </p>
-                        </div>
+                    <div className="text-center">
+                      <p className="text-[10px] uppercase font-adventure tracking-widest text-primary/60 mb-1">
+                        Scoring: {team.name}
+                      </p>
+                      <h3 className="font-adventure text-2xl text-primary gold-engraving">Konfirmasi Member</h3>
+                      <p className="text-[11px] text-muted-foreground mt-2 italic font-content">
+                        "Scan ulang barcode setiap member untuk konfirmasi kehadiran."
+                      </p>
+                    </div>
 
-                        <div className="bg-primary/10 p-5 border border-primary/20 rounded-lg shadow-[inset_0_0_20px_rgba(var(--primary-rgb),0.1)]">
-                          <p className="font-adventure text-4xl text-primary torch-glow">
-                            +{activityPoints}
-                          </p>
-                          <p className="text-[9px] uppercase font-adventure tracking-[0.3em] text-primary/50 mt-1">
-                            Points for Team
-                          </p>
-                        </div>
-                      </div>
-                    ) : (
-                      /* Team Checklist UI (Fallback) */
-                      <div className="space-y-4">
-                        <div className="text-center mb-4">
-                          <p className="text-[10px] uppercase font-adventure tracking-widest text-primary/60 mb-2">
-                            Pilih Partisipan
-                          </p>
-                          <h3 className="font-adventure text-xl text-primary gold-engraving">
-                            {team.name}
-                          </h3>
-                        </div>
-                        <div className="bg-black/40 border border-primary/20 rounded-lg max-h-[250px] overflow-y-auto custom-scrollbar p-2 space-y-1">
-                          {teamMembers.map(member => {
-                            const isSelected = selectedMemberIds.includes(member.id);
-                            return (
-                              <button
-                                key={member.id}
-                                onClick={() => {
-                                  setSelectedMemberIds(prev =>
-                                    isSelected ? prev.filter(id => id !== member.id) : [...prev, member.id]
-                                  );
-                                }}
-                                className={`w-full flex items-center justify-between p-3 rounded transition-all border ${isSelected ? 'bg-primary/20 border-primary/40' : 'bg-primary/5 border-transparent hover:bg-primary/10 hover:border-primary/20'}`}
-                              >
-                                <div className="flex items-center gap-3 text-left">
-                                  {isSelected ? <CheckSquare className="w-5 h-5 text-primary" /> : <Square className="w-5 h-5 text-primary/30" />}
-                                  <span className={`font-content text-sm ${isSelected ? 'text-primary' : 'text-foreground/70'}`}>{member.name}</span>
-                                </div>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
+                    <div className="adventure-card bg-black/40 border border-primary/20 rounded-lg max-h-[300px] overflow-y-auto custom-scrollbar p-3 space-y-2">
+                      {selectedMemberIds.map(memberId => {
+                        const isConfirmed = confirmedMemberIds.includes(memberId);
+                        const memberName = teamMembers.find(m => m.id === memberId)?.name || 'Member';
+                        
+                        return (
+                          <div 
+                            key={memberId} 
+                            className={`flex items-center justify-between p-3 border rounded-sm transition-all duration-300 ${
+                              isConfirmed 
+                                ? 'bg-primary/20 border-primary/40 shadow-[0_0_15px_rgba(var(--primary-rgb),0.1)]' 
+                                : 'bg-white/5 border-white/10 opacity-60'
+                            }`}
+                          >
+                            <div className="flex items-center gap-3">
+                              {isConfirmed ? (
+                                <CheckCircle2 className="w-4 h-4 text-primary" />
+                              ) : (
+                                <div className="w-4 h-4 rounded-full border-2 border-primary/20 animate-pulse" />
+                              )}
+                              <span className={`text-xs font-adventure uppercase tracking-wider ${isConfirmed ? 'text-primary' : 'text-foreground/70'}`}>
+                                {memberName}
+                              </span>
+                            </div>
+                            {isConfirmed && (
+                              <span className="text-[9px] font-adventure text-primary/60">CONFIRMED</span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
 
                     <div className="flex gap-3 pt-2">
                       <button
-                        onClick={handleRetry}
-                        className="flex-1 py-4 border border-primary/30 text-primary hover:bg-primary/10 font-adventure text-[10px] tracking-widest uppercase transition-colors"
+                        onClick={() => setPhase('scanning')}
+                        className="flex-1 py-4 border border-primary/30 text-primary hover:bg-primary/5 font-adventure text-[10px] tracking-widest uppercase transition-colors"
                       >
-                        Batal
+                        Lanjut Scan
                       </button>
                       <button
                         onClick={submitPoint}
-                        className="flex-[2] py-4 font-adventure text-xs uppercase tracking-[0.2em] bg-primary text-primary-foreground hover:bg-primary/90 transition-all shadow-[0_10px_20px_rgba(0,0,0,0.4)] active:scale-95"
+                        disabled={confirmedMemberIds.length === 0}
+                        className="flex-[2] py-4 font-adventure text-xs uppercase tracking-[0.2em] bg-primary text-primary-foreground hover:bg-primary/90 transition-all shadow-[0_10px_20px_rgba(var(--primary-rgb),0.4)] disabled:opacity-20 active:scale-95"
                       >
-                        Kirim Poin
+                        Kirim Poin ({confirmedMemberIds.length})
                       </button>
+                    </div>
+
+                    <div className="flex items-center justify-center gap-2 py-2">
+                      <div className="h-px flex-1 bg-primary/10" />
+                      <span className="text-[9px] font-adventure text-primary/40 uppercase tracking-[0.2em]">
+                        {confirmedMemberIds.length} of {selectedMemberIds.length} members confirmed
+                      </span>
+                      <div className="h-px flex-1 bg-primary/10" />
                     </div>
                   </motion.div>
                 )}
@@ -597,8 +664,8 @@ export default function ScanModal({
                     className="flex flex-col items-center gap-4 py-12"
                   >
                     <div className="relative">
-                       <Loader2 className="w-12 h-12 text-primary animate-spin" />
-                       <div className="absolute inset-0 bg-primary/20 blur-xl animate-pulse rounded-full" />
+                      <Loader2 className="w-12 h-12 text-primary animate-spin" />
+                      <div className="absolute inset-0 bg-primary/20 blur-xl animate-pulse rounded-full" />
                     </div>
                     <p className="text-xs font-adventure uppercase tracking-[0.3em] text-primary/60">
                       Recording Participation...
@@ -617,8 +684,8 @@ export default function ScanModal({
                     className="flex flex-col items-center text-center gap-6 py-8"
                   >
                     <div className="w-20 h-20 bg-primary/20 rounded-full flex items-center justify-center border border-primary/30 relative">
-                       <div className="absolute inset-0 bg-primary/20 blur-2xl rounded-full" />
-                       <CheckCircle2 className="w-10 h-10 text-primary relative z-10" />
+                      <div className="absolute inset-0 bg-primary/20 blur-2xl rounded-full" />
+                      <CheckCircle2 className="w-10 h-10 text-primary relative z-10" />
                     </div>
                     <div>
                       <h3 className="font-adventure text-2xl gold-engraving mb-2">Points Recorded!</h3>
@@ -626,7 +693,7 @@ export default function ScanModal({
                         {scannedUser ? `${scannedUser.name} telah terdata.` : `Tim ${team?.name} berhasil mendapat poin.`}
                       </p>
                     </div>
-                    
+
                     <div className="w-full space-y-3 pt-4">
                       <button
                         onClick={handleRetry}

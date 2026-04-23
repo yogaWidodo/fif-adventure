@@ -11,6 +11,7 @@ interface TeamQueueEntry {
   team_name: string;
   created_at: string;
   has_score: boolean;
+  participant_ids: string[];
 }
 
 interface TeamQueueListProps {
@@ -21,7 +22,7 @@ interface TeamQueueListProps {
   refreshTrigger?: number;
   /** Currently selected team for score input */
   selectedTeamId?: string | null;
-  onSelectTeam?: (teamId: string, teamName: string) => void;
+  onSelectTeam?: (teamId: string, teamName: string, participantIds: string[]) => void;
 }
 
 export default function TeamQueueList({
@@ -33,6 +34,18 @@ export default function TeamQueueList({
 }: TeamQueueListProps) {
   const [entries, setEntries] = useState<TeamQueueEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [userMap, setUserMap] = useState<Map<string, string>>(new Map());
+
+  // Fetch users for mapping names
+  useEffect(() => {
+    const fetchUserNames = async () => {
+      const { data } = await supabase.from('users').select('id, name');
+      if (data) {
+        setUserMap(new Map(data.map(u => [u.id, u.name])));
+      }
+    };
+    fetchUserNames();
+  }, []);
 
   const fetchQueue = useCallback(async () => {
     setLoading(true);
@@ -44,6 +57,7 @@ export default function TeamQueueList({
         id,
         team_id,
         checked_in_at,
+        participant_ids,
         teams ( name )
       `)
       .eq('activity_id', activityId)
@@ -69,6 +83,7 @@ export default function TeamQueueList({
       team_name: reg.teams?.name ?? 'Unknown Team',
       created_at: reg.checked_in_at,
       has_score: scoredTeamIds.has(reg.team_id),
+      participant_ids: Array.isArray(reg.participant_ids) ? reg.participant_ids : [],
     }));
 
     setEntries(queue);
@@ -156,7 +171,7 @@ export default function TeamQueueList({
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: idx * 0.04 }}
                   onClick={() =>
-                    !entry.has_score && onSelectTeam?.(entry.team_id, entry.team_name)
+                    !entry.has_score && onSelectTeam?.(entry.team_id, entry.team_name, entry.participant_ids)
                   }
                   disabled={entry.has_score}
                   className={`w-full grid grid-cols-12 gap-2 px-6 py-4 items-center text-left transition-all
@@ -176,6 +191,18 @@ export default function TeamQueueList({
                     >
                       {entry.team_name}
                     </p>
+                    {/* Participant Names */}
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {entry.participant_ids.length > 0 ? (
+                        entry.participant_ids.map(pid => (
+                          <span key={pid} className="text-[9px] px-1.5 py-0.5 bg-primary/5 border border-primary/10 text-primary/70 rounded-sm">
+                            {userMap.get(pid) || 'Unknown'}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="text-[9px] text-muted-foreground italic">No members scanned yet</span>
+                      )}
+                    </div>
                   </div>
 
                   {/* Check-in time */}

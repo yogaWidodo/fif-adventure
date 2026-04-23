@@ -1,36 +1,57 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 🗺️ FIF Adventure
 
-## Getting Started
+**FIF Adventure** adalah platform manajemen aktivitas petualangan dan treasure hunt yang dirancang untuk meningkatkan engagement peserta melalui gamifikasi. Aplikasi ini mendukung alur kerja petugas lapangan (LO), pelacakan antrean wahana secara real-time, dan sistem penilaian terverifikasi fisik.
 
-First, run the development server:
+![License](https://img.shields.io/badge/license-MIT-blue.svg)
+![Next.js](https://img.shields.io/badge/Next.js-15-black)
+![Supabase](https://img.shields.io/badge/Supabase-Database-green)
 
+## ✨ Fitur Utama
+
+- **Double-Scan Verification**: Menjamin kehadiran fisik peserta melalui proses scan individu saat check-in dan saat penilaian.
+- **Real-Time Queue Management**: Petugas (LO) dapat melihat antrean tim dan anggota partisipan secara langsung.
+- **Treasure Hunt System**: Integrasi dengan modul pencarian harta karun (Gacha/Random Rewards).
+- **Admin Dashboard**: Audit log lengkap, manajemen user, dan ekspor laporan kehadiran (CSV).
+- **Mobile First Design**: Antarmuka premium yang dioptimalkan untuk perangkat mobile di lapangan.
+
+## 🚀 Teknologi
+
+- **Frontend**: Next.js 15 (App Router), Tailwind CSS, Framer Motion.
+- **Backend**: Supabase (PostgreSQL, Auth, Realtime).
+- **Icons**: Lucide React.
+- **Deployment**: Vercel & GitHub Actions (CI/CD).
+
+## 🛠️ Persiapan Mandiri (Local Setup)
+
+### 1. Prasyarat
+- Node.js 20.x atau lebih baru.
+- Akun Supabase (Gratis).
+
+### 2. Instalasi
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+# Clone repository
+git clone https://github.com/yogaWidodo/fif-adventure.git
+cd fif-adventure
+
+# Install dependencies
+npm install
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### 3. Konfigurasi Environment
+Salin file `.env.example` menjadi `.env.local` dan isi dengan kredensial Supabase Anda:
+```bash
+cp .env.example .env.local
+```
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### 4. Jalankan Aplikasi
+```bash
+npm run dev
+```
+Aplikasi akan berjalan di `http://localhost:3000`.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 🔒 Keamanan & Kontribusi
+Proyek ini menggunakan alur kerja CI/CD yang ketat. Setiap Pull Request akan diuji melalui sistem otomatis sebelum dapat digabungkan ke cabang `master`.
 
-## Learn More
+---
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Dibuat dengan ❤️ oleh tim kontributor FIF Adventure.

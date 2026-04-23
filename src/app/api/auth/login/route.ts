@@ -7,8 +7,12 @@ import type { NextRequest } from 'next/server';
 //   3. Lookup user by npk + birth_date in public.users
 //   4. If match, ensure user exists in auth.users and create session
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co';
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'placeholder-service-key';
+
+if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  console.warn('[login] Warning: Supabase URL or Service Role Key is missing in environment variables.');
+}
 
 export async function POST(request: NextRequest) {
   // Parse and validate request body
@@ -50,6 +54,14 @@ export async function POST(request: NextRequest) {
 
   // Use service role client
   const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+
+  // Runtime check for placeholders
+  if (supabaseUrl.includes('placeholder') || supabaseServiceKey.includes('placeholder')) {
+    return Response.json(
+      { error: 'Supabase not configured. Please set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in your environment.' },
+      { status: 500 }
+    );
+  }
 
   // Step 1: Look up user in public.users
   const { data: userRecord, error: lookupError } = await supabaseAdmin

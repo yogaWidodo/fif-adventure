@@ -17,7 +17,7 @@ interface User {
 interface AuthContextType {
   userRole: Role;
   user: User | null;
-  login: (npk: string, birthDate: string) => Promise<{ success: boolean; role?: Role; userId?: string }>;
+  login: (npk: string, birthDate: string) => Promise<{ success: boolean; role?: Role; userId?: string; error?: string }>;
   logout: () => Promise<void>;
   isLoading: boolean;
 }
@@ -74,7 +74,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => subscription.unsubscribe();
   }, []);
 
-  const login = async (npk: string, birthDate: string): Promise<{ success: boolean; role?: Role; userId?: string }> => {
+  const login = async (npk: string, birthDate: string): Promise<{ success: boolean; role?: Role; userId?: string; error?: string }> => {
     try {
       const response = await fetch('/api/auth/login', {
         method: 'POST',
@@ -82,7 +82,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         body: JSON.stringify({ npk, birth_date: birthDate }),
       });
 
-      if (!response.ok) return { success: false };
+      if (!response.ok) {
+        const errorData = await response.json();
+        return { success: false, error: errorData.error || 'Terjadi kesalahan saat masuk.' };
+      }
 
       const data = await response.json();
 
@@ -113,7 +116,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
 
-      return { success: false };
+      return { success: false, error: 'Koneksi gagal. Silakan coba lagi.' };
     } catch (error) {
       console.error('Login error:', error);
       return { success: false };

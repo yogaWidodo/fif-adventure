@@ -125,7 +125,7 @@ export default function LoginForm() {
         router.push(destination);
       }
     } else {
-      setError('Kredensial tidak dikenali. Silakan periksa kembali NPK dan Tanggal Lahir Anda.');
+      setError(result.error || 'Kredensial tidak dikenali. Silakan periksa kembali NPK dan Tanggal Lahir Anda.');
       setIsSubmitting(false);
     }
   };

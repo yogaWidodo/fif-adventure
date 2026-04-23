@@ -74,7 +74,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => subscription.unsubscribe();
   }, []);
 
-  const login = async (npk: string, birthDate: string): Promise<{ success: boolean; role?: Role; userId?: string }> => {
+  const login = async (npk: string, birthDate: string): Promise<{ success: boolean; role?: Role; userId?: string; error?: string }> => {
     try {
       const response = await fetch('/api/auth/login', {
         method: 'POST',

@@ -1473,7 +1473,7 @@ function AuditTab() {
     const { data } = await supabase
       .from('score_logs')
       .select(`
-        id, team_id, activity_id, points_awarded, lo_id, created_at,
+        id, team_id, activity_id, points_awarded, lo_id, created_at, participant_ids,
         teams(name),
         activities(name),
         users!score_logs_lo_id_fkey(name)
@@ -1481,7 +1481,7 @@ function AuditTab() {
       .order('created_at', { ascending: false })
       .limit(200);
 
-    const enriched: ScoreLogEntry[] = (data || []).map((row: any) => ({
+    const enriched: any[] = (data || []).map((row: any) => ({
       id: row.id,
       team_id: row.team_id,
       activity_id: row.activity_id,
@@ -1491,6 +1491,7 @@ function AuditTab() {
       team_name: row.teams?.name,
       activity_name: row.activities?.name,
       lo_name: row.users?.name,
+      participant_ids: Array.isArray(row.participant_ids) ? row.participant_ids : [],
     }));
 
     const filtered = enriched.filter(log => {
@@ -1502,6 +1503,17 @@ function AuditTab() {
     setLogs(filtered);
     setLoading(false);
   }, [filterTeam, filterActivity]);
+
+  const [userMap, setUserMap] = useState<Map<string, string>>(new Map());
+
+  // Fetch users for mapping
+  useEffect(() => {
+    const fetchUsers = async () => {
+      const { data } = await supabase.from('users').select('id, name');
+      if (data) setUserMap(new Map(data.map(u => [u.id, u.name])));
+    };
+    fetchUsers();
+  }, []);
 
   useEffect(() => { fetchLogs(); }, [fetchLogs]);
 
@@ -1559,6 +1571,7 @@ function AuditTab() {
                   <th className="text-left px-6 py-4 text-[10px] font-adventure uppercase tracking-widest text-primary/60">Timestamp</th>
                   <th className="text-left px-6 py-4 text-[10px] font-adventure uppercase tracking-widest text-primary/60">Team</th>
                   <th className="text-left px-6 py-4 text-[10px] font-adventure uppercase tracking-widest text-primary/60">Location</th>
+                  <th className="text-left px-6 py-4 text-[10px] font-adventure uppercase tracking-widest text-primary/60">Participants</th>
                   <th className="text-right px-6 py-4 text-[10px] font-adventure uppercase tracking-widest text-primary/60">Score</th>
                   <th className="text-left px-6 py-4 text-[10px] font-adventure uppercase tracking-widest text-primary/60">LO</th>
                 </tr>
@@ -1571,6 +1584,15 @@ function AuditTab() {
                     </td>
                     <td className="px-6 py-3 text-sm text-foreground/80">{log.team_name || log.team_id.slice(0, 8)}</td>
                     <td className="px-6 py-3 text-sm text-foreground/60">{log.activity_name || log.activity_id.slice(0, 8)}</td>
+                    <td className="px-6 py-3">
+                      <div className="flex flex-wrap gap-1">
+                        {(log as any).participant_ids?.map((pid: string) => (
+                          <span key={pid} className="text-[9px] px-1.5 py-0.5 bg-primary/5 border border-primary/10 text-primary/60 rounded-sm">
+                            {userMap.get(pid) || 'Unknown'}
+                          </span>
+                        ))}
+                      </div>
+                    </td>
                     <td className="px-6 py-3 text-right">
                       <span className="font-adventure text-primary">{log.points_awarded}</span>
                     </td>

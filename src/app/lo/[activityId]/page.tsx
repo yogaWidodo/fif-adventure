@@ -9,6 +9,7 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import AuthGuard from '@/components/AuthGuard';
 import TeamQueueList from '@/components/lo/TeamQueueList';
+import TeamHistoryList from '@/components/lo/TeamHistoryList';
 import ScanModal from '@/components/lo/ScanModal';
 
 interface ActivityInfo {
@@ -39,6 +40,8 @@ export default function ActivityDashboard({
   const [accessDenied, setAccessDenied] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [isScanModalOpen, setIsScanModalOpen] = useState(false);
+  const [selectedQueueTeam, setSelectedQueueTeam] = useState<{ id: string, name: string, participantIds: string[] } | null>(null);
+  const [activeTab, setActiveTab] = useState<'queue' | 'history'>('queue');
   const [toast, setToast] = useState<ToastState>(null);
 
   // Auto-dismiss toast after 4 seconds
@@ -98,12 +101,24 @@ export default function ActivityDashboard({
 
   // ── Scan modal handlers ──────────────────────────────────────────────────────
 
-  const handleScanModalOpen = () => setIsScanModalOpen(true);
-  const handleScanModalClose = () => setIsScanModalOpen(false);
+  const handleScanModalOpen = () => {
+    setSelectedQueueTeam(null);
+    setIsScanModalOpen(true);
+  };
+  const handleScanModalClose = () => {
+    setIsScanModalOpen(false);
+    setSelectedQueueTeam(null);
+  };
+
+  const handleSelectTeam = (teamId: string, teamName: string, participantIds: string[]) => {
+    setSelectedQueueTeam({ id: teamId, name: teamName, participantIds });
+    setIsScanModalOpen(true);
+  };
 
   // Requirement 6.6: close modal, show success toast, refresh queue
   const handleCheckinSuccess = (teamName: string, hintGranted?: boolean) => {
     setIsScanModalOpen(false);
+    setSelectedQueueTeam(null);
     const message = hintGranted 
       ? `Check-in berhasil: Tim ${teamName} telah tiba & mendapatkan hint rahasia! 💎`
       : `Check-in berhasil: Tim ${teamName} telah tiba!`;
@@ -114,6 +129,7 @@ export default function ActivityDashboard({
   // Requirement 7.7: close modal, show success toast, refresh queue
   const handleScoringSuccess = (teamName: string, score: number) => {
     setIsScanModalOpen(false);
+    setSelectedQueueTeam(null);
     
     setToast({ 
       type: 'success', 
@@ -238,22 +254,69 @@ export default function ActivityDashboard({
             </motion.div>
           </header>
 
-          {/* Main content: Team Queue */}
+          {/* Main content: Tabs System */}
           {activity && (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1 }}
             >
-              <div className="mb-4">
-                <p className="text-[10px] uppercase font-adventure tracking-[0.3em] text-primary/50">
-                  Tim yang sudah check-in
-                </p>
+              {/* Tab Switcher */}
+              <div className="flex items-center gap-1 p-1 bg-primary/5 border border-primary/20 rounded-lg mb-6 w-fit">
+                <button
+                  onClick={() => setActiveTab('queue')}
+                  className={`px-6 py-2 rounded-md font-adventure text-[10px] uppercase tracking-widest transition-all ${
+                    activeTab === 'queue' 
+                      ? 'bg-primary text-primary-foreground shadow-lg' 
+                      : 'text-primary/60 hover:text-primary hover:bg-primary/10'
+                  }`}
+                >
+                  Antrean
+                </button>
+                <button
+                  onClick={() => setActiveTab('history')}
+                  className={`px-6 py-2 rounded-md font-adventure text-[10px] uppercase tracking-widest transition-all ${
+                    activeTab === 'history' 
+                      ? 'bg-primary text-primary-foreground shadow-lg' 
+                      : 'text-primary/60 hover:text-primary hover:bg-primary/10'
+                  }`}
+                >
+                  Riwayat
+                </button>
               </div>
-              <TeamQueueList
-                activityId={activityId}
-                refreshTrigger={refreshTrigger}
-              />
+
+              <div className="min-h-[400px]">
+                <AnimatePresence mode="wait">
+                  {activeTab === 'queue' ? (
+                    <motion.div
+                      key="queue-tab"
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: 20 }}
+                      transition={{ duration: 0.2 }}
+                    >
+                      <TeamQueueList
+                        activityId={activityId}
+                        refreshTrigger={refreshTrigger}
+                        onSelectTeam={handleSelectTeam}
+                      />
+                    </motion.div>
+                  ) : (
+                    <motion.div
+                      key="history-tab"
+                      initial={{ opacity: 0, x: 20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: -20 }}
+                      transition={{ duration: 0.2 }}
+                    >
+                      <TeamHistoryList
+                        activityId={activityId}
+                        refreshTrigger={refreshTrigger}
+                      />
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
             </motion.div>
           )}
         </div>
@@ -312,6 +375,7 @@ export default function ActivityDashboard({
             onClose={handleScanModalClose}
             onCheckinSuccess={handleCheckinSuccess}
             onScoringSuccess={handleScoringSuccess}
+            preSelectedTeam={selectedQueueTeam}
           />
         )}
       </div>

@@ -32,6 +32,7 @@ interface Activity {
 interface Registration {
   activity_id: string;
   checked_in_at: string;
+  participant_ids: string[] | null;
 }
 
 interface HintWithTreasure {
@@ -117,14 +118,20 @@ export default function MemberPortal() {
 
           if (payload.eventType === 'INSERT') {
             const newReg = payload.new as any;
-            const { data: activity } = await supabase
-              .from('activities')
-              .select('id, name, description, how_to_play, type, max_points, difficulty_level')
-              .eq('id', newReg.activity_id)
-              .single();
+            
+            // Only show the popup if THIS user is part of the check-in
+            const isMeScanned = Array.isArray(newReg.participant_ids) && newReg.participant_ids.includes(user?.id);
+            
+            if (isMeScanned) {
+              const { data: activity } = await supabase
+                .from('activities')
+                .select('id, name, description, how_to_play, type, max_points, difficulty_level')
+                .eq('id', newReg.activity_id)
+                .single();
 
-            if (activity) {
-              setDiscoveredActivity(activity);
+              if (activity) {
+                setDiscoveredActivity(activity);
+              }
             }
           }
         }
@@ -153,16 +160,20 @@ export default function MemberPortal() {
         },
         async (payload) => {
           const newHint = payload.new as any;
-          const { data: treasure } = await supabase
-            .from('treasure_hunts')
-            .select('id, name, hint_text, points')
-            .eq('id', newHint.treasure_hunt_id)
-            .single();
+          fetchAll(teamId); // Update hints list for everyone
 
-          if (treasure) {
-            setDiscoveredHint(treasure);
+          // Only show the popup if THIS user triggered the hint
+          if (newHint.triggered_by_user_id === user?.id) {
+            const { data: treasure } = await supabase
+              .from('treasure_hunts')
+              .select('id, name, hint_text, points')
+              .eq('id', newHint.treasure_hunt_id)
+              .single();
+
+            if (treasure) {
+              setDiscoveredHint(treasure);
+            }
           }
-          fetchAll(teamId);
         }
       )
       .subscribe();
@@ -179,7 +190,7 @@ export default function MemberPortal() {
       supabase.from('teams').select('id, name, slogan, total_points').eq('id', teamId).maybeSingle(),
       supabase.from('users').select('id, name, role').eq('team_id', teamId).order('role'),
       supabase.from('activities').select('id, name, type, max_points').eq('is_visible', true).order('name'),
-      supabase.from('activity_registrations').select('activity_id, checked_in_at').eq('team_id', teamId),
+      supabase.from('activity_registrations').select('activity_id, checked_in_at, participant_ids').eq('team_id', teamId),
       supabase
         .from('treasure_hunt_hints')
         .select('id, treasure_hunt_id, received_at, treasure_hunts(id, name, hint_text, points)')
@@ -206,8 +217,12 @@ export default function MemberPortal() {
   };
 
   const getActivityStatus = (id: string) => {
-    if (scoreLogs.some(log => log.activity_id === id)) return 'done';
-    if (registrations.some(r => r.activity_id === id)) return 'in-progress';
+    if (!user?.id) return 'not-started';
+
+    // A member is "Done" if their ID is in any score_log for this activity
+    if (scoreLogs.some(log => log.activity_id === id && log.participant_ids?.includes(user.id))) return 'done';
+    // A member is "In Progress" if their ID is in any registration for this activity
+    if (registrations.some(r => r.activity_id === id && r.participant_ids?.includes(user.id))) return 'in-progress';
     return 'not-started';
   };
 

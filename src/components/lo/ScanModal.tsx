@@ -685,7 +685,12 @@ export default function ScanModal({
                     <div>
                       <h3 className="font-adventure text-2xl gold-engraving mb-2">Points Recorded!</h3>
                       <p className="text-sm font-content text-foreground/60">
-                        {scannedUser ? `${scannedUser.name} telah terdata.` : `Tim ${team?.name} berhasil mendapat poin.`}
+                        {confirmedMemberIds.length > 0 
+                          ? `${confirmedMemberIds.length} anggota tim berhasil mendapat poin.`
+                          : scannedUser 
+                            ? `${scannedUser.name} telah terdata.` 
+                            : `Tim ${team?.name} berhasil mendapat poin.`
+                        }
                       </p>
                     </div>
 

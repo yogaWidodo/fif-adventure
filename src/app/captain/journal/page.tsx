@@ -54,7 +54,7 @@ export default function TeamJournal() {
       supabase.from('activities').select('id, name, description, how_to_play, type, max_points, difficulty_level').eq('is_visible', true).order('name'),
       supabase.from('treasure_hunt_hints').select('id, treasure_hunt_id, received_at, treasure_hunts(id, name, hint_text, points, is_public)').eq('team_id', teamId).order('received_at', { ascending: false }),
       supabase.from('activity_registrations').select('*').eq('team_id', teamId),
-      supabase.from('score_logs').select('activity_id').eq('team_id', teamId),
+      supabase.from('score_logs').select('activity_id, participant_ids').eq('team_id', teamId),
       supabase.from('treasure_hunt_claims').select('*').eq('team_id', teamId),
     ]);
 
@@ -68,8 +68,12 @@ export default function TeamJournal() {
   };
 
   const getActivityStatus = (id: string) => {
-    if (scoreLogs.some(log => log.activity_id === id)) return 'done';
-    if (registrations.some(r => r.activity_id === id)) return 'in-progress';
+    if (!user?.id) return 'not-started';
+
+    // A member is "Done" if their ID is in any score_log for this activity
+    if (scoreLogs.some(log => log.activity_id === id && log.participant_ids?.includes(user.id))) return 'done';
+    // A member is "In Progress" if their ID is in any registration for this activity
+    if (registrations.some(r => r.activity_id === id && r.participant_ids?.includes(user.id))) return 'in-progress';
     return 'not-started';
   };
   

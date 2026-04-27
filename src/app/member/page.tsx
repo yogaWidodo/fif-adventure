@@ -98,31 +98,51 @@ export default function MemberPortal() {
 
     fetchAll(user.team_id);
 
-    // Real-time subscription for discovery
+    // Real-time subscription for discovery and progress updates
     const teamId = user.team_id;
     const channel = supabase
-      .channel(`discovery-${teamId}`)
+      .channel(`team-updates-${teamId}`)
+      // Watch for check-ins (updates progress bar)
       .on(
         'postgres_changes',
         {
-          event: 'INSERT',
+          event: '*',
           schema: 'public',
           table: 'activity_registrations',
           filter: `team_id=eq.${teamId}`,
         },
         async (payload) => {
-          const newReg = payload.new as any;
-          const { data: activity } = await supabase
-            .from('activities')
-            .select('id, name, description, how_to_play, type, max_points, difficulty_level')
-            .eq('id', newReg.activity_id)
-            .single();
+          // Refresh the whole data set to ensure everything is in sync
+          fetchAll(teamId);
 
-          if (activity) {
-            setDiscoveredActivity(activity);
+          if (payload.eventType === 'INSERT') {
+            const newReg = payload.new as any;
+            const { data: activity } = await supabase
+              .from('activities')
+              .select('id, name, description, how_to_play, type, max_points, difficulty_level')
+              .eq('id', newReg.activity_id)
+              .single();
+
+            if (activity) {
+              setDiscoveredActivity(activity);
+            }
           }
         }
       )
+      // Watch for scoring (updates points and moves activity to history)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'score_logs',
+          filter: `team_id=eq.${teamId}`,
+        },
+        () => {
+          fetchAll(teamId);
+        }
+      )
+      // Watch for new hints
       .on(
         'postgres_changes',
         {
@@ -142,6 +162,7 @@ export default function MemberPortal() {
           if (treasure) {
             setDiscoveredHint(treasure);
           }
+          fetchAll(teamId);
         }
       )
       .subscribe();

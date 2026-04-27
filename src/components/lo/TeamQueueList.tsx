@@ -68,29 +68,19 @@ export default function TeamQueueList({
       return;
     }
 
-    // Fetch score_logs for this activity to determine which teams already have scores
-    const { data: scoreLogs } = await supabase
-      .from('score_logs')
-      .select('team_id')
-      .eq('activity_id', activityId);
-
-    const scoredTeamIds = new Set((scoreLogs ?? []).map((s) => s.team_id));
-
-    const queue: TeamQueueEntry[] = registrations
-      .filter((reg) => !scoredTeamIds.has(reg.team_id))
-      .map((reg) => {
-        // Supabase joins can return an array if the relationship is ambiguous to the generator
-        const teamsData = Array.isArray(reg.teams) ? reg.teams[0] : reg.teams;
-        
-        return {
-          registration_id: reg.id,
-          team_id: reg.team_id,
-          team_name: (teamsData as any)?.name ?? 'Unknown Team',
-          created_at: reg.checked_in_at,
-          has_score: false,
-          participant_ids: Array.isArray(reg.participant_ids) ? reg.participant_ids : [],
-        };
-      });
+    const queue: TeamQueueEntry[] = registrations.map((reg) => {
+      // Supabase joins can return an array if the relationship is ambiguous to the generator
+      const teamsData = Array.isArray(reg.teams) ? reg.teams[0] : reg.teams;
+      
+      return {
+        registration_id: reg.id,
+        team_id: reg.team_id,
+        team_name: (teamsData as any)?.name ?? 'Unknown Team',
+        created_at: reg.checked_in_at,
+        has_score: false,
+        participant_ids: Array.isArray(reg.participant_ids) ? reg.participant_ids : [],
+      };
+    });
 
     setEntries(queue);
     onQueueLoaded?.(queue);

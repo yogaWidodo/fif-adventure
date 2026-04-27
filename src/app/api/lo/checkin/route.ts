@@ -61,6 +61,18 @@ export async function POST(request: NextRequest): Promise<Response> {
     return Response.json({ error: 'Anda tidak di-assign ke aktivitas ini' }, { status: 403 });
   }
 
+  // 4b. Check if team already received points for this activity
+  const { data: existingScore } = await supabase
+    .from('score_logs')
+    .select('id')
+    .eq('team_id', team_id)
+    .eq('activity_id', activity_id)
+    .maybeSingle();
+
+  if (existingScore) {
+    return Response.json({ error: 'Tim ini sudah mendapatkan poin untuk aktivitas ini.' }, { status: 409 });
+  }
+
   // 5. Check-in logic: Cumulative for individual scans
   // Check if team already in queue
   const { data: existingReg } = await supabase

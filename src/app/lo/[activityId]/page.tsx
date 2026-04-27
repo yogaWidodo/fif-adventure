@@ -117,8 +117,7 @@ export default function ActivityDashboard({
 
   // Requirement 6.6: close modal, show success toast, refresh queue
   const handleCheckinSuccess = (teamName: string, hintGranted?: boolean) => {
-    setIsScanModalOpen(false);
-    setSelectedQueueTeam(null);
+    // We DON'T close the modal here anymore to allow "Scan Anggota Berikutnya"
     const message = hintGranted 
       ? `Check-in berhasil: Tim ${teamName} telah tiba & mendapatkan hint rahasia! 💎`
       : `Check-in berhasil: Tim ${teamName} telah tiba!`;

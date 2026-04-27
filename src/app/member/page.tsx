@@ -3,8 +3,8 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Users, Trophy, MapPin, CheckCircle2, Circle,
-  Compass, Flame, LogOut, Crown, Shield, Gem, ScrollText, Lock, ChevronDown, X,QrCode
+  Users, Trophy, MapPin, CheckCircle2, Circle, Camera,
+  Compass, Flame, LogOut, Crown, Shield, Gem, ScrollText, Lock, ChevronDown, X, QrCode, Sword
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import AuthGuard from '@/components/AuthGuard';
@@ -86,15 +86,70 @@ export default function MemberPortal() {
   const [scoreLogs, setScoreLogs] = useState<ScoreLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [showQR, setShowQR] = useState(false);
-  const [activeTab, setActiveTab] = useState<'log' | 'map' | 'crew' | 'tasks'>('log');
+  const [activeTab, setActiveTab] = useState<'log' | 'map' | 'crew' | 'tasks' | 'ranking'>('log');
+  const [discoveredActivity, setDiscoveredActivity] = useState<any>(null);
+  const [discoveredHint, setDiscoveredHint] = useState<any>(null);
 
   useEffect(() => {
     if (!user?.team_id) {
       setLoading(false);
       return;
     }
+
     fetchAll(user.team_id);
-  }, [user]);
+
+    // Real-time subscription for discovery
+    const teamId = user.team_id;
+    const channel = supabase
+      .channel(`discovery-${teamId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'activity_registrations',
+          filter: `team_id=eq.${teamId}`,
+        },
+        async (payload) => {
+          const newReg = payload.new as any;
+          const { data: activity } = await supabase
+            .from('activities')
+            .select('id, name, description, how_to_play, type, max_points, difficulty_level')
+            .eq('id', newReg.activity_id)
+            .single();
+
+          if (activity) {
+            setDiscoveredActivity(activity);
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'treasure_hunt_hints',
+          filter: `team_id=eq.${teamId}`,
+        },
+        async (payload) => {
+          const newHint = payload.new as any;
+          const { data: treasure } = await supabase
+            .from('treasure_hunts')
+            .select('id, name, hint_text, points')
+            .eq('id', newHint.treasure_hunt_id)
+            .single();
+
+          if (treasure) {
+            setDiscoveredHint(treasure);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.team_id]);
 
   const fetchAll = async (teamId: string) => {
     setLoading(true);
@@ -102,7 +157,7 @@ export default function MemberPortal() {
     const [teamRes, membersRes, actRes, regRes, hintsRes, claimRes, lbRes, logsRes] = await Promise.all([
       supabase.from('teams').select('id, name, slogan, total_points').eq('id', teamId).maybeSingle(),
       supabase.from('users').select('id, name, role').eq('team_id', teamId).order('role'),
-      supabase.from('activities').select('id, name, type, max_points').order('name'),
+      supabase.from('activities').select('id, name, type, max_points').eq('is_visible', true).order('name'),
       supabase.from('activity_registrations').select('activity_id, checked_in_at').eq('team_id', teamId),
       supabase
         .from('treasure_hunt_hints')
@@ -129,7 +184,9 @@ export default function MemberPortal() {
     setLoading(false);
   };
 
-  const isActivityDone = (id: string) => registrations.some(r => r.activity_id === id);
+  const isActivityDone = (id: string) => 
+    registrations.some(r => r.activity_id === id) || 
+    scoreLogs.some(log => log.activity_id === id);
 
   const completedCount = activities.filter(a => isActivityDone(a.id)).length;
   const progress = activities.length > 0 ? (completedCount / activities.length) * 100 : 0;
@@ -137,12 +194,12 @@ export default function MemberPortal() {
 
   const myScoreLogs = scoreLogs.filter(log => log.participant_ids && user?.id && log.participant_ids.includes(user.id));
   const myTotalContribution = myScoreLogs.reduce((sum, log) => {
-    const pointsPerPerson = log.participant_ids && log.participant_ids.length > 0 
-      ? log.points_awarded / log.participant_ids.length 
+    const pointsPerPerson = log.participant_ids && log.participant_ids.length > 0
+      ? log.points_awarded / log.participant_ids.length
       : 0;
     return sum + pointsPerPerson;
   }, 0);
-  
+
   const contributionPercentage = team?.total_points && team.total_points > 0
     ? Math.round((myTotalContribution / team.total_points) * 100)
     : 0;
@@ -168,33 +225,32 @@ export default function MemberPortal() {
         <div className="fixed inset-0 z-10 jungle-overlay opacity-5 pointer-events-none" />
 
         {/* Top Status Bar - Sticky & Compact */}
-        <div className="relative z-[40] bg-black/60 backdrop-blur-md border-b border-primary/20 px-4 py-3 flex justify-between items-center">
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              <Compass className="w-5 h-5 text-primary torch-glow" />
-              <h1 className="font-adventure text-sm gold-engraving tracking-widest pt-1">Expedition HQ</h1>
-            </div>
+        <div className="relative z-[40] bg-black/60 backdrop-blur-md border-b border-primary/20 px-4 py-2 flex justify-between items-center pr-12">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={logout}
+              className="p-2 rounded-full hover:bg-red-500/10 text-red-500/60 transition-colors"
+              title="Exit Portal"
+            >
+              <LogOut className="w-5 h-5" />
+            </button>
+            <div className="h-4 w-px bg-primary/10 mx-1" />
             <ExpeditionTimer variant="inline" />
           </div>
-          <div className="flex items-center gap-3">
-            <div className="text-right">
-              <p className="text-[8px] uppercase font-adventure opacity-50 leading-none">Team Pts</p>
-              <p className="font-adventure text-sm text-primary leading-none mt-1">{team?.total_points ?? 0}</p>
-            </div>
-            {myRank && (
-              <div className="bg-primary/20 border border-primary/30 px-2 py-1 rounded">
-                <p className="text-[8px] uppercase font-adventure text-primary leading-none">Rank</p>
-                <p className="font-adventure text-xs text-white leading-none mt-0.5">#{myRank}</p>
-              </div>
-            )}
+          <div className="flex items-center gap-4">
+            <button onClick={() => setShowQR(true)} className="bg-primary/20 border border-primary/30 px-2.5 py-1 rounded flex items-center gap-2 active:scale-95 transition-transform">
+              <QrCode className="w-3 h-3 text-primary" />
+              <span className="font-adventure text-[9px] text-primary pt-0.5 uppercase tracking-wider">My ID</span>
+            </button>
+            <div className="w-4 h-8" />
           </div>
         </div>
 
         {/* Main Content Area - Scrollable */}
-        <div className="relative z-20 flex-1 overflow-y-auto pb-32 pt-4 px-4 space-y-5 custom-scrollbar" style={{ overscrollBehaviorY: 'contain', WebkitOverflowScrolling: 'touch' }}>
-          
+        <div className="relative z-20 flex-1 overflow-y-auto pb-32 pt-4 px-4 space-y-5 custom-scrollbar" style={{ WebkitOverflowScrolling: 'touch' }}>
+
           {/* Welcome Section - Visual Identity */}
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             className="text-center py-2"
@@ -218,8 +274,8 @@ export default function MemberPortal() {
             <>
               {/* Tab Content Logic for Mobile Optimization */}
               {activeTab === 'log' && (
-                <motion.div 
-                  initial={{ opacity: 0 }} 
+                <motion.div
+                  initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   className="space-y-5"
                 >
@@ -236,10 +292,10 @@ export default function MemberPortal() {
                         </div>
                       </div>
                       <div className="text-right">
-                         <div className="inline-flex items-center gap-1.5 bg-black/40 px-2 py-1 rounded border border-primary/10">
-                            <Trophy className="w-3 h-3 text-primary" />
-                            <span className="font-adventure text-xs text-primary">{team.total_points}</span>
-                         </div>
+                        <div className="inline-flex items-center gap-1.5 bg-black/40 px-2 py-1 rounded border border-primary/10">
+                          <Trophy className="w-3 h-3 text-primary" />
+                          <span className="font-adventure text-xs text-primary">{team.total_points}</span>
+                        </div>
                       </div>
                     </div>
 
@@ -247,7 +303,7 @@ export default function MemberPortal() {
                     <div className="space-y-1.5">
                       <div className="flex justify-between text-[9px] font-adventure uppercase tracking-widest opacity-60">
                         <span>Progress</span>
-                        <span>{completedCount}/{activities.length} Wahana</span>
+                        <span>{completedCount}/{activities.length} Missions</span>
                       </div>
                       <div className="h-2 bg-black/60 rounded-full overflow-hidden border border-primary/10">
                         <motion.div
@@ -336,7 +392,7 @@ export default function MemberPortal() {
                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-4">
                   <div className="adventure-card p-4 bg-primary/5">
                     <h3 className="font-adventure text-sm text-primary mb-3 flex items-center gap-2">
-                       <MapPin className="w-4 h-4" /> Checklist Wahana
+                      <MapPin className="w-4 h-4" /> Checklist Wahana
                     </h3>
                     <div className="space-y-2">
                       {activities.map((act) => {
@@ -358,7 +414,7 @@ export default function MemberPortal() {
                   {/* Treasure Hints in Tasks Tab */}
                   <div className="adventure-card p-4">
                     <h3 className="font-adventure text-sm text-primary mb-3 flex items-center gap-2">
-                       <Gem className="w-4 h-4" /> Hidden Treasures
+                      <Gem className="w-4 h-4" /> Hidden Treasures
                     </h3>
                     {hints.length === 0 ? (
                       <div className="py-6 text-center">
@@ -392,58 +448,82 @@ export default function MemberPortal() {
 
               {activeTab === 'crew' && (
                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-4">
-                   <div className="adventure-card">
-                      <div className="p-4 border-b border-primary/10 flex items-center gap-2">
-                        <Users className="w-4 h-4 text-primary" />
-                        <h3 className="font-adventure text-sm text-primary pt-0.5">Expedition Crew</h3>
-                      </div>
-                      <div className="divide-y divide-white/5">
-                        {members.map((m) => {
-                          const { label, icon } = roleLabel(m.role);
-                          return (
-                            <div key={m.id} className="flex items-center gap-3 p-4">
-                              <div className="w-8 h-8 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center font-adventure text-xs text-primary">
-                                {m.name.charAt(0)}
-                              </div>
-                              <div className="flex-1">
-                                <p className="text-xs font-content text-white/90">{m.name}</p>
-                                <div className="flex items-center gap-1 opacity-40">
-                                  {icon}
-                                  <span className="text-[9px] font-adventure uppercase tracking-widest pt-0.5">{label}</span>
-                                </div>
-                              </div>
-                              {m.id === user?.id && <span className="bg-primary/20 text-primary text-[8px] font-adventure px-1.5 py-0.5 rounded uppercase">You</span>}
+                  <div className="adventure-card">
+                    <div className="p-4 border-b border-primary/10 flex items-center gap-2">
+                      <Users className="w-4 h-4 text-primary" />
+                      <h3 className="font-adventure text-sm text-primary pt-0.5">Expedition Crew</h3>
+                    </div>
+                    <div className="divide-y divide-white/5">
+                      {members.map((m) => {
+                        const { label, icon } = roleLabel(m.role);
+                        return (
+                          <div key={m.id} className="flex items-center gap-3 p-4">
+                            <div className="w-8 h-8 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center font-adventure text-xs text-primary">
+                              {m.name.charAt(0)}
                             </div>
-                          );
-                        })}
-                      </div>
-                   </div>
-
-                   {/* Compact Leaderboard View */}
-                   <div className="adventure-card">
-                      <div className="p-4 border-b border-primary/10 flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <Trophy className="w-4 h-4 text-primary" />
-                          <h3 className="font-adventure text-sm text-primary pt-0.5">Top Expedition Teams</h3>
-                        </div>
-                        <Link href="/leaderboard" className="text-[9px] font-adventure text-primary/60 uppercase">Full Standings →</Link>
-                      </div>
-                      <div className="p-2 space-y-1">
-                        {leaderboard.slice(0, 3).map((t) => (
-                          <div key={t.id} className={`flex items-center gap-3 p-3 rounded ${t.id === user?.team_id ? 'bg-primary/10 border border-primary/20' : ''}`}>
-                            <span className="font-adventure text-sm text-primary w-5 text-center">#{t.rank}</span>
-                            <span className="text-xs font-adventure flex-1 truncate opacity-80">{t.name}</span>
-                            <span className="text-xs font-adventure text-primary">{t.total_points}</span>
+                            <div className="flex-1">
+                              <p className="text-xs font-content text-white/90">{m.name}</p>
+                              <div className="flex items-center gap-1 opacity-40">
+                                {icon}
+                                <span className="text-[9px] font-adventure uppercase tracking-widest pt-0.5">{label}</span>
+                              </div>
+                            </div>
+                            {m.id === user?.id && <span className="bg-primary/20 text-primary text-[8px] font-adventure px-1.5 py-0.5 rounded uppercase">You</span>}
                           </div>
-                        ))}
+                        );
+                      })}
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+
+              {activeTab === 'ranking' && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="space-y-4 pb-20"
+                >
+                  <div className="adventure-card overflow-hidden">
+                    <div className="p-4 bg-primary/10 border-b border-primary/20 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Trophy className="w-5 h-5 text-primary torch-glow" />
+                        <h3 className="font-adventure text-lg text-primary pt-1">Leaderboard</h3>
                       </div>
-                   </div>
+                      <span className="text-[10px] font-adventure text-primary/40 uppercase">Top Expeditions</span>
+                    </div>
+                    <div className="divide-y divide-primary/5">
+                      {leaderboard.slice(0, 10).map((t) => (
+                        <div key={t.id} className={`flex items-center gap-4 p-4 transition-colors ${t.id === user?.team_id ? 'bg-primary/10 border-l-2 border-primary' : 'hover:bg-white/5'}`}>
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center font-adventure text-sm ${t.rank === 1 ? 'bg-yellow-500/20 text-yellow-500 border border-yellow-500/40' :
+                              t.rank === 2 ? 'bg-gray-400/20 text-gray-400 border border-gray-400/40' :
+                                t.rank === 3 ? 'bg-amber-700/20 text-amber-700 border border-amber-700/40' :
+                                  'text-foreground/40'
+                            }`}>
+                            #{t.rank}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-adventure text-sm truncate uppercase tracking-tight">{t.name}</p>
+                            {t.id === user?.team_id && <p className="text-[8px] uppercase font-adventure text-primary/60 tracking-widest mt-0.5">Your Expedition</p>}
+                          </div>
+                          <div className="text-right">
+                            <p className="font-adventure text-sm text-primary">{t.total_points}</p>
+                            <p className="text-[7px] uppercase font-adventure opacity-30">Prestige</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="p-4 bg-black/40 text-center">
+                      <Link href="/leaderboard">
+                        <button className="text-[9px] font-adventure text-primary/60 uppercase tracking-[0.2em] hover:text-primary transition-colors">View All Teams →</button>
+                      </Link>
+                    </div>
+                  </div>
                 </motion.div>
               )}
 
               {activeTab === 'map' && (
                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="h-[calc(100vh-220px)] rounded-lg overflow-hidden border border-primary/30 shadow-2xl">
-                   <MapPanel title="Expedition Map" subtitle="TSC Adventure Grounds" />
+                  <MapPanel title="Expedition Map" subtitle="TSC Adventure Grounds" />
                 </motion.div>
               )}
             </>
@@ -453,64 +533,71 @@ export default function MemberPortal() {
         {/* Bottom Navigation - Fixed & Ergonomic */}
         <div className="relative z-[50] mt-auto">
           {/* Main Bottom Nav */}
-          <nav className="bg-black/80 backdrop-blur-xl border-t border-primary/20 px-6 py-2 pb-8 flex justify-between items-center safe-area-bottom">
-            <button 
-              onClick={() => setActiveTab('log')}
-              className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'log' ? 'text-primary' : 'text-white/40'}`}
-            >
-              <Compass className={`w-5 h-5 ${activeTab === 'log' ? 'torch-glow' : ''}`} />
-              <span className="text-[8px] uppercase font-adventure tracking-widest pt-1">Log</span>
-            </button>
-            <button 
-              onClick={() => setActiveTab('tasks')}
-              className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'tasks' ? 'text-primary' : 'text-white/40'}`}
-            >
-              <MapPin className="w-5 h-5" />
-              <span className="text-[8px] uppercase font-adventure tracking-widest pt-1">Tasks</span>
-            </button>
-            
-            {/* Central QR Trigger - Visual Anchor */}
-            <div className="relative -mt-10">
-              <button 
-                onClick={() => setShowQR(true)}
-                className="w-14 h-14 rounded-full bg-gradient-to-br from-primary to-accent p-0.5 shadow-[0_0_20px_rgba(var(--primary-rgb),0.5)] active:scale-95 transition-transform"
+          <nav className="bg-black/90 backdrop-blur-2xl border-t border-primary/20 px-4 py-2 pb-8 flex justify-between items-center safe-area-bottom">
+            <div className="flex items-center gap-4 flex-1 justify-around max-w-[40%]">
+              <button
+                onClick={() => setActiveTab('log')}
+                className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'log' ? 'text-primary' : 'text-white/40'}`}
               >
-                <div className="w-full h-full rounded-full bg-black flex items-center justify-center">
-                  <QrCode className="w-6 h-6 text-primary" />
-                </div>
+                <Compass className={`w-5 h-5 ${activeTab === 'log' ? 'torch-glow' : ''}`} />
+                <span className="text-[8px] uppercase font-adventure tracking-widest pt-1">Log</span>
               </button>
+              <button
+                onClick={() => setActiveTab('tasks')}
+                className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'tasks' ? 'text-primary' : 'text-white/40'}`}
+              >
+                <MapPin className="w-5 h-5" />
+                <span className="text-[8px] uppercase font-adventure tracking-widest pt-1">Tasks</span>
+              </button>
+            </div>
+
+            {/* Central Scan Trigger */}
+            <div className="relative -mt-10 mx-4">
+              <Link href="/captain/scan">
+                <button
+                  className="w-14 h-14 rounded-full bg-gradient-to-br from-primary to-accent p-0.5 shadow-[0_0_20px_rgba(var(--primary-rgb),0.5)] active:scale-95 transition-transform"
+                >
+                  <div className="w-full h-full rounded-full bg-black flex items-center justify-center">
+                    <Camera className="w-6 h-6 text-primary" />
+                  </div>
+                </button>
+              </Link>
               <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-16 h-16 rounded-full border border-primary/20 animate-ping opacity-20 pointer-events-none" />
             </div>
 
-            <button 
-              onClick={() => setActiveTab('crew')}
-              className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'crew' ? 'text-primary' : 'text-white/40'}`}
-            >
-              <Users className="w-5 h-5" />
-              <span className="text-[8px] uppercase font-adventure tracking-widest pt-1">Crew</span>
-            </button>
-            <button 
-              onClick={() => setActiveTab('map')}
-              className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'map' ? 'text-primary' : 'text-white/40'}`}
-            >
-              <Compass className="w-5 h-5 rotate-45" />
-              <span className="text-[8px] uppercase font-adventure tracking-widest pt-1">Map</span>
-            </button>
+            <div className="flex items-center gap-4 flex-1 justify-around max-w-[40%]">
+              <button
+                onClick={() => setActiveTab('crew')}
+                className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'crew' ? 'text-primary' : 'text-white/40'}`}
+              >
+                <Users className="w-5 h-5" />
+                <span className="text-[8px] uppercase font-adventure tracking-widest pt-1">Crew</span>
+              </button>
+              <button
+                onClick={() => setActiveTab('ranking')}
+                className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'ranking' ? 'text-primary' : 'text-white/40'}`}
+              >
+                <Trophy className="w-5 h-5" />
+                <span className="text-[8px] uppercase font-adventure tracking-widest pt-1">Rank</span>
+              </button>
+            </div>
+
+            {/* Top Team Info - Filling space next to Crew/Rank */}
+            {leaderboard.length > 0 && leaderboard[0].id !== user?.team_id && (
+              <div className="absolute right-4 -top-10 px-3 py-1.5 bg-black/60 backdrop-blur-md border border-primary/10 rounded-lg flex flex-col items-end pointer-events-none">
+                <p className="text-[6px] uppercase font-adventure text-primary/40 tracking-[0.2em] leading-none mb-1">Top Expedition</p>
+                <div className="flex items-center gap-2">
+                  <span className="text-[9px] font-adventure text-[#f4e4bc] gold-engraving truncate max-w-[80px]">{leaderboard[0].name}</span>
+                  <div className="h-2 w-px bg-primary/20" />
+                  <span className="text-[9px] font-adventure text-primary">{leaderboard[0].total_points}</span>
+                </div>
+              </div>
+            )}
           </nav>
-          
-          {/* Secondary Actions (Logout) */}
-          <div className="absolute -top-10 right-4">
-             <button 
-              onClick={logout}
-              className="bg-black/60 backdrop-blur-md border border-red-500/20 px-3 py-1.5 rounded-full text-[8px] font-adventure text-red-400/60 uppercase flex items-center gap-1.5 active:bg-red-500/10"
-             >
-               <LogOut className="w-3 h-3" /> Exit
-             </button>
-          </div>
         </div>
 
         {/* QR Code Modal - Optimized for Mobile Sheet Feel */}
-        <AnimatePresence>
+        <AnimatePresence> 
           {showQR && user?.team_id && (
             <motion.div
               initial={{ opacity: 0 }}
@@ -534,7 +621,7 @@ export default function MemberPortal() {
                 >
                   <X className="w-5 h-5" />
                 </button>
-                
+
                 <div className="relative z-10">
                   <p className="text-[9px] uppercase font-adventure tracking-[0.3em] text-primary/60 mb-2">Identification Pass</p>
                   <h2 className="font-adventure text-2xl gold-engraving mb-1">{user.name}</h2>
@@ -549,7 +636,7 @@ export default function MemberPortal() {
                       level="M"
                     />
                   </div>
-                  
+
                   <div className="bg-primary/5 border border-primary/10 p-3 rounded-lg text-left">
                     <p className="text-[8px] uppercase font-adventure text-primary/50 tracking-widest mb-1">Pass Instructions</p>
                     <p className="text-[10px] text-white/60 italic leading-relaxed">
@@ -558,7 +645,7 @@ export default function MemberPortal() {
                   </div>
                 </div>
               </motion.div>
-              <button 
+              <button
                 onClick={() => setShowQR(false)}
                 className="mb-8 text-[10px] font-adventure text-primary uppercase tracking-widest opacity-40 pt-2"
               >
@@ -567,9 +654,92 @@ export default function MemberPortal() {
             </motion.div>
           )}
         </AnimatePresence>
+
+        {/* Discovery Modals */}
+        <AnimatePresence>
+          {discoveredHint && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[110] bg-black/95 flex items-center justify-center p-6"
+            >
+              <motion.div
+                initial={{ scale: 0.8, opacity: 0, rotateY: 30 }}
+                animate={{ scale: 1, opacity: 1, rotateY: 0 }}
+                exit={{ scale: 0.8, opacity: 0 }}
+                className="adventure-card w-full max-w-md overflow-hidden border-primary/40 shadow-[0_0_60px_rgba(var(--primary-rgb),0.3)]"
+              >
+                <div className="relative h-40 bg-primary/20 flex flex-col items-center justify-center">
+                  <div className="absolute inset-0 bg-[url('/images/expedition_map_bg.png')] bg-cover bg-center opacity-30 animate-pulse" />
+                  <div className="relative z-10 bg-primary/20 p-4 rounded-full border border-primary/40 mb-3">
+                    <Gem className="w-8 h-8 text-primary torch-glow" />
+                  </div>
+                  <h2 className="relative z-10 font-adventure text-2xl gold-engraving tracking-widest text-center px-6">
+                    Secret Hint Unlocked!
+                  </h2>
+                </div>
+                <div className="p-8 text-center space-y-6">
+                  <div className="space-y-2">
+                    <p className="text-[10px] uppercase font-adventure text-primary tracking-[0.4em] opacity-60">{discoveredHint.name}</p>
+                    <div className="bg-[#2b1d0e]/20 border border-[#8b4513]/20 p-5 rounded-sm">
+                      <p className="text-sm font-content text-foreground/90 italic leading-relaxed">
+                        "💡 {discoveredHint.hint_text}"
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                <div className="p-6 bg-primary/5 border-t border-primary/10">
+                  <button onClick={() => setDiscoveredHint(null)} className="w-full py-4 font-adventure text-sm uppercase tracking-[0.4em] bg-primary text-primary-foreground hover:bg-primary/90 transition-all shadow-[0_10px_20px_rgba(0,0,0,0.4)] active:scale-95">Secure Discovery</button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {discoveredActivity && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center p-6"
+            >
+              <motion.div
+                initial={{ scale: 0.8, opacity: 0, rotateX: 30 }}
+                animate={{ scale: 1, opacity: 1, rotateX: 0 }}
+                exit={{ scale: 0.8, opacity: 0 }}
+                className="adventure-card w-full max-w-lg overflow-hidden border-primary/40 shadow-[0_0_60px_rgba(var(--primary-rgb),0.3)]"
+              >
+                <div className="relative h-48 bg-primary/20 flex flex-col items-center justify-center">
+                  <div className="absolute inset-0 bg-[url('/images/expedition_map_bg.png')] bg-cover bg-center opacity-30 animate-pulse" />
+                  <div className="relative z-10 bg-primary/20 p-5 rounded-full border border-primary/40 mb-4">
+                    {discoveredActivity.type === 'wahana' ? (
+                      <MapPin className="w-10 h-10 text-primary torch-glow" />
+                    ) : (
+                      <Sword className="w-10 h-10 text-primary torch-glow" />
+                    )}
+                  </div>
+                  <h2 className="relative z-10 font-adventure text-3xl md:text-4xl gold-engraving tracking-widest text-center px-6">
+                    {discoveredActivity.name}
+                  </h2>
+                </div>
+                <div className="p-8 text-center space-y-6">
+                  <div className="space-y-2">
+                    <p className="text-[10px] uppercase font-adventure text-primary tracking-[0.4em] opacity-60">Discovery Unlocked</p>
+                    <p className="text-sm font-content text-foreground/80 italic leading-relaxed">
+                      "{discoveredActivity.description || 'A new path has been revealed.'}"
+                    </p>
+                  </div>
+                </div>
+                <div className="p-6 bg-primary/5 border-t border-primary/10">
+                  <button onClick={() => setDiscoveredActivity(null)} className="w-full py-4 font-adventure text-sm uppercase tracking-[0.4em] bg-primary text-primary-foreground hover:bg-primary/90 transition-all shadow-[0_10px_20px_rgba(0,0,0,0.4)] active:scale-95">Accept Mission</button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </AuthGuard>
   );
 }
-
-

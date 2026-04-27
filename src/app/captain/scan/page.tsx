@@ -223,7 +223,7 @@ export default function CaptainScanner() {
   };
 
   return (
-    <AuthGuard allowedRoles={['admin', 'captain', 'vice_captain']}>
+    <AuthGuard allowedRoles={['admin', 'captain', 'member']}>
       <div className="relative min-h-screen flex flex-col items-center justify-center p-6 overflow-hidden bg-black selection:bg-primary selection:text-primary-foreground font-content">
         {/* Immersive Background */}
         <div

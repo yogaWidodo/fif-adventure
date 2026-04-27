@@ -71,6 +71,17 @@ export function validateUserRow(row: ParsedUserRow): string | null {
 }
 
 /**
+ * Convert DDMMYYYY to YYYY-MM-DD for Postgres.
+ */
+export function formatDateForDB(dateStr: string): string {
+  if (!dateStr || dateStr.length !== 8) return dateStr;
+  const day = dateStr.slice(0, 2);
+  const month = dateStr.slice(2, 4);
+  const year = dateStr.slice(4, 8);
+  return `${year}-${month}-${day}`;
+}
+
+/**
  * Parse CSV with columns: name, npk, role, birth_date (required), team_name (optional).
  */
 export function parseUserCSV(content: string): ParseUserCSVResult {

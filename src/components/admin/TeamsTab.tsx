@@ -195,15 +195,7 @@ function MemberCard({
                   Set as Captain
                 </button>
               )}
-              {member.role !== 'vice_captain' && (
-                <button
-                  onClick={() => { onAssign(teamId, member.id, 'vice_captain'); setOpen(false); }}
-                  className="w-full text-left text-[9px] font-adventure uppercase tracking-wider text-amber-400/60 hover:text-amber-400 transition-colors flex items-center gap-1"
-                >
-                  <UserCheck className="w-3 h-3" />
-                  Set as Vice Captain
-                </button>
-              )}
+
             </div>
           </motion.div>
         )}
@@ -421,8 +413,7 @@ export default function TeamsTab() {
               (a, b) => (rolePriority[a.role] ?? 9) - (rolePriority[b.role] ?? 9)
             );
             const captain = sorted.find(m => m.role === 'captain');
-            const vice_captain = sorted.find(m => m.role === 'vice_captain');
-            const rest = sorted.filter(m => m.role !== 'captain' && m.role !== 'vice_captain');
+            const rest = sorted.filter(m => m.role !== 'captain');
 
             return (
               <motion.div
@@ -478,20 +469,7 @@ export default function TeamsTab() {
                         </div>
                       )}
 
-                      {/* Vice Captain slot */}
-                      {vice_captain ? (
-                        <MemberCard 
-                          member={vice_captain} 
-                          teamId={team.id} 
-                          onAssign={handleAssignCaptain} 
-                          teamScoreLogs={scoreLogsMap[team.id] ?? []}
-                          teamTotalPoints={team.total_points}
-                        />
-                      ) : (
-                        <div className="border border-dashed border-foreground/10 p-2 text-center">
-                          <p className="text-[9px] text-foreground/20 font-adventure uppercase tracking-wider">No Vice Captain</p>
-                        </div>
-                      )}
+
 
                       {/* Divider */}
                       {rest.length > 0 && (

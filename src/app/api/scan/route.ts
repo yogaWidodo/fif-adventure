@@ -76,14 +76,14 @@ export async function POST(request: NextRequest): Promise<Response> {
     return Response.json({ error: 'User profile not found' }, { status: 401 });
   }
 
-  if (!['captain', 'vice_captain'].includes(userProfile.role)) {
+  if (!['captain', 'member'].includes(userProfile.role)) {
     return Response.json({ error: 'Insufficient permissions' }, { status: 403 });
   }
 
   // ── 3. Look up activity by ID ──────────────────────────────────────────
   const trimmedCode = barcode_data.trim();
   const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmedCode);
-  
+
   if (!isUUID) {
     return Response.json({ success: false, message: 'Format kode tidak valid' }, { status: 400 });
   }
@@ -115,7 +115,7 @@ export async function POST(request: NextRequest): Promise<Response> {
   // ── 6. Return ScanResult ──────────────────────────────────────────────────
   const result: ScanResult = {
     success: true,
-    message: existingReg 
+    message: existingReg
       ? `Lokasi Terdeteksi: ${activity.name}`
       : `Berhasil! Intel recovered for ${activity.name}`,
     location_name: activity.name,

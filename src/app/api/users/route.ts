@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import type { NextRequest } from 'next/server';
-import { buildAuthEmail } from '@/lib/userManagement';
+import { buildAuthEmail, formatDateForDB } from '@/lib/userManagement';
 import { isValidRole } from '@/lib/auth';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
@@ -124,7 +124,7 @@ export async function POST(request: NextRequest) {
       name: name.trim(),
       npk: npk.trim(),
       role,
-      birth_date: birth_date.trim(),
+      birth_date: formatDateForDB(birth_date.trim()),
       team_id: null,
     })
     .select()

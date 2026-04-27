@@ -71,16 +71,23 @@ export default function LOPortal() {
         <div className="fixed inset-0 z-10 jungle-overlay opacity-5 pointer-events-none" />
 
         {/* Fixed Top Bar */}
-        <div className="relative z-[40] bg-black/60 backdrop-blur-md border-b border-primary/20 px-4 py-3 flex justify-between items-center">
-          <div className="flex items-center gap-2">
-            <Shield className="w-5 h-5 text-primary torch-glow" />
-            <h1 className="font-adventure text-sm gold-engraving tracking-widest pt-1">Field Command</h1>
-          </div>
+        <div className="relative z-[40] bg-black/60 backdrop-blur-md border-b border-primary/20 px-4 py-2 flex justify-between items-center pr-12">
           <div className="flex items-center gap-3">
+            <button 
+              onClick={logout}
+              className="p-2 rounded-full hover:bg-red-500/10 text-red-500/60 transition-colors"
+              title="Abandon Post"
+            >
+              <LogOut className="w-5 h-5 text-red-500/60" />
+            </button>
+          </div>
+          <div className="flex items-center gap-4">
              <div className="text-right">
-                <p className="text-[8px] uppercase font-adventure text-primary/60 tracking-widest leading-none">Officer</p>
-                <p className="text-[10px] font-adventure text-[#f4e4bc] gold-engraving tracking-tight">{user?.name || 'Authorized'}</p>
+                <p className="text-[7px] uppercase font-adventure text-primary/40 tracking-widest leading-none">Officer</p>
+                <p className="text-[10px] font-adventure text-[#f4e4bc] gold-engraving tracking-tight leading-none mt-1">{user?.name || 'Authorized'}</p>
              </div>
+             {/* Spacer for SoundManager which is fixed top-right */}
+             <div className="w-8 h-8" />
           </div>
         </div>
 
@@ -199,13 +206,6 @@ export default function LOPortal() {
                 </span>
                 <span className="h-px w-24 bg-gradient-to-l from-transparent to-primary/40" />
               </div>
-              <button
-                onClick={logout}
-                className="flex items-center gap-2 text-[9px] uppercase font-adventure tracking-[0.3em] text-accent hover:underline mb-8"
-              >
-                <LogOut className="w-3 h-3" />
-                Abandon Post
-              </button>
             </footer>
           </div>
         </div>

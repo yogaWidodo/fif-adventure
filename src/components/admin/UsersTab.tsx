@@ -71,7 +71,7 @@ function UserFormModal({
     if (!name.trim()) return 'Nama wajib diisi';
     if (!npk.trim()) return 'NPK wajib diisi';
     if (!birthDate.trim()) return 'Tanggal Lahir wajib diisi';
-    const validRoles = ['admin', 'captain', 'vice_captain', 'member', 'lo'];
+    const validRoles = ['admin', 'captain', 'member', 'lo'];
     if (!validRoles.includes(role)) return 'Role tidak valid';
     
     // Check if moving to LO but still tied to a team
@@ -163,7 +163,7 @@ function UserFormModal({
           <div>
             <label className="block text-[10px] uppercase tracking-widest font-adventure text-primary/60 mb-2">Role</label>
             <select value={role} onChange={e => setRole(e.target.value)} className="w-full bg-card border-b border-primary/30 py-1.5 text-sm text-foreground">
-              {['admin', 'captain', 'vice_captain', 'member', 'lo'].map(r => (
+              {['admin', 'captain', 'member', 'lo'].map(r => (
                 <option key={r} value={r}>{r}</option>
               ))}
             </select>
@@ -279,7 +279,7 @@ function AssignTeamModal({
           <div>
             <label className="block text-[10px] uppercase tracking-widest font-adventure text-primary/60 mb-2">Role Tim</label>
             <select value={roleInTeam} onChange={e => setRoleInTeam(e.target.value)} className="w-full bg-card border-b border-primary/30 py-1.5 text-sm text-foreground">
-              {['captain', 'vice_captain', 'member'].map(r => (
+              {['captain', 'member'].map(r => (
                 <option key={r} value={r}>{r}</option>
               ))}
             </select>
@@ -447,7 +447,7 @@ export default function UsersTab() {
     { key: 'all', label: 'All' },
     { key: 'admin', label: 'Admin' },
     { key: 'captain', label: 'Captain' },
-    { key: 'vice_captain', label: 'Vice Captain' },
+
     { key: 'member', label: 'Member' },
     { key: 'lo', label: 'LO' },
   ];

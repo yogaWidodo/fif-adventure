@@ -19,21 +19,40 @@ export default function TeamJournal() {
   const [selectedActivity, setSelectedActivity] = useState<any>(null);
 
   useEffect(() => {
-    if (user?.team_id) fetchJournalData(user.team_id);
-  }, [user]);
+    if (!user?.team_id) return;
+    fetchJournalData(user.team_id);
+
+    // Real-time synchronization
+    const teamId = user.team_id;
+    const channel = supabase
+      .channel(`journal-updates-${teamId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'activity_registrations', filter: `team_id=eq.${teamId}` },
+        () => fetchJournalData(teamId)
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'score_logs', filter: `team_id=eq.${teamId}` },
+        () => fetchJournalData(teamId)
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'treasure_hunt_hints', filter: `team_id=eq.${teamId}` },
+        () => fetchJournalData(teamId)
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.team_id]);
 
   const fetchJournalData = async (teamId: string) => {
-    setLoading(true);
-
     const [teamRes, activitiesRes, hintsRes, regRes, logsRes, claimRes] = await Promise.all([
       supabase.from('teams').select('*').eq('id', teamId).maybeSingle(),
       supabase.from('activities').select('id, name, description, how_to_play, type, max_points, difficulty_level').eq('is_visible', true).order('name'),
-      // Only fetch hints this team has received from gacha — joined with treasure_hunts for details
-      supabase
-        .from('treasure_hunt_hints')
-        .select('id, treasure_hunt_id, received_at, treasure_hunts(id, name, hint_text, points, is_public)')
-        .eq('team_id', teamId)
-        .order('received_at', { ascending: false }),
+      supabase.from('treasure_hunt_hints').select('id, treasure_hunt_id, received_at, treasure_hunts(id, name, hint_text, points, is_public)').eq('team_id', teamId).order('received_at', { ascending: false }),
       supabase.from('activity_registrations').select('*').eq('team_id', teamId),
       supabase.from('score_logs').select('activity_id').eq('team_id', teamId),
       supabase.from('treasure_hunt_claims').select('*').eq('team_id', teamId),
@@ -48,13 +67,16 @@ export default function TeamJournal() {
     setLoading(false);
   };
 
-  const isActivityDone = (id: string) => 
-    registrations.some(r => r.activity_id === id) || 
-    scoreLogs.some(log => log.activity_id === id);
+  const getActivityStatus = (id: string) => {
+    if (scoreLogs.some(log => log.activity_id === id)) return 'done';
+    if (registrations.some(r => r.activity_id === id)) return 'in-progress';
+    return 'not-started';
+  };
+  
   const isTreasureClaimed = (id: string) => claims.some(c => c.treasure_hunt_id === id);
 
   const totalMain = activities.length;
-  const completedMain = activities.filter(a => isActivityDone(a.id)).length;
+  const completedMain = activities.filter(a => getActivityStatus(a.id) !== 'not-started').length;
   const progress = totalMain > 0 ? (completedMain / totalMain) * 100 : 0;
 
   const totalHints = hints.length;
@@ -133,26 +155,33 @@ export default function TeamJournal() {
               <div className="p-20 text-center italic opacity-30">Consulting the archives...</div>
             ) : (
               <div className="grid gap-4">
-                {activities.map((act, idx) => (
+                {activities.map((act, idx) => {
+                  const status = getActivityStatus(act.id);
+                  return (
                     <motion.div 
                       key={act.id}
                       initial={{ opacity: 0, x: -10 }}
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: idx * 0.05 }}
-                      onClick={() => isActivityDone(act.id) && setSelectedActivity(act)}
+                      onClick={() => status !== 'not-started' && setSelectedActivity(act)}
                       className={`parchment p-5 flex items-center justify-between border-l-[6px] transition-all relative overflow-hidden group ${
-                        isActivityDone(act.id) 
-                          ? 'opacity-100 shadow-lg cursor-pointer hover:translate-x-1 active:scale-[0.98]' 
-                          : 'opacity-40 grayscale pointer-events-none'
+                        status === 'done' ? 'opacity-100 shadow-lg cursor-pointer hover:translate-x-1 active:scale-[0.98]' :
+                        status === 'in-progress' ? 'opacity-90 border-l-amber-500 shadow-inner cursor-pointer animate-pulse-subtle bg-amber-500/5' :
+                        'opacity-40 grayscale pointer-events-none'
                       } ${
                         act.difficulty_level === 'Easy' ? 'border-l-green-600' :
                         act.difficulty_level === 'Hard' ? 'border-l-red-600' :
-                        'border-l-amber-600'
+                        status === 'in-progress' ? 'border-l-amber-500' : 'border-l-amber-600'
                       }`}
                     >
                     <div className="flex items-center gap-4">
-                      {isActivityDone(act.id) ? (
+                      {status === 'done' ? (
                         <CheckCircle2 className="w-6 h-6 text-primary" />
+                      ) : status === 'in-progress' ? (
+                        <div className="relative">
+                          <Circle className="w-6 h-6 text-amber-500/30" />
+                          <div className="absolute inset-0 bg-amber-500/20 rounded-full animate-ping" />
+                        </div>
                       ) : (
                         <Circle className="w-6 h-6 text-stone-400/30" />
                       )}
@@ -173,10 +202,12 @@ export default function TeamJournal() {
                       </div>
                     </div>
                     
-                    {isActivityDone(act.id) ? (
+                    {status !== 'not-started' ? (
                       <div className="flex items-center gap-2">
                         <div className="flex flex-col items-end opacity-40">
-                          <p className="text-[8px] font-mono text-[#8b4513]">DISCOVERED</p>
+                          <p className="text-[8px] font-mono text-[#8b4513]">
+                            {status === 'done' ? 'DISCOVERED' : 'IN PROGRESS'}
+                          </p>
                           <ChevronRight className="w-4 h-4 text-[#8b4513]" />
                         </div>
                       </div>
@@ -184,12 +215,13 @@ export default function TeamJournal() {
                        <Lock className="w-4 h-4 text-stone-400/30" />
                     )}
 
-                    {/* Subtle discovery glow for done items */}
-                    {isActivityDone(act.id) && (
+                    {/* Subtle discovery glow for active/done items */}
+                    {status !== 'not-started' && (
                       <div className="absolute inset-0 bg-primary/5 pointer-events-none group-hover:bg-primary/10 transition-colors" />
                     )}
                   </motion.div>
-                ))}
+                );
+              })}
               </div>
             )}
           </div>

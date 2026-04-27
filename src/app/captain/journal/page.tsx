@@ -13,6 +13,7 @@ export default function TeamJournal() {
   const [activities, setActivities] = useState<any[]>([]);
   const [hints, setHints] = useState<any[]>([]);
   const [registrations, setRegistrations] = useState<any[]>([]);
+  const [scoreLogs, setScoreLogs] = useState<any[]>([]);
   const [claims, setClaims] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedActivity, setSelectedActivity] = useState<any>(null);
@@ -24,9 +25,9 @@ export default function TeamJournal() {
   const fetchJournalData = async (teamId: string) => {
     setLoading(true);
 
-    const [teamRes, activitiesRes, hintsRes, regRes, claimRes] = await Promise.all([
+    const [teamRes, activitiesRes, hintsRes, regRes, logsRes, claimRes] = await Promise.all([
       supabase.from('teams').select('*').eq('id', teamId).maybeSingle(),
-      supabase.from('activities').select('id, name, description, how_to_play, type, max_points, difficulty_level').order('name'),
+      supabase.from('activities').select('id, name, description, how_to_play, type, max_points, difficulty_level').eq('is_visible', true).order('name'),
       // Only fetch hints this team has received from gacha — joined with treasure_hunts for details
       supabase
         .from('treasure_hunt_hints')
@@ -34,6 +35,7 @@ export default function TeamJournal() {
         .eq('team_id', teamId)
         .order('received_at', { ascending: false }),
       supabase.from('activity_registrations').select('*').eq('team_id', teamId),
+      supabase.from('score_logs').select('activity_id').eq('team_id', teamId),
       supabase.from('treasure_hunt_claims').select('*').eq('team_id', teamId),
     ]);
 
@@ -41,11 +43,14 @@ export default function TeamJournal() {
     setActivities(activitiesRes.data || []);
     setHints(hintsRes.data || []);
     setRegistrations(regRes.data || []);
+    setScoreLogs(logsRes.data || []);
     setClaims(claimRes.data || []);
     setLoading(false);
   };
 
-  const isActivityDone = (id: string) => registrations.some(r => r.activity_id === id);
+  const isActivityDone = (id: string) => 
+    registrations.some(r => r.activity_id === id) || 
+    scoreLogs.some(log => log.activity_id === id);
   const isTreasureClaimed = (id: string) => claims.some(c => c.treasure_hunt_id === id);
 
   const totalMain = activities.length;
@@ -59,7 +64,7 @@ export default function TeamJournal() {
 
   return (
     <AuthGuard allowedRoles={['admin', 'captain', 'vice_captain']}>
-      <div className="relative min-h-screen flex flex-col items-center bg-black overflow-hidden font-content p-6 pb-24">
+      <div className="relative min-h-screen flex flex-col items-center bg-black overflow-y-auto font-content p-6 pb-24">
         {/* Immersive Background */}
         <div 
           className="fixed inset-0 z-0 bg-cover bg-center opacity-20"
@@ -113,7 +118,7 @@ export default function TeamJournal() {
                   <Flame className="absolute -right-2 -top-4 w-4 h-4 text-accent torch-glow" />
                 </motion.div>
               </div>
-              <p className="text-[10px] italic opacity-40 text-center">"{completedMain} of {totalMain} main activities secured."</p>
+              <p className="text-[10px] italic opacity-40 text-center">"{completedMain} of {totalMain} missions secured."</p>
             </div>
           </motion.div>
 

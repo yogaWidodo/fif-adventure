@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import type { NextRequest } from 'next/server';
-import { buildAuthEmail } from '@/lib/userManagement';
+import { buildAuthEmail, formatDateForDB } from '@/lib/userManagement';
 import { isValidRole } from '@/lib/auth';
 
 // Requirements: 3.3, 3.4, 3.5, 3.7, 3.8, 7.5, 2.3, 2.4, 2.5, 2.6
@@ -41,7 +41,7 @@ export async function PATCH(
   // Fetch current user record
   const { data: currentUser, error: fetchError } = await supabaseAdmin
     .from('users')
-    .select('id, auth_id, npk, name, role')
+    .select('id, auth_id, npk, name, role, team_id')
     .eq('id', id)
     .single();
 
@@ -76,7 +76,7 @@ export async function PATCH(
     if (!body.birth_date.trim()) {
       return Response.json({ error: 'birth_date cannot be empty' }, { status: 400 });
     }
-    updates.birth_date = body.birth_date.trim();
+    updates.birth_date = formatDateForDB(body.birth_date.trim());
   }
 
   // Handle npk change — requires updating Supabase Auth email + password
@@ -105,6 +105,27 @@ export async function PATCH(
     }
 
     updates.npk = newNpk;
+  }
+
+  // Enforce "one captain per team" rule
+  const finalRole = (updates.role as string) || currentUser.role;
+  const finalTeamId = 'team_id' in updates ? (updates.team_id as string | null) : currentUser.team_id;
+
+  if (finalRole === 'captain' && finalTeamId) {
+    const { data: existingCaptain } = await supabaseAdmin
+      .from('users')
+      .select('id')
+      .eq('team_id', finalTeamId)
+      .eq('role', 'captain')
+      .neq('id', id)
+      .maybeSingle();
+
+    if (existingCaptain) {
+      return Response.json(
+        { error: 'Tim ini sudah memiliki kapten. Satu tim hanya boleh memiliki satu kapten.' },
+        { status: 400 }
+      );
+    }
   }
 
   if (Object.keys(updates).length === 0) {

@@ -4,6 +4,7 @@ import {
   buildAuthEmail,
   validateUserRow,
   buildUploadReport,
+  formatDateForDB,
   type ParsedUserRow,
   type RowResult,
 } from '@/lib/userManagement';
@@ -91,7 +92,7 @@ export async function POST(request: NextRequest) {
           name,
           npk,
           role,
-          birth_date
+          birth_date: formatDateForDB(birth_date)
         })
         .select('id')
         .single();
@@ -142,6 +143,26 @@ export async function POST(request: NextRequest) {
           teamCreated = true;
         }
         teamCache[team_name.toLowerCase()] = teamId;
+      }
+
+      // Check for existing captain if role is captain
+      if (role === 'captain') {
+        const { data: existingCap } = await supabaseAdmin
+          .from('users')
+          .select('id')
+          .eq('team_id', teamId)
+          .eq('role', 'captain')
+          .neq('id', userId)
+          .maybeSingle();
+
+        if (existingCap) {
+          results.push({
+            rowIndex,
+            status: 'failed',
+            reason: `Tim '${team_name}' sudah memiliki kapten.`,
+          });
+          continue;
+        }
       }
 
       // Update user with team and role

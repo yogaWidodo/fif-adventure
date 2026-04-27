@@ -101,29 +101,17 @@ export default function SoundManager() {
     <AnimatePresence>
       {isVisible && (
         <motion.div
-          initial={{ opacity: 0, scale: 0.8, x: 20 }}
-          animate={{ opacity: 1, scale: 1, x: 0 }}
-          exit={{ opacity: 0, scale: 0.8, x: 20 }}
-          className="fixed bottom-6 right-6 z-[200] flex items-center gap-3"
+          initial={{ opacity: 0, scale: 0.8, y: -20 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.8, y: -20 }}
+          className="fixed top-3 right-4 z-[100] flex items-center gap-3"
         >
-          {/* Status Badge */}
-          <motion.div
-            initial={{ width: 0, opacity: 0 }}
-            animate={{ width: isPlaying ? 'auto' : 0, opacity: isPlaying ? 1 : 0 }}
-            className="overflow-hidden whitespace-nowrap hidden md:block"
-          >
-            <div className="bg-black/80 border border-primary/20 px-3 py-1.5 rounded-full text-[9px] uppercase font-adventure tracking-widest text-primary/60 flex items-center gap-2">
-              <Music className="w-3 h-3 animate-pulse" />
-              <span>Beyond the Green Horizon</span>
-            </div>
-          </motion.div>
-
           {/* Toggle Button */}
           <button
             onClick={toggleMute}
-            className={`adventure-card p-3 rounded-full border transition-all duration-500 group shadow-2xl ${isMuted
-                ? 'bg-black/60 border-primary/10 text-primary/30 hover:text-primary/60'
-                : 'bg-primary/20 border-primary/40 text-primary torch-glow'
+            className={`p-2 rounded-full border transition-all duration-500 group shadow-lg ${isMuted
+                ? 'bg-black/40 border-primary/10 text-primary/30 hover:text-primary/60'
+                : 'bg-primary/10 border-primary/30 text-primary torch-glow'
               }`}
             aria-label={isMuted ? 'Unmute BGM' : 'Mute BGM'}
           >

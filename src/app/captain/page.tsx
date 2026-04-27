@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Camera, BookOpen, Compass, ShieldAlert, QrCode, X, MapPin, Flame, Sword, Gem, Crown } from 'lucide-react';
+import { Camera, BookOpen, ShieldAlert, QrCode, X, MapPin, Flame, Sword, Gem, Crown, LogOut } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { useAuth } from '@/context/AuthContext';
 import { useTimerContext } from '@/context/TimerContext';
@@ -24,8 +24,11 @@ export default function CaptainPortal() {
   useEffect(() => {
     if (!user?.team_id) return;
 
+    const channelName = `discovery-${user.team_id}`;
+    supabase.removeChannel(supabase.channel(channelName));
+    
     const channel = supabase
-      .channel(`discovery-${user.team_id}`)
+      .channel(channelName)
       .on(
         'postgres_changes',
         {
@@ -79,26 +82,31 @@ export default function CaptainPortal() {
     <AuthGuard allowedRoles={['admin', 'captain', 'vice_captain']}>
       <div className="fixed inset-0 flex flex-col bg-black font-content overflow-hidden">
         {/* Background */}
-        <div 
+        <div
           className="fixed inset-0 z-0 bg-cover bg-center opacity-30"
           style={{ backgroundImage: 'url("/images/jungle_hq_bg.png")', filter: 'brightness(0.2)', transform: 'translateZ(0)' }}
         />
         <div className="fixed inset-0 z-10 jungle-overlay opacity-5 pointer-events-none" style={{ transform: 'translateZ(0)' }} />
 
         {/* Top Status Bar - Consistent with Member */}
-        <div className="relative z-[40] bg-black/60 backdrop-blur-md border-b border-primary/20 px-4 py-3 flex justify-between items-center">
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              <Compass className="w-5 h-5 text-primary torch-glow" />
-              <h1 className="font-adventure text-sm gold-engraving tracking-widest pt-1">Captain HQ</h1>
-            </div>
+        <div className="relative z-[40] bg-black/60 backdrop-blur-md border-b border-primary/20 px-4 py-2 flex justify-between items-center pr-12">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={logout}
+              className="p-2 rounded-full hover:bg-red-500/10 text-red-500/60 transition-colors"
+              title="Exit Portal"
+            >
+              <LogOut className="w-5 h-5 text-red-500/60" />
+            </button>
+            <div className="h-4 w-px bg-primary/10 mx-1" />
             <ExpeditionTimer variant="inline" />
           </div>
           <div className="flex items-center gap-3">
-             <button onClick={() => setShowQR(true)} className="adventure-card px-3 py-1 bg-primary/10 border-primary/30 flex items-center gap-2">
-               <QrCode className="w-3.5 h-3.5 text-primary" />
-               <span className="font-adventure text-[10px] text-primary pt-0.5 uppercase">TEAM QR</span>
-             </button>
+            <button onClick={() => setShowQR(true)} className="bg-primary/20 border border-primary/30 px-2.5 py-1 rounded flex items-center gap-2 active:scale-95 transition-transform">
+              <QrCode className="w-3 h-3 text-primary" />
+              <span className="font-adventure text-[9px] text-primary pt-0.5 uppercase tracking-wider">QR</span>
+            </button>
+            <div className="w-4 h-8" />
           </div>
         </div>
 
@@ -182,18 +190,17 @@ export default function CaptainPortal() {
                   <ShieldAlert className="w-5 h-5 text-red-500" />
                 </div>
                 <div>
-                    <p className="text-[9px] uppercase font-adventure text-red-400 tracking-widest mb-1 italic pt-1">Mission Protocol</p>
-                    <p className="text-[11px] text-[#f4e4bc]/60 font-content leading-relaxed">
-                      Each registration is logged once per team. Public bounties are global, secrets are hidden.
-                    </p>
+                  <p className="text-[9px] uppercase font-adventure text-red-400 tracking-widest mb-1 italic pt-1">Mission Protocol</p>
+                  <p className="text-[11px] text-[#f4e4bc]/60 font-content leading-relaxed">
+                    Each registration is logged once per team. Public bounties are global, secrets are hidden.
+                  </p>
                 </div>
               </div>
             </div>
 
             <MapPanel title="Expedition Map" subtitle="TSC Adventure Grounds" collapsible />
-            
+
             <footer className="pt-8 pb-12 text-center">
-              <button onClick={logout} className="text-[10px] uppercase font-adventure text-accent tracking-[0.3em] mb-8 hover:underline opacity-60">Abort Mission</button>
               <div className="flex items-center gap-4 mb-2 justify-center opacity-30">
                 <span className="h-px w-12 bg-gradient-to-r from-transparent to-primary/40" />
                 <span className="font-adventure text-[8px] tracking-[0.4em] uppercase">Link Established</span>
@@ -219,26 +226,26 @@ export default function CaptainPortal() {
                 className="adventure-card w-full max-w-md overflow-hidden border-primary/40 shadow-[0_0_60px_rgba(var(--primary-rgb),0.3)]"
               >
                 <div className="relative h-40 bg-primary/20 flex flex-col items-center justify-center">
-                   <div className="absolute inset-0 bg-[url('/images/expedition_map_bg.png')] bg-cover bg-center opacity-30 animate-pulse" />
-                   <div className="relative z-10 bg-primary/20 p-4 rounded-full border border-primary/40 mb-3">
-                     <Gem className="w-8 h-8 text-primary torch-glow" />
-                   </div>
-                   <h2 className="relative z-10 font-adventure text-2xl gold-engraving tracking-widest text-center px-6">
-                     Secret Hint Unlocked!
-                   </h2>
+                  <div className="absolute inset-0 bg-[url('/images/expedition_map_bg.png')] bg-cover bg-center opacity-30 animate-pulse" />
+                  <div className="relative z-10 bg-primary/20 p-4 rounded-full border border-primary/40 mb-3">
+                    <Gem className="w-8 h-8 text-primary torch-glow" />
+                  </div>
+                  <h2 className="relative z-10 font-adventure text-2xl gold-engraving tracking-widest text-center px-6">
+                    Secret Hint Unlocked!
+                  </h2>
                 </div>
                 <div className="p-8 text-center space-y-6">
-                   <div className="space-y-2">
-                     <p className="text-[10px] uppercase font-adventure text-primary tracking-[0.4em] opacity-60">{discoveredHint.name}</p>
-                     <div className="bg-[#2b1d0e]/20 border border-[#8b4513]/20 p-5 rounded-sm">
-                       <p className="text-sm font-content text-foreground/90 italic leading-relaxed">
-                         "💡 {discoveredHint.hint_text}"
-                       </p>
-                     </div>
-                   </div>
+                  <div className="space-y-2">
+                    <p className="text-[10px] uppercase font-adventure text-primary tracking-[0.4em] opacity-60">{discoveredHint.name}</p>
+                    <div className="bg-[#2b1d0e]/20 border border-[#8b4513]/20 p-5 rounded-sm">
+                      <p className="text-sm font-content text-foreground/90 italic leading-relaxed">
+                        "💡 {discoveredHint.hint_text}"
+                      </p>
+                    </div>
+                  </div>
                 </div>
                 <div className="p-6 bg-primary/5 border-t border-primary/10">
-                   <button onClick={() => setDiscoveredHint(null)} className="w-full py-4 font-adventure text-sm uppercase tracking-[0.4em] bg-primary text-primary-foreground hover:bg-primary/90 transition-all shadow-[0_10px_20px_rgba(0,0,0,0.4)] active:scale-95">Secure Discovery</button>
+                  <button onClick={() => setDiscoveredHint(null)} className="w-full py-4 font-adventure text-sm uppercase tracking-[0.4em] bg-primary text-primary-foreground hover:bg-primary/90 transition-all shadow-[0_10px_20px_rgba(0,0,0,0.4)] active:scale-95">Secure Discovery</button>
                 </div>
               </motion.div>
             </motion.div>
@@ -260,28 +267,28 @@ export default function CaptainPortal() {
                 className="adventure-card w-full max-w-lg overflow-hidden border-primary/40 shadow-[0_0_60px_rgba(var(--primary-rgb),0.3)]"
               >
                 <div className="relative h-48 bg-primary/20 flex flex-col items-center justify-center">
-                   <div className="absolute inset-0 bg-[url('/images/expedition_map_bg.png')] bg-cover bg-center opacity-30 animate-pulse" />
-                   <div className="relative z-10 bg-primary/20 p-5 rounded-full border border-primary/40 mb-4">
-                     {discoveredActivity.type === 'wahana' ? (
-                       <MapPin className="w-10 h-10 text-primary torch-glow" />
-                     ) : (
-                       <Sword className="w-10 h-10 text-primary torch-glow" />
-                     )}
-                   </div>
-                   <h2 className="relative z-10 font-adventure text-3xl md:text-4xl gold-engraving tracking-widest text-center px-6">
-                     {discoveredActivity.name}
-                   </h2>
+                  <div className="absolute inset-0 bg-[url('/images/expedition_map_bg.png')] bg-cover bg-center opacity-30 animate-pulse" />
+                  <div className="relative z-10 bg-primary/20 p-5 rounded-full border border-primary/40 mb-4">
+                    {discoveredActivity.type === 'wahana' ? (
+                      <MapPin className="w-10 h-10 text-primary torch-glow" />
+                    ) : (
+                      <Sword className="w-10 h-10 text-primary torch-glow" />
+                    )}
+                  </div>
+                  <h2 className="relative z-10 font-adventure text-3xl md:text-4xl gold-engraving tracking-widest text-center px-6">
+                    {discoveredActivity.name}
+                  </h2>
                 </div>
                 <div className="p-8 text-center space-y-6">
-                   <div className="space-y-2">
-                     <p className="text-[10px] uppercase font-adventure text-primary tracking-[0.4em] opacity-60">Discovery Unlocked</p>
-                     <p className="text-sm font-content text-foreground/80 italic leading-relaxed">
-                       "{discoveredActivity.description || 'A new path has been revealed.'}"
-                     </p>
-                   </div>
+                  <div className="space-y-2">
+                    <p className="text-[10px] uppercase font-adventure text-primary tracking-[0.4em] opacity-60">Discovery Unlocked</p>
+                    <p className="text-sm font-content text-foreground/80 italic leading-relaxed">
+                      "{discoveredActivity.description || 'A new path has been revealed.'}"
+                    </p>
+                  </div>
                 </div>
                 <div className="p-6 bg-primary/5 border-t border-primary/10">
-                   <button onClick={() => setDiscoveredActivity(null)} className="w-full py-4 font-adventure text-sm uppercase tracking-[0.4em] bg-primary text-primary-foreground hover:bg-primary/90 transition-all shadow-[0_10px_20px_rgba(0,0,0,0.4)] active:scale-95">Accept Mission</button>
+                  <button onClick={() => setDiscoveredActivity(null)} className="w-full py-4 font-adventure text-sm uppercase tracking-[0.4em] bg-primary text-primary-foreground hover:bg-primary/90 transition-all shadow-[0_10px_20px_rgba(0,0,0,0.4)] active:scale-95">Accept Mission</button>
                 </div>
               </motion.div>
             </motion.div>
@@ -338,7 +345,7 @@ export default function CaptainPortal() {
 function DifficultyBadge({ level }: { level: string }) {
   const colorClass = level === 'Easy' ? 'bg-green-600 text-white' : level === 'Hard' ? 'bg-red-600 text-white' : 'bg-amber-500 text-white';
   const flames = level === 'Easy' ? 1 : level === 'Hard' ? 3 : 2;
-  
+
   return (
     <div className={`flex items-center gap-1.5 px-3 py-1 rounded-sm shadow-lg ${colorClass}`}>
       <div className="flex -space-x-0.5">

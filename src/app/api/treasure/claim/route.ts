@@ -39,8 +39,8 @@ export async function POST(request: NextRequest): Promise<Response> {
     .eq('auth_id', userId)
     .single();
 
-  if (!userProfile || !userProfile.team_id || !['captain', 'vice_captain'].includes(userProfile.role)) {
-    return Response.json({ error: 'Hanya Captain atau Vice yang bisa klaim Treasure.' }, { status: 403 });
+  if (!userProfile || !userProfile.team_id || !['captain', 'member'].includes(userProfile.role)) {
+    return Response.json({ error: 'Hanya Captain atau Member yang bisa klaim Treasure.' }, { status: 403 });
   }
 
   // 5. Atomic Claim Logic (using Service Role for Transactional Integrity)
@@ -49,7 +49,7 @@ export async function POST(request: NextRequest): Promise<Response> {
   // Requirement 4.6.5: Verify Hint and Quota using a transaction-like flow
   // Since we use RPC in the DB for some complex ops, we can also do it here if simple.
   // Actually, the spec recommends using RPC for atomicity.
-  
+
   // Requirement 4.6.5.b: Check if team has hint
   const { data: hint } = await supabaseAdmin
     .from('treasure_hunt_hints')
@@ -90,7 +90,7 @@ export async function POST(request: NextRequest): Promise<Response> {
   // Note: For perfect atomicity, this should be a DB function.
   // I created recalculate_team_points trigger earlier, so we just insert into claims.
   // Let's use a simple decrement if RPC is not available for this specific op.
-  
+
   const { error: claimError } = await supabaseAdmin
     .from('treasure_hunt_claims')
     .insert({
@@ -107,9 +107,9 @@ export async function POST(request: NextRequest): Promise<Response> {
   // Atomically decrement quota
   await supabaseAdmin.rpc('decrement_th_quota', { p_th_id: treasure_hunt_id });
 
-  return Response.json({ 
-    success: true, 
-    message: 'Treasure berhasil diklaim!', 
-    points_awarded: th.points 
+  return Response.json({
+    success: true,
+    message: 'Treasure berhasil diklaim!',
+    points_awarded: th.points
   });
 }

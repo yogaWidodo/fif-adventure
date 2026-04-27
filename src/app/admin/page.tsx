@@ -34,7 +34,7 @@ import {
   BarChart3, Database, X, Hammer,
   Compass, Flame, Sword, Gem, ScrollText,
   ChevronDown, ChevronUp, Loader2, AlertTriangle,
-  CheckCircle, Edit2, Save, UserCheck, FileText,
+  CheckCircle, Edit2, Save, UserCheck, FileText, Lock,
   Clock, Filter, Play, Pause, RotateCcw, Square, UserCog, Trash2, ClipboardList
 } from 'lucide-react';
 
@@ -70,6 +70,7 @@ interface Activity {
   max_points: number;
   difficulty_level: 'Easy' | 'Medium' | 'Hard';
   treasure_hunt_id?: string;
+  is_visible: boolean;
   created_at: string;
 }
 
@@ -601,8 +602,8 @@ function EventControlTab({
                   onMouseLeave={() => setIsHovering(false)}
                   disabled={saving}
                   className={`mt-8 w-full py-3 font-adventure border tracking-widest uppercase text-xs transition-all duration-300 ${isSaved && !isHovering
-                      ? 'bg-green-500/20 text-green-400 border-green-500/40'
-                      : 'bg-primary/20 text-primary border-primary/40 hover:bg-primary/30'
+                    ? 'bg-green-500/20 text-green-400 border-green-500/40'
+                    : 'bg-primary/20 text-primary border-primary/40 hover:bg-primary/30'
                     }`}
                 >
                   {saving
@@ -639,6 +640,7 @@ function WahanaTab() {
   const [newHowTo, setNewHowTo] = useState('');
   const [newPoints, setNewPoints] = useState('');
   const [newLevel, setNewLevel] = useState<'Easy' | 'Medium' | 'Hard'>('Medium');
+  const [newIsVisible, setNewIsVisible] = useState(true);
   const [saving, setSaving] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [error, setError] = useState('');
@@ -676,6 +678,7 @@ function WahanaTab() {
       setNewHowTo(act.how_to_play || '');
       setNewPoints(act.max_points.toString());
       setNewLevel(act.difficulty_level || 'Medium');
+      setNewIsVisible(act.is_visible);
       setSelectedTreasureId(act.treasure_hunt_id || '');
     } else {
       setEditingActivity(null);
@@ -684,6 +687,7 @@ function WahanaTab() {
       setNewHowTo('');
       setNewPoints('');
       setNewLevel('Medium');
+      setNewIsVisible(true);
       setSelectedTreasureId('');
     }
     setShowModal(true);
@@ -701,6 +705,7 @@ function WahanaTab() {
       difficulty_level: newLevel,
       treasure_hunt_id: selectedTreasureId || null,
       type: 'wahana' as const,
+      is_visible: newIsVisible,
     };
 
     let error;
@@ -763,6 +768,16 @@ function WahanaTab() {
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
+                  {!act.is_visible && (
+                    <span className="flex items-center gap-1 text-[8px] font-adventure bg-red-500/10 text-red-400 px-1.5 py-0.5 rounded border border-red-500/20">
+                      <Lock className="w-2.5 h-2.5" /> HIDDEN
+                    </span>
+                  )}
+                  {act.is_visible && (
+                    <span className="flex items-center gap-1 text-[8px] font-adventure bg-green-500/10 text-green-400 px-1.5 py-0.5 rounded border border-green-500/20">
+                      <CheckCircle className="w-2.5 h-2.5" /> VISIBLE
+                    </span>
+                  )}
                   <DifficultyBadge level={act.difficulty_level} />
                   <span className="text-[10px] font-adventure text-primary bg-primary/10 px-2 py-0.5">{act.max_points} MAX PTS</span>
                 </div>
@@ -808,10 +823,27 @@ function WahanaTab() {
                 ))}
             </select>
           </div>
+
+          <div className="flex items-center justify-between p-4 bg-primary/5 rounded border border-primary/10">
+            <div>
+              <p className="text-[10px] uppercase font-adventure text-primary tracking-widest mb-1">Visibility Status</p>
+              <p className="text-[9px] text-muted-foreground/60 italic">Controls if participants can see this wahana in their log.</p>
+            </div>
+            <button
+              onClick={() => setNewIsVisible(!newIsVisible)}
+              className={`px-4 py-2 rounded font-adventure text-[10px] tracking-widest transition-all ${newIsVisible
+                ? 'bg-green-500/20 text-green-400 border border-green-500/40'
+                : 'bg-red-500/20 text-red-400 border border-red-500/40'
+                }`}
+            >
+              {newIsVisible ? 'VISIBLE' : 'HIDDEN'}
+            </button>
+          </div>
+
           <ModalSubmit label={editingActivity ? 'Update Wahana' : 'Establish Wahana'} onClick={handleSave} disabled={!newName || !newPoints || saving} loading={saving} />
-        </div>
-      </AdventureModal>
-    </TabLayout>
+        </div >
+      </AdventureModal >
+    </TabLayout >
   );
 }
 
@@ -833,6 +865,7 @@ function ChallengesTab() {
   const [newPoints, setNewPoints] = useState('');
   const [newLevel, setNewLevel] = useState<'Easy' | 'Medium' | 'Hard'>('Medium');
   const [newType, setNewType] = useState<Activity['type']>('challenge_regular');
+  const [newIsVisible, setNewIsVisible] = useState(true);
   const [saving, setSaving] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [linkedTreasureIds, setLinkedTreasureIds] = useState<Set<string>>(new Set());
@@ -870,6 +903,7 @@ function ChallengesTab() {
       setNewPoints(act.max_points.toString());
       setNewLevel(act.difficulty_level || 'Medium');
       setNewType(act.type);
+      setNewIsVisible(act.is_visible);
       setSelectedTreasureId(act.treasure_hunt_id || '');
     } else {
       setEditingChallenge(null);
@@ -879,6 +913,7 @@ function ChallengesTab() {
       setNewPoints('');
       setNewLevel('Medium');
       setNewType('challenge_regular');
+      setNewIsVisible(true);
       setSelectedTreasureId('');
     }
     setShowModal(true);
@@ -896,6 +931,7 @@ function ChallengesTab() {
       difficulty_level: newLevel,
       treasure_hunt_id: selectedTreasureId || null,
       type: newType,
+      is_visible: newIsVisible,
     };
 
     let error;
@@ -941,42 +977,52 @@ function ChallengesTab() {
           <div className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {paginated.map((act, idx) => (
-            <motion.div
-              key={act.id}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: idx * 0.05 }}
-              className="adventure-card p-6 group"
-            >
-              <div className="flex justify-between items-start mb-4">
-                <div className="p-2 rounded-lg border bg-primary/20 border-primary/40">
-                  <Sword className="w-5 h-5 text-primary" />
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => handleOpenModal(act)}
-                    className="p-1.5 hover:bg-primary/10 text-primary/60 hover:text-primary transition-colors rounded-md"
-                  >
-                    <Edit2 className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => handleDelete(act.id)}
-                    className="p-1.5 hover:bg-red-500/10 text-red-400/60 hover:text-red-400 transition-colors rounded-md"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                  <span className={`text-[9px] font-adventure uppercase px-2 py-0.5 ${typeColor(act.type)}`}>
-                    {act.type.replace('challenge_', '')}
-                  </span>
-                  <DifficultyBadge level={act.difficulty_level} />
-                  <span className="text-[10px] font-adventure text-primary bg-primary/10 px-2 py-0.5">{act.max_points} MAX PTS</span>
-                </div>
-              </div>
-              <h3 className="font-adventure text-lg text-foreground mb-1 group-hover:text-primary transition-colors">{act.name}</h3>
-              <p className="text-xs text-muted-foreground/60 mb-4 line-clamp-2">{act.description}</p>
+                <motion.div
+                  key={act.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: idx * 0.05 }}
+                  className="adventure-card p-6 group"
+                >
+                  <div className="flex justify-between items-start mb-4">
+                    <div className="p-2 rounded-lg border bg-primary/20 border-primary/40">
+                      <Sword className="w-5 h-5 text-primary" />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleOpenModal(act)}
+                        className="p-1.5 hover:bg-primary/10 text-primary/60 hover:text-primary transition-colors rounded-md"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(act.id)}
+                        className="p-1.5 hover:bg-red-500/10 text-red-400/60 hover:text-red-400 transition-colors rounded-md"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                      <span className={`text-[9px] font-adventure uppercase px-2 py-0.5 ${typeColor(act.type)}`}>
+                        {act.type.replace('challenge_', '')}
+                      </span>
+                      {!act.is_visible && (
+                        <span className="flex items-center gap-1 text-[8px] font-adventure bg-red-500/10 text-red-400 px-1.5 py-0.5 rounded border border-red-500/20">
+                          <Lock className="w-2.5 h-2.5" /> HIDDEN
+                        </span>
+                      )}
+                      {act.is_visible && (
+                        <span className="flex items-center gap-1 text-[8px] font-adventure bg-green-500/10 text-green-400 px-1.5 py-0.5 rounded border border-green-500/20">
+                          <CheckCircle className="w-2.5 h-2.5" /> VISIBLE
+                        </span>
+                      )}
+                      <DifficultyBadge level={act.difficulty_level} />
+                      <span className="text-[10px] font-adventure text-primary bg-primary/10 px-2 py-0.5">{act.max_points} MAX PTS</span>
+                    </div>
+                  </div>
+                  <h3 className="font-adventure text-lg text-foreground mb-1 group-hover:text-primary transition-colors">{act.name}</h3>
+                  <p className="text-xs text-muted-foreground/60 mb-4 line-clamp-2">{act.description}</p>
 
-              </motion.div>
-            ))}
+                </motion.div>
+              ))}
             </div>
             <Pagination
               currentPage={page}
@@ -1012,21 +1058,23 @@ function ChallengesTab() {
               ))}
             </div>
           </div>
-          <div>
-            <label className="block text-[10px] uppercase tracking-widest font-adventure text-[#2b1d0e]/60 mb-2">Linked Private Treasure Hunt</label>
-            <select
-              value={selectedTreasureId}
-              onChange={e => setSelectedTreasureId(e.target.value)}
-              className="w-full bg-transparent border-b-2 border-[#2b1d0e]/20 p-3 font-adventure text-[#2b1d0e] focus:outline-none focus:border-[#8b4513] transition-colors appearance-none"
+
+          <div className="flex items-center justify-between p-4 bg-primary/5 rounded border border-primary/10">
+            <div>
+              <p className="text-[10px] uppercase font-adventure text-primary tracking-widest mb-1">Visibility Status</p>
+              <p className="text-[9px] text-muted-foreground/60 italic">Controls if participants can see this challenge in their log.</p>
+            </div>
+            <button
+              onClick={() => setNewIsVisible(!newIsVisible)}
+              className={`px-4 py-2 rounded font-adventure text-[10px] tracking-widest transition-all ${newIsVisible
+                ? 'bg-green-500/20 text-green-400 border border-green-500/40'
+                : 'bg-red-500/20 text-red-400 border border-red-500/40'
+                }`}
             >
-              <option value="">None / No Hint</option>
-              {privateTreasures
-                .filter(t => !linkedTreasureIds.has(t.id) || t.id === selectedTreasureId)
-                .map(t => (
-                  <option key={t.id} value={t.id}>{t.name} ({t.quota} quota)</option>
-                ))}
-            </select>
+              {newIsVisible ? 'VISIBLE' : 'HIDDEN'}
+            </button>
           </div>
+
           <ModalSubmit label={editingChallenge ? 'Update Challenge' : 'Create Challenge'} onClick={handleSave} disabled={!newName || !newPoints || saving} loading={saving} />
         </div>
       </AdventureModal>
@@ -1154,79 +1202,79 @@ function TreasureTab() {
           <div className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {paginated.map((th, idx) => (
-            <motion.div
-              key={th.id}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: idx * 0.05 }}
-              className="adventure-card p-6 group"
-            >
-              <div className="flex justify-between items-start mb-4">
-                <div className="p-2 rounded-lg border bg-primary/20 border-primary/40">
-                  <Gem className="w-5 h-5 text-primary" />
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => handleOpenModal(th)}
-                    className="p-1.5 hover:bg-primary/10 text-primary/60 hover:text-primary transition-colors rounded-md"
-                  >
-                    <Edit2 className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => handleDelete(th.id)}
-                    className="p-1.5 hover:bg-red-500/10 text-red-400/60 hover:text-red-400 transition-colors rounded-md"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                  <span className={`text-[8px] font-adventure uppercase px-2 py-0.5 rounded-sm ${th.is_public ? 'bg-green-500/20 text-green-400' : 'bg-blue-500/20 text-blue-400'}`}>
-                    {th.is_public ? 'Public' : 'Private'}
-                  </span>
-                  <div className="text-right ml-2">
-                    <p className="text-[10px] font-adventure text-primary">{th.points} PTS</p>
-                    <p className="text-[9px] text-muted-foreground/40">{th.remaining_quota}/{th.quota} REMAINING</p>
-                  </div>
-                </div>
-              </div>
-
-              <h3 className="font-adventure text-lg text-foreground mb-1 group-hover:text-primary transition-colors">{th.name}</h3>
-              <p className="text-[10px] italic text-primary/50 mb-4 tracking-wider">Hint: {th.hint_text}</p>
-
-              <div className="flex flex-col gap-2">
-                <button
-                  onClick={() => setExpandedQR(expandedQR === th.id ? null : th.id)}
-                  className="flex items-center gap-2 text-[10px] font-adventure uppercase tracking-widest text-primary/60 hover:text-primary transition-colors"
+                <motion.div
+                  key={th.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: idx * 0.05 }}
+                  className="adventure-card p-6 group"
                 >
-                  <QrCode className="w-3 h-3" />
-                  {expandedQR === th.id ? 'Hide QR' : 'Show QR'}
-                </button>
-                <button
-                  onClick={() => expandedClaims === th.id ? setExpandedClaims(null) : fetchClaims(th.id)}
-                  className="flex items-center gap-2 text-[10px] font-adventure uppercase tracking-widest text-primary/60 hover:text-primary transition-colors"
-                >
-                  <Users className="w-3 h-3" />
-                  {expandedClaims === th.id ? 'Hide Claims' : 'View Claims'}
-                </button>
-              </div>
-
-              <AnimatePresence>
-                {expandedQR === th.id && (
-                  <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden mt-4 flex flex-col items-center">
-                    <div className="bg-white p-3 rounded-xl mb-2">
-                      <QRCodeDisplay barcodeData={`fif-treasure-${th.id}`} label={th.name} size={150} />
+                  <div className="flex justify-between items-start mb-4">
+                    <div className="p-2 rounded-lg border bg-primary/20 border-primary/40">
+                      <Gem className="w-5 h-5 text-primary" />
                     </div>
-                  </motion.div>
-                )}
-                {expandedClaims === th.id && (
-                  <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden mt-4 space-y-1">
-                    <p className="text-[10px] uppercase font-adventure text-primary/40 border-b border-primary/10 pb-1">Claimed By:</p>
-                    {claimTeams.length === 0 ? <p className="text-[10px] italic opacity-30">No claims yet</p> : claimTeams.map((c, i) => (
-                      <p key={i} className="text-[11px] text-foreground/70">• {c.team_name}</p>
-                    ))}
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </motion.div>
-          ))}
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleOpenModal(th)}
+                        className="p-1.5 hover:bg-primary/10 text-primary/60 hover:text-primary transition-colors rounded-md"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(th.id)}
+                        className="p-1.5 hover:bg-red-500/10 text-red-400/60 hover:text-red-400 transition-colors rounded-md"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                      <span className={`text-[8px] font-adventure uppercase px-2 py-0.5 rounded-sm ${th.is_public ? 'bg-green-500/20 text-green-400' : 'bg-blue-500/20 text-blue-400'}`}>
+                        {th.is_public ? 'Public' : 'Private'}
+                      </span>
+                      <div className="text-right ml-2">
+                        <p className="text-[10px] font-adventure text-primary">{th.points} PTS</p>
+                        <p className="text-[9px] text-muted-foreground/40">{th.remaining_quota}/{th.quota} REMAINING</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <h3 className="font-adventure text-lg text-foreground mb-1 group-hover:text-primary transition-colors">{th.name}</h3>
+                  <p className="text-[10px] italic text-primary/50 mb-4 tracking-wider">Hint: {th.hint_text}</p>
+
+                  <div className="flex flex-col gap-2">
+                    <button
+                      onClick={() => setExpandedQR(expandedQR === th.id ? null : th.id)}
+                      className="flex items-center gap-2 text-[10px] font-adventure uppercase tracking-widest text-primary/60 hover:text-primary transition-colors"
+                    >
+                      <QrCode className="w-3 h-3" />
+                      {expandedQR === th.id ? 'Hide QR' : 'Show QR'}
+                    </button>
+                    <button
+                      onClick={() => expandedClaims === th.id ? setExpandedClaims(null) : fetchClaims(th.id)}
+                      className="flex items-center gap-2 text-[10px] font-adventure uppercase tracking-widest text-primary/60 hover:text-primary transition-colors"
+                    >
+                      <Users className="w-3 h-3" />
+                      {expandedClaims === th.id ? 'Hide Claims' : 'View Claims'}
+                    </button>
+                  </div>
+
+                  <AnimatePresence>
+                    {expandedQR === th.id && (
+                      <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden mt-4 flex flex-col items-center">
+                        <div className="bg-white p-3 rounded-xl mb-2">
+                          <QRCodeDisplay barcodeData={`fif-treasure-${th.id}`} label={th.name} size={150} />
+                        </div>
+                      </motion.div>
+                    )}
+                    {expandedClaims === th.id && (
+                      <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden mt-4 space-y-1">
+                        <p className="text-[10px] uppercase font-adventure text-primary/40 border-b border-primary/10 pb-1">Claimed By:</p>
+                        {claimTeams.length === 0 ? <p className="text-[10px] italic opacity-30">No claims yet</p> : claimTeams.map((c, i) => (
+                          <p key={i} className="text-[11px] text-foreground/70">• {c.team_name}</p>
+                        ))}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </motion.div>
+              ))}
             </div>
             <Pagination
               currentPage={page}
@@ -1254,8 +1302,8 @@ function TreasureTab() {
                 type="button"
                 onClick={() => setIsPublic(false)}
                 className={`flex-1 py-3 flex flex-col items-center gap-1 border transition-all ${!isPublic
-                    ? 'bg-[#8b4513] text-[#f4e4bc] border-[#8b4513] shadow-lg'
-                    : 'bg-transparent text-[#2b1d0e]/40 border-[#2b1d0e]/20 hover:border-[#2b1d0e]/40'
+                  ? 'bg-[#8b4513] text-[#f4e4bc] border-[#8b4513] shadow-lg'
+                  : 'bg-transparent text-[#2b1d0e]/40 border-[#2b1d0e]/20 hover:border-[#2b1d0e]/40'
                   }`}
               >
                 <span className="text-[9px] font-adventure uppercase tracking-tighter">Private / Hidden</span>
@@ -1264,8 +1312,8 @@ function TreasureTab() {
                 type="button"
                 onClick={() => setIsPublic(true)}
                 className={`flex-1 py-3 flex flex-col items-center gap-1 border transition-all ${isPublic
-                    ? 'bg-[#8b4513] text-[#f4e4bc] border-[#8b4513] shadow-lg'
-                    : 'bg-transparent text-[#2b1d0e]/40 border-[#2b1d0e]/20 hover:border-[#2b1d0e]/40'
+                  ? 'bg-[#8b4513] text-[#f4e4bc] border-[#8b4513] shadow-lg'
+                  : 'bg-transparent text-[#2b1d0e]/40 border-[#2b1d0e]/20 hover:border-[#2b1d0e]/40'
                   }`}
               >
                 <span className="text-[9px] font-adventure uppercase tracking-tighter">Public / Global</span>
@@ -1857,8 +1905,8 @@ function DifficultySelector({ value, onChange }: { value: 'Easy' | 'Medium' | 'H
             type="button"
             onClick={() => onChange(lvl)}
             className={`flex-1 py-3 flex flex-col items-center gap-1 border transition-all duration-300 ${value === lvl
-                ? 'bg-[#8b4513] text-[#f4e4bc] border-[#8b4513] shadow-lg scale-105 z-10'
-                : 'bg-transparent text-[#2b1d0e]/40 border-[#2b1d0e]/20 hover:border-[#2b1d0e]/40'
+              ? 'bg-[#8b4513] text-[#f4e4bc] border-[#8b4513] shadow-lg scale-105 z-10'
+              : 'bg-transparent text-[#2b1d0e]/40 border-[#2b1d0e]/20 hover:border-[#2b1d0e]/40'
               }`}
           >
             <div className="flex gap-0.5">

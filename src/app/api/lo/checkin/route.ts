@@ -107,12 +107,12 @@ export async function POST(request: NextRequest): Promise<Response> {
   // Check if this activity has a linked private treasure hunt
   const { data: activityData } = await supabase
     .from('activities')
-    .select('treasure_hunt_id')
+    .select('treasure_hunt_id, type')
     .eq('id', activity_id)
     .single();
 
   let hint_granted = false;
-  if (activityData?.treasure_hunt_id) {
+  if (activityData?.treasure_hunt_id && !activityData.type.startsWith('challenge')) {
     // Grant the hint to the team automatically
     const { error: upsertError } = await supabase
       .from('treasure_hunt_hints')

@@ -175,7 +175,6 @@ export default function CSVImporter({ teamId, teamName, onImportComplete }: CSVI
                     <td className="px-3 py-2">
                       <span className={`px-2 py-0.5 text-[9px] font-adventure uppercase tracking-wider ${
                         r.role === 'captain' ? 'bg-primary/20 text-primary' :
-                        r.role === 'vice_captain' ? 'bg-secondary/20 text-secondary-foreground' :
                         r.role === 'lo' ? 'bg-blue-500/20 text-blue-300' :
                         'bg-foreground/10 text-foreground/60'
                       }`}>

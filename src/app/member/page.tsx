@@ -14,6 +14,7 @@ import Link from 'next/link';
 import { QRCodeSVG } from 'qrcode.react';
 import { generateUserBarcode } from '@/lib/auth';
 import { calculateBadges } from '@/lib/badges';
+import ExpeditionTimer from '@/components/ExpeditionTimer';
 
 interface TeamMember {
   id: string;
@@ -168,9 +169,12 @@ export default function MemberPortal() {
 
         {/* Top Status Bar - Sticky & Compact */}
         <div className="relative z-[40] bg-black/60 backdrop-blur-md border-b border-primary/20 px-4 py-3 flex justify-between items-center">
-          <div className="flex items-center gap-2">
-            <Compass className="w-5 h-5 text-primary torch-glow" />
-            <h1 className="font-adventure text-sm gold-engraving tracking-widest pt-1">Expedition HQ</h1>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <Compass className="w-5 h-5 text-primary torch-glow" />
+              <h1 className="font-adventure text-sm gold-engraving tracking-widest pt-1">Expedition HQ</h1>
+            </div>
+            <ExpeditionTimer variant="inline" />
           </div>
           <div className="flex items-center gap-3">
             <div className="text-right">
@@ -187,7 +191,7 @@ export default function MemberPortal() {
         </div>
 
         {/* Main Content Area - Scrollable */}
-        <div className="relative z-20 flex-1 overflow-y-auto pb-32 pt-4 px-4 space-y-5 custom-scrollbar">
+        <div className="relative z-20 flex-1 overflow-y-auto pb-32 pt-4 px-4 space-y-5 custom-scrollbar" style={{ overscrollBehaviorY: 'contain', WebkitOverflowScrolling: 'touch' }}>
           
           {/* Welcome Section - Visual Identity */}
           <motion.div 
@@ -310,15 +314,15 @@ export default function MemberPortal() {
                   {badges.length > 0 && (
                     <div className="space-y-2">
                       <p className="text-[9px] uppercase font-adventure text-primary/50 tracking-[0.2em] px-1">Badges Earned</p>
-                      <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1 custom-scrollbar no-scrollbar">
+                      <div className="flex gap-3 overflow-x-auto pb-4 -mx-4 px-4 custom-scrollbar no-scrollbar">
                         {badges.map(badge => (
-                          <div key={badge.id} className="adventure-card min-w-[140px] p-3 flex flex-col items-center text-center space-y-2 bg-primary/5">
-                            <div className="w-10 h-10 rounded-full bg-black/40 border border-primary/20 flex items-center justify-center text-primary">
+                          <div key={badge.id} className="adventure-card min-w-[100px] max-w-[100px] p-2 flex flex-col items-center text-center space-y-1 bg-primary/5">
+                            <div className="w-7 h-7 rounded-full bg-black/40 border border-primary/20 flex items-center justify-center text-primary shrink-0">
                               {badge.icon}
                             </div>
-                            <div>
-                              <p className="font-adventure text-[10px] text-primary leading-tight">{badge.name}</p>
-                              <p className="text-[8px] text-white/40 leading-tight mt-1">{badge.description}</p>
+                            <div className="flex-1 flex flex-col justify-center overflow-hidden">
+                              <p className="font-adventure text-[8px] text-primary leading-tight truncate w-full">{badge.name}</p>
+                              <p className="text-[7px] text-white/40 leading-tight mt-0.5 line-clamp-2 w-full">{badge.description}</p>
                             </div>
                           </div>
                         ))}

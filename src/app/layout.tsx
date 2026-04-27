@@ -30,7 +30,6 @@ export default function RootLayout({
         <AuthProvider>
           <TimerProvider>
             <div className="fixed inset-0 z-0 jungle-overlay opacity-5 pointer-events-none" />
-            <ExpeditionTimer />
             <PauseModal />
             <FinishedModal />
             <SoundManager />

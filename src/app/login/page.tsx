@@ -4,6 +4,7 @@ import { Suspense } from 'react';
 import { motion } from 'framer-motion';
 import { Compass } from 'lucide-react';
 import LoginForm from './LoginForm';
+import ExpeditionTimer from '@/components/ExpeditionTimer';
 
 export default function LoginPage() {
   return (
@@ -24,7 +25,10 @@ export default function LoginPage() {
             <Compass className="w-12 h-12 text-primary torch-glow" />
           </motion.div>
           <h1 className="font-adventure text-4xl gold-engraving tracking-widest mb-2">Registry Desk</h1>
-          <p className="text-muted-foreground text-xs uppercase tracking-[0.3em] font-adventure opacity-60">Declare Your Identity</p>
+          <p className="text-muted-foreground text-xs uppercase tracking-[0.3em] font-adventure opacity-60 mb-6">Declare Your Identity</p>
+          <div className="flex justify-center">
+            <ExpeditionTimer variant="block" className="w-full" />
+          </div>
         </header>
 
         {/* Suspense boundary required for useSearchParams in Next.js App Router */}

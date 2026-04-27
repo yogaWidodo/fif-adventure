@@ -8,6 +8,7 @@ import AuthGuard from '@/components/AuthGuard';
 import UsersTab from '@/components/admin/UsersTab';
 import AttendanceTab from '@/components/admin/AttendanceTab';
 import Pagination from '@/components/admin/Pagination';
+import ExpeditionTimer from '@/components/ExpeditionTimer';
 
 // GeofenceMap uses Leaflet which requires browser APIs — must be client-only
 const GeofenceMap = dynamic(() => import('@/components/admin/GeofenceMap'), {
@@ -172,7 +173,10 @@ export default function AdminDashboard() {
             <SidebarLink icon={<ClipboardList className="w-5 h-5" />} label="Attendance" active={activeTab === 'attendance'} onClick={() => setActiveTab('attendance')} />
           </nav>
 
-          <div className="mt-auto pt-8 border-t border-primary/10">
+          <div className="mt-auto pt-8 border-t border-primary/10 space-y-4">
+            <div className="px-1">
+              <ExpeditionTimer variant="block" className="!bg-black/40 scale-90 origin-left" />
+            </div>
             <SidebarLink icon={<LogOut className="w-5 h-5 text-accent" />} label="Abort Mission" active={false} onClick={logout} />
           </div>
         </aside>

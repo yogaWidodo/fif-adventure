@@ -134,7 +134,7 @@ export default function LeaderboardPage() {
       <div className="fixed inset-0 z-0 bg-[radial-gradient(circle_at_center,rgba(18,29,23,0.4)_0%,rgba(10,20,15,0.95)_100%)]" />
       <div className="fixed inset-0 z-10 jungle-overlay opacity-5 pointer-events-none" />
 
-      <div className="relative z-20 w-full max-w-4xl p-6 md:p-16">
+      <div className="relative z-20 w-full max-w-4xl py-12 px-6 md:px-16">
         <header className="mb-16 text-center">
           <motion.div
             initial={{ opacity: 0, y: -20 }}
@@ -161,7 +161,7 @@ export default function LeaderboardPage() {
               initial={{ y: -50, opacity: 0, x: '-50%' }}
               animate={{ y: 0, opacity: 1, x: '-50%' }}
               exit={{ y: -50, opacity: 0, x: '-50%' }}
-              className="fixed top-8 left-1/2 adventure-card p-6 flex items-center gap-6 bg-accent/30 z-50 border-accent/40 shadow-lg"
+              className="fixed top-20 left-1/2 adventure-card p-6 flex items-center gap-6 bg-accent/30 z-50 border-accent/40 shadow-lg"
             >
               <div className="bg-accent p-3 rounded-none torch-glow">
                 <Flame className="w-6 h-6 text-white" />

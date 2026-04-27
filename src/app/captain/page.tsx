@@ -9,6 +9,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useTimerContext } from '@/context/TimerContext';
 import AuthGuard from '@/components/AuthGuard';
 import MapPanel from '@/components/MapPanel';
+import ExpeditionTimer from '@/components/ExpeditionTimer';
 import { supabase } from '@/lib/supabase';
 import { generateUserBarcode } from '@/lib/auth';
 
@@ -19,7 +20,7 @@ export default function CaptainPortal() {
   const [discoveredActivity, setDiscoveredActivity] = useState<any>(null);
   const [discoveredHint, setDiscoveredHint] = useState<any>(null);
 
-  // Real-time subscription for discovery (Requirement 6.1)
+  // Real-time subscription for discovery
   useEffect(() => {
     if (!user?.team_id) return;
 
@@ -76,7 +77,7 @@ export default function CaptainPortal() {
 
   return (
     <AuthGuard allowedRoles={['admin', 'captain', 'vice_captain']}>
-      <div className="fixed inset-0 overflow-y-auto overflow-x-hidden flex flex-col items-center p-6 bg-black font-content">
+      <div className="fixed inset-0 flex flex-col bg-black font-content overflow-hidden">
         {/* Background */}
         <div 
           className="fixed inset-0 z-0 bg-cover bg-center opacity-30"
@@ -84,7 +85,125 @@ export default function CaptainPortal() {
         />
         <div className="fixed inset-0 z-10 jungle-overlay opacity-5 pointer-events-none" style={{ transform: 'translateZ(0)' }} />
 
-        {/* Hint Discovery Modal — Cinematic reveal for Private Hints */}
+        {/* Top Status Bar - Consistent with Member */}
+        <div className="relative z-[40] bg-black/60 backdrop-blur-md border-b border-primary/20 px-4 py-3 flex justify-between items-center">
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <Compass className="w-5 h-5 text-primary torch-glow" />
+              <h1 className="font-adventure text-sm gold-engraving tracking-widest pt-1">Captain HQ</h1>
+            </div>
+            <ExpeditionTimer variant="inline" />
+          </div>
+          <div className="flex items-center gap-3">
+             <button onClick={() => setShowQR(true)} className="adventure-card px-3 py-1 bg-primary/10 border-primary/30 flex items-center gap-2">
+               <QrCode className="w-3.5 h-3.5 text-primary" />
+               <span className="font-adventure text-[10px] text-primary pt-0.5 uppercase">TEAM QR</span>
+             </button>
+          </div>
+        </div>
+
+        <div className="relative z-20 flex-1 overflow-y-auto pb-32 pt-8 px-4 space-y-8 custom-scrollbar">
+          <header className="text-center max-w-lg mx-auto">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="bg-primary/20 p-3 rounded-full w-fit mx-auto mb-4 border border-primary/20"
+            >
+              <Sword className="text-primary w-8 h-8 torch-glow" />
+            </motion.div>
+            <h1 className="font-adventure text-4xl gold-engraving mb-2">Captain's Log</h1>
+            <p className="text-muted-foreground italic text-[11px] opacity-70 px-4">
+              "The path is treacherous, and the artifacts are well-hidden. Are you prepared to lead your team to victory?"
+            </p>
+          </header>
+
+          <div className="grid grid-cols-1 gap-6 w-full max-w-md mx-auto">
+            {/* Main Action: Scan */}
+            <Link href="/captain/scan">
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                disabled={isExpired}
+                className={`w-full adventure-card p-8 flex flex-col items-center justify-center text-center group border-primary/30 bg-primary/5 hover:bg-primary/10 transition-all shadow-[0_0_50px_rgba(var(--primary-rgb),0.2)] ${isExpired ? 'opacity-40 grayscale pointer-events-none' : ''}`}
+              >
+                <div className="bg-primary/10 p-5 rounded-full mb-6 group-hover:bg-primary/20 transition-colors border border-primary/20">
+                  <Camera className="w-10 h-10 text-primary torch-glow" />
+                </div>
+                <h3 className="font-adventure text-2xl gold-engraving mb-1 tracking-widest">Mystical Lens</h3>
+                <p className="text-[10px] uppercase font-adventure tracking-[0.3em] text-foreground/50 italic">Scan for Ancient Artifacts</p>
+              </motion.button>
+            </Link>
+
+            {/* Navigation Grid */}
+            <div className="grid grid-cols-2 gap-4">
+              <Link href="/captain/journal">
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  className="w-full adventure-card p-5 flex flex-col items-center justify-center text-center gap-2 group border-primary/10 hover:border-primary/30 transition-all"
+                >
+                  <div className="bg-primary/10 p-2.5 rounded-lg border border-primary/10 group-hover:bg-primary/20 transition-colors">
+                    <BookOpen className="w-5 h-5 text-primary" />
+                  </div>
+                  <span className="font-adventure text-[9px] uppercase tracking-[0.2em] text-primary/80">The Journal</span>
+                </motion.button>
+              </Link>
+
+              <Link href="/captain/treasury">
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  className="w-full adventure-card p-5 flex flex-col items-center justify-center text-center gap-2 group border-primary/10 hover:border-primary/30 transition-all"
+                >
+                  <div className="bg-primary/10 p-2.5 rounded-lg border border-primary/10 group-hover:bg-primary/20 transition-colors">
+                    <Gem className="w-5 h-5 text-primary" />
+                  </div>
+                  <span className="font-adventure text-[9px] uppercase tracking-[0.2em] text-primary/80">The Treasury</span>
+                </motion.button>
+              </Link>
+
+              <Link href="/leaderboard" className="col-span-2">
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  className="w-full adventure-card p-4 flex items-center justify-center gap-4 group border-primary/10 hover:border-primary/30 transition-all"
+                >
+                  <div className="bg-primary/10 p-2 rounded-lg border border-primary/10 group-hover:bg-primary/20 transition-colors">
+                    <Crown className="w-4 h-4 text-primary" />
+                  </div>
+                  <span className="font-adventure text-[10px] uppercase tracking-[0.3em] text-primary/80">Global Rankings</span>
+                </motion.button>
+              </Link>
+            </div>
+
+            <div className="mt-2">
+              <div className="adventure-card p-5 bg-red-900/10 border-red-500/20 flex items-center gap-4">
+                <div className="bg-red-500/20 p-2 rounded-full border border-red-500/30 shrink-0">
+                  <ShieldAlert className="w-5 h-5 text-red-500" />
+                </div>
+                <div>
+                    <p className="text-[9px] uppercase font-adventure text-red-400 tracking-widest mb-1 italic pt-1">Mission Protocol</p>
+                    <p className="text-[11px] text-[#f4e4bc]/60 font-content leading-relaxed">
+                      Each registration is logged once per team. Public bounties are global, secrets are hidden.
+                    </p>
+                </div>
+              </div>
+            </div>
+
+            <MapPanel title="Expedition Map" subtitle="TSC Adventure Grounds" collapsible />
+            
+            <footer className="pt-8 pb-12 text-center">
+              <button onClick={logout} className="text-[10px] uppercase font-adventure text-accent tracking-[0.3em] mb-8 hover:underline opacity-60">Abort Mission</button>
+              <div className="flex items-center gap-4 mb-2 justify-center opacity-30">
+                <span className="h-px w-12 bg-gradient-to-r from-transparent to-primary/40" />
+                <span className="font-adventure text-[8px] tracking-[0.4em] uppercase">Link Established</span>
+                <span className="h-px w-12 bg-gradient-to-l from-transparent to-primary/40" />
+              </div>
+            </footer>
+          </div>
+        </div>
+
+        {/* Discovery Modals */}
         <AnimatePresence>
           {discoveredHint && (
             <motion.div
@@ -108,7 +227,6 @@ export default function CaptainPortal() {
                      Secret Hint Unlocked!
                    </h2>
                 </div>
-
                 <div className="p-8 text-center space-y-6">
                    <div className="space-y-2">
                      <p className="text-[10px] uppercase font-adventure text-primary tracking-[0.4em] opacity-60">{discoveredHint.name}</p>
@@ -118,26 +236,15 @@ export default function CaptainPortal() {
                        </p>
                      </div>
                    </div>
-                   
-                   <p className="text-[10px] text-foreground/40 font-content italic">
-                     "Hint ini telah dicatat dalam Jurnal Kapten."
-                   </p>
                 </div>
-
                 <div className="p-6 bg-primary/5 border-t border-primary/10">
-                   <button
-                     onClick={() => setDiscoveredHint(null)}
-                     className="w-full py-4 font-adventure text-sm uppercase tracking-[0.4em] bg-primary text-primary-foreground hover:bg-primary/90 transition-all shadow-[0_10px_20px_rgba(0,0,0,0.4)] active:scale-95"
-                   >
-                     Secure Discovery
-                   </button>
+                   <button onClick={() => setDiscoveredHint(null)} className="w-full py-4 font-adventure text-sm uppercase tracking-[0.4em] bg-primary text-primary-foreground hover:bg-primary/90 transition-all shadow-[0_10px_20px_rgba(0,0,0,0.4)] active:scale-95">Secure Discovery</button>
                 </div>
               </motion.div>
             </motion.div>
           )}
         </AnimatePresence>
 
-        {/* Discovery Modal — Cinematic reveal (Requirement 6.2) */}
         <AnimatePresence>
           {discoveredActivity && (
             <motion.div
@@ -164,33 +271,17 @@ export default function CaptainPortal() {
                    <h2 className="relative z-10 font-adventure text-3xl md:text-4xl gold-engraving tracking-widest text-center px-6">
                      {discoveredActivity.name}
                    </h2>
-                   <div className="relative z-10 mt-2">
-                     <DifficultyBadge level={discoveredActivity.difficulty_level} />
-                   </div>
                 </div>
-
                 <div className="p-8 text-center space-y-6">
                    <div className="space-y-2">
                      <p className="text-[10px] uppercase font-adventure text-primary tracking-[0.4em] opacity-60">Discovery Unlocked</p>
                      <p className="text-sm font-content text-foreground/80 italic leading-relaxed">
-                       "{discoveredActivity.description || 'A new path has been revealed. Seek the artifacts within.'}"
+                       "{discoveredActivity.description || 'A new path has been revealed.'}"
                      </p>
                    </div>
-                   <div className="bg-primary/5 border border-primary/10 p-5 rounded-sm">
-                      <p className="text-[10px] uppercase font-adventure text-primary/40 tracking-widest mb-3">Field Instructions</p>
-                      <p className="text-xs font-content text-foreground/70 leading-relaxed text-left">
-                        {discoveredActivity.how_to_play || 'Follow the guidance of the Station Officer to complete this task.'}
-                      </p>
-                   </div>
                 </div>
-
                 <div className="p-6 bg-primary/5 border-t border-primary/10">
-                   <button
-                     onClick={() => setDiscoveredActivity(null)}
-                     className="w-full py-4 font-adventure text-sm uppercase tracking-[0.4em] bg-primary text-primary-foreground hover:bg-primary/90 transition-all shadow-[0_10px_20px_rgba(0,0,0,0.4)] active:scale-95"
-                   >
-                     Accept Mission
-                   </button>
+                   <button onClick={() => setDiscoveredActivity(null)} className="w-full py-4 font-adventure text-sm uppercase tracking-[0.4em] bg-primary text-primary-foreground hover:bg-primary/90 transition-all shadow-[0_10px_20px_rgba(0,0,0,0.4)] active:scale-95">Accept Mission</button>
                 </div>
               </motion.div>
             </motion.div>
@@ -220,26 +311,13 @@ export default function CaptainPortal() {
                 >
                   <X className="w-4 h-4" />
                 </button>
-                
-                {/* Digital Pass Aesthetic - Optimized */}
-                <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-black to-black opacity-80 rounded-lg pointer-events-none" />
-                <div className="absolute top-0 left-1/2 -translate-x-1/2 w-24 h-1 bg-primary/50 rounded-b" />
-                
                 <div className="relative z-10">
-                  <div className="flex items-center justify-center gap-2 mb-4">
-                    <span className="h-px w-6 bg-primary/40" />
-                    <p className="text-[10px] uppercase font-adventure tracking-[0.4em] text-primary">Captain Pass</p>
-                    <span className="h-px w-6 bg-primary/40" />
-                  </div>
-
                   <h2 className="font-adventure text-3xl gold-engraving mb-1">{user.name}</h2>
                   <p className="text-[11px] uppercase tracking-widest text-primary/70 mb-6 font-adventure flex items-center justify-center gap-2">
                     <Crown className="w-3 h-3 text-primary" />
                     Captain • FIF Expedition
                   </p>
-
                   <div className="bg-white/95 p-5 rounded-xl inline-block mb-6 border border-primary/20 relative">
-                    <div className="absolute -inset-1 border border-primary/30 rounded-xl pointer-events-none opacity-50" />
                     <QRCodeSVG
                       value={user?.id ? generateUserBarcode(user.id) : ''}
                       size={180}
@@ -247,135 +325,11 @@ export default function CaptainPortal() {
                       includeMargin={false}
                     />
                   </div>
-                  
-                  <div className="bg-primary/5 border border-primary/10 p-3 rounded-lg text-left">
-                    <p className="text-[9px] uppercase font-adventure text-primary/50 tracking-widest mb-1">Individual Pass Instructions</p>
-                    <p className="text-xs text-foreground/60 italic font-content leading-relaxed">
-                      Tunjukkan pass individu ini kepada Station Officer. Anda sekarang mewakili diri sendiri untuk akumulasi poin tim.
-                    </p>
-                  </div>
                 </div>
               </motion.div>
             </motion.div>
           )}
         </AnimatePresence>
-
-        <header className="relative z-20 mt-12 mb-12 text-center max-w-lg">
-          <motion.div
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="bg-primary/20 p-3 md:p-5 rounded-full w-fit mx-auto mb-4 md:mb-6 border border-primary/20"
-          >
-            <Compass className="text-primary w-10 h-10 md:w-12 md:h-12 torch-glow" />
-          </motion.div>
-          <h1 className="font-adventure text-4xl md:text-6xl gold-engraving mb-4">Captain's Log</h1>
-          <p className="text-muted-foreground italic text-sm opacity-70 px-4">
-            "The path is treacherous, and the artifacts are well-hidden. Are you prepared to lead your team to victory?"
-          </p>
-        </header>
-
-        <div className="relative z-20 grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-2xl px-4">
-          {/* Main Action: Scan */}
-          <Link href="/captain/scan" className="md:col-span-2">
-            <motion.button
-              whileHover={{ scale: 1.02, translateY: -5 }}
-              whileTap={{ scale: 0.98 }}
-              disabled={isExpired}
-              className={`w-full adventure-card p-6 md:p-10 flex flex-col items-center justify-center text-center group border-primary/30 bg-primary/5 hover:bg-primary/10 transition-all shadow-[0_0_50px_rgba(var(--primary-rgb),0.2)] ${isExpired ? 'opacity-40 grayscale pointer-events-none' : ''}`}
-            >
-              <div className="bg-primary/10 p-4 md:p-5 rounded-full mb-4 md:mb-6 group-hover:bg-primary/20 transition-colors border border-primary/20">
-                <Camera className="w-10 h-10 md:w-12 md:h-12 text-primary torch-glow" />
-              </div>
-              <h3 className="font-adventure text-2xl md:text-3xl gold-engraving mb-2 tracking-widest">Mystical Lens</h3>
-              <p className="text-[9px] md:text-[10px] uppercase font-adventure tracking-[0.3em] text-foreground/50 italic">Scan for Ancient Artifacts</p>
-            </motion.button>
-          </Link>
-
-          {/* Navigation Grid */}
-          <Link href="/captain/journal">
-            <motion.button
-              whileHover={{ scale: 1.05, translateY: -3 }}
-              whileTap={{ scale: 0.95 }}
-              className="w-full adventure-card p-6 flex flex-col items-center justify-center text-center gap-3 group border-primary/10 hover:border-primary/30 transition-all"
-            >
-              <div className="bg-primary/10 p-3 rounded-lg border border-primary/10 group-hover:bg-primary/20 transition-colors">
-                <BookOpen className="w-6 h-6 text-primary" />
-              </div>
-              <span className="font-adventure text-[10px] uppercase tracking-[0.2em] text-primary/80">The Journal</span>
-            </motion.button>
-          </Link>
-
-          <Link href="/captain/treasury">
-            <motion.button
-              whileHover={{ scale: 1.05, translateY: -3 }}
-              whileTap={{ scale: 0.95 }}
-              className="w-full adventure-card p-6 flex flex-col items-center justify-center text-center gap-3 group border-primary/10 hover:border-primary/30 transition-all"
-            >
-              <div className="bg-primary/10 p-3 rounded-lg border border-primary/10 group-hover:bg-primary/20 transition-colors">
-                <Gem className="w-6 h-6 text-primary" />
-              </div>
-              <span className="font-adventure text-[10px] uppercase tracking-[0.2em] text-primary/80">The Treasury</span>
-            </motion.button>
-          </Link>
-
-          <motion.button
-            onClick={() => setShowQR(true)}
-            whileHover={{ scale: 1.05, translateY: -3 }}
-            whileTap={{ scale: 0.95 }}
-            className="w-full adventure-card p-6 flex flex-col items-center justify-center text-center gap-3 group border-primary/10 hover:border-primary/30 transition-all"
-          >
-            <div className="bg-primary/10 p-3 rounded-lg border border-primary/10 group-hover:bg-primary/20 transition-colors">
-              <QrCode className="w-6 h-6 text-primary" />
-            </div>
-            <span className="font-adventure text-[10px] uppercase tracking-[0.2em] text-primary/80">Team QR</span>
-          </motion.button>
-
-          <Link href="/leaderboard">
-            <motion.button
-              whileHover={{ scale: 1.05, translateY: -3 }}
-              whileTap={{ scale: 0.95 }}
-              className="w-full adventure-card p-6 flex flex-col items-center justify-center text-center gap-3 group border-primary/10 hover:border-primary/30 transition-all"
-            >
-              <div className="bg-primary/10 p-3 rounded-lg border border-primary/10 group-hover:bg-primary/20 transition-colors">
-                <Compass className="w-6 h-6 text-primary" />
-              </div>
-              <span className="font-adventure text-[10px] uppercase tracking-[0.2em] text-primary/80">Rankings</span>
-            </motion.button>
-          </Link>
-
-          <div className="md:col-span-2 mt-4">
-            <div className="adventure-card p-6 bg-red-900/10 border-red-500/20 flex items-center gap-6">
-              <div className="bg-red-500/20 p-3 rounded-full border border-red-500/30">
-                <ShieldAlert className="w-6 h-6 text-red-500" />
-              </div>
-              <div>
-                  <p className="text-[10px] uppercase font-adventure text-red-400 tracking-widest mb-1 italic">Mission Protocol</p>
-                  <p className="text-xs text-[#f4e4bc]/60 font-content leading-relaxed">
-                    Remember: Each activity registration is logged once per team. Public bounties are global, but secrets are hidden.
-                  </p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Map Panel */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.4 }}
-          className="relative z-20 w-full max-w-2xl px-4 mt-8"
-        >
-          <MapPanel title="Expedition Map" subtitle="TSC Adventure Grounds" collapsible />
-        </motion.div>
-
-        <footer className="relative z-20 mt-12 mb-12 text-center">
-          <button onClick={logout} className="text-[10px] uppercase font-adventure text-accent tracking-[0.3em] mb-8 hover:underline opacity-60">Abort Mission</button>
-          <div className="flex items-center gap-4 mb-2 justify-center opacity-30">
-            <span className="h-px w-16 bg-gradient-to-r from-transparent to-primary/40" />
-            <span className="font-adventure text-[10px] tracking-[0.5em] uppercase">Control Link Established</span>
-            <span className="h-px w-16 bg-gradient-to-l from-transparent to-primary/40" />
-          </div>
-        </footer>
       </div>
     </AuthGuard>
   );

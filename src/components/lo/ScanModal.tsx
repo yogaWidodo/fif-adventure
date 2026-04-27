@@ -297,8 +297,7 @@ export default function ScanModal({
         setConfirmedMemberIds(prev => [...prev, userRecord.id]);
         setScannedUser({ id: userRecord.id, name: userRecord.name, role: userRecord.role });
         
-        // Return to scanning to allow next member confirmation
-        setPhase('scanning'); 
+        // Return to scanning to allow next member confirmation — BUT stay in the same UI phase
         processingRef.current = false;
         return;
       }
@@ -324,7 +323,7 @@ export default function ScanModal({
 
     processingRef.current = false;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stopCamera, activityId]);
+  }, [stopCamera, activityId, phase, team, selectedMemberIds, confirmedMemberIds, startCamera]);
 
   // ── Actions ─────────────────────────────────────────────────────────────────
 
@@ -349,14 +348,14 @@ export default function ScanModal({
 
       if (res.ok) {
         const data = await res.json();
+        // Instead of closing, we stay in a "Success/Continue" state
         setPhase('success');
-        setTimeout(() => onCheckinSuccess(team.name, data.hint_granted), 800);
+        onCheckinSuccess(team.name, data.hint_granted);
       } else {
         const data = await res.json().catch(() => ({}));
         setErrorMsg(
-          res.status === 409
-            ? 'Tim sudah check-in sebelumnya.'
-            : (data as { error?: string }).error ?? 'Gagal melakukan check-in.'
+          (data as { error?: string }).error ?? 
+          (res.status === 409 ? 'Tim sudah check-in sebelumnya.' : 'Gagal melakukan check-in.')
         );
         setPhase('error');
       }
@@ -367,14 +366,16 @@ export default function ScanModal({
   };
 
   const handleGivePointClick = () => {
-    // Only select all members if it was a TEAM scan (scannedUser is null)
-    if (!scannedUser) {
-      setSelectedMemberIds(teamMembers.map(m => m.id));
-    } else {
-      setSelectedMemberIds([scannedUser.id]);
+    // If we started from a member scan, confirm them automatically
+    if (scannedUser) {
       setConfirmedMemberIds([scannedUser.id]);
+    } else {
+      setConfirmedMemberIds([]);
     }
+    
     setPhase('giving_point');
+    // Re-start camera for scanning members one-by-one in confirmation phase
+    setTimeout(() => startCamera(), 100);
   };
 
   const submitPoint = async () => {
@@ -396,6 +397,8 @@ export default function ScanModal({
 
     try {
       setPhase('submitting');
+      await stopCamera(); // Stop camera for the final submission success
+      
       const token = await getAccessToken();
       const res = await fetch('/api/lo/score', {
         method: 'POST',
@@ -414,15 +417,13 @@ export default function ScanModal({
 
       if (res.ok) {
         setPhase('success');
-        setTimeout(() => onScoringSuccess(team.name, calculatedPoints), 800);
+        // This is the final success for this team, it will close the modal via onScoringSuccess in the parent
+        setTimeout(() => onScoringSuccess(team.name, calculatedPoints), 1200);
       } else {
         const data = await res.json().catch(() => ({}));
         setErrorMsg(
-          res.status === 409
-            ? 'Tim sudah mendapat poin di wahana ini.'
-            : res.status === 422
-              ? 'Tim belum check-in di wahana ini.'
-              : (data as { error?: string }).error ?? 'Gagal memberikan poin.'
+          (data as { error?: string }).error ?? 
+          (res.status === 409 ? 'Tim sudah mendapat poin di wahana ini.' : 'Gagal memberikan poin.')
         );
         setPhase('error');
       }
@@ -491,7 +492,7 @@ export default function ScanModal({
             </div>
 
             {/* Camera viewfinder — only shown during scanning */}
-            {(phase === 'scanning') && (
+            {(phase === 'scanning' || phase === 'giving_point') && (
               <div className="relative bg-black">
                 <div id={scannerId} className="w-full" style={{ minHeight: '280px' }} />
 
@@ -632,15 +633,9 @@ export default function ScanModal({
 
                     <div className="flex gap-3 pt-2">
                       <button
-                        onClick={() => setPhase('scanning')}
-                        className="flex-1 py-4 border border-primary/30 text-primary hover:bg-primary/5 font-adventure text-[10px] tracking-widest uppercase transition-colors"
-                      >
-                        Lanjut Scan
-                      </button>
-                      <button
                         onClick={submitPoint}
                         disabled={confirmedMemberIds.length === 0}
-                        className="flex-[2] py-4 font-adventure text-xs uppercase tracking-[0.2em] bg-primary text-primary-foreground hover:bg-primary/90 transition-all shadow-[0_10px_20px_rgba(var(--primary-rgb),0.4)] disabled:opacity-20 active:scale-95"
+                        className="w-full py-4 font-adventure text-xs uppercase tracking-[0.2em] bg-primary text-primary-foreground hover:bg-primary/90 transition-all shadow-[0_10px_20px_rgba(var(--primary-rgb),0.4)] disabled:opacity-20 active:scale-95"
                       >
                         Kirim Poin ({confirmedMemberIds.length})
                       </button>

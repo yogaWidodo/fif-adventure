@@ -76,15 +76,21 @@ export default function TeamQueueList({
 
     const scoredTeamIds = new Set((scoreLogs ?? []).map((s) => s.team_id));
 
-    const queue: TeamQueueEntry[] = registrations.map((reg) => ({
-      registration_id: reg.id,
-      team_id: reg.team_id,
-      // @ts-expect-error — Supabase join returns nested object
-      team_name: reg.teams?.name ?? 'Unknown Team',
-      created_at: reg.checked_in_at,
-      has_score: scoredTeamIds.has(reg.team_id),
-      participant_ids: Array.isArray(reg.participant_ids) ? reg.participant_ids : [],
-    }));
+    const queue: TeamQueueEntry[] = registrations
+      .filter((reg) => !scoredTeamIds.has(reg.team_id))
+      .map((reg) => {
+        // Supabase joins can return an array if the relationship is ambiguous to the generator
+        const teamsData = Array.isArray(reg.teams) ? reg.teams[0] : reg.teams;
+        
+        return {
+          registration_id: reg.id,
+          team_id: reg.team_id,
+          team_name: (teamsData as any)?.name ?? 'Unknown Team',
+          created_at: reg.checked_in_at,
+          has_score: false,
+          participant_ids: Array.isArray(reg.participant_ids) ? reg.participant_ids : [],
+        };
+      });
 
     setEntries(queue);
     onQueueLoaded?.(queue);

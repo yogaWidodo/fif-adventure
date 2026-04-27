@@ -205,11 +205,13 @@ export default function MemberPortal() {
     setLoading(false);
   };
 
-  const isActivityDone = (id: string) => 
-    registrations.some(r => r.activity_id === id) || 
-    scoreLogs.some(log => log.activity_id === id);
+  const getActivityStatus = (id: string) => {
+    if (scoreLogs.some(log => log.activity_id === id)) return 'done';
+    if (registrations.some(r => r.activity_id === id)) return 'in-progress';
+    return 'not-started';
+  };
 
-  const completedCount = activities.filter(a => isActivityDone(a.id)).length;
+  const completedCount = activities.filter(a => getActivityStatus(a.id) !== 'not-started').length;
   const progress = activities.length > 0 ? (completedCount / activities.length) * 100 : 0;
   const myRank = leaderboard.find(t => t.id === user?.team_id)?.rank ?? null;
 
@@ -417,15 +419,35 @@ export default function MemberPortal() {
                     </h3>
                     <div className="space-y-2">
                       {activities.map((act) => {
-                        const done = isActivityDone(act.id);
+                        const status = getActivityStatus(act.id);
                         return (
-                          <div key={act.id} className={`flex items-center gap-3 p-3 rounded border ${done ? 'border-primary/40 bg-primary/10 opacity-100' : 'border-white/5 bg-black/20 opacity-50'}`}>
-                            {done ? <CheckCircle2 className="w-4 h-4 text-primary" /> : <Circle className="w-4 h-4 text-white/20" />}
+                          <div key={act.id} className={`flex items-center gap-3 p-3 rounded border transition-all ${
+                            status === 'done' ? 'border-primary/40 bg-primary/10 opacity-100' : 
+                            status === 'in-progress' ? 'border-amber-500/40 bg-amber-500/5 opacity-100' :
+                            'border-white/5 bg-black/20 opacity-40'
+                          }`}>
+                            {status === 'done' ? (
+                              <CheckCircle2 className="w-4 h-4 text-primary" />
+                            ) : status === 'in-progress' ? (
+                              <div className="relative">
+                                <Circle className="w-4 h-4 text-amber-500/40" />
+                                <div className="absolute inset-0 bg-amber-500/40 rounded-full animate-ping" />
+                              </div>
+                            ) : (
+                              <Circle className="w-4 h-4 text-white/10" />
+                            )}
                             <div className="flex-1 min-w-0">
-                              <p className="font-adventure text-xs truncate">{act.name}</p>
+                              <p className={`font-adventure text-xs truncate ${status !== 'not-started' ? 'text-foreground' : 'text-foreground/60'}`}>
+                                {act.name}
+                              </p>
                               <p className="text-[9px] uppercase opacity-40 font-adventure">{act.max_points} Pts • {act.type}</p>
                             </div>
-                            {done && <span className="text-[8px] font-adventure text-primary uppercase">Done</span>}
+                            {status === 'done' && (
+                              <span className="text-[8px] font-adventure text-primary uppercase tracking-widest">Done</span>
+                            )}
+                            {status === 'in-progress' && (
+                              <span className="text-[8px] font-adventure text-amber-500 uppercase tracking-widest animate-pulse">In Progress</span>
+                            )}
                           </div>
                         );
                       })}

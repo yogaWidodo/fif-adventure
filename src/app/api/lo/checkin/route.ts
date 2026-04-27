@@ -131,7 +131,8 @@ export async function POST(request: NextRequest): Promise<Response> {
       .upsert({
         team_id,
         treasure_hunt_id: activityData.treasure_hunt_id,
-        triggered_by_activity_id: activity_id
+        triggered_by_activity_id: activity_id,
+        triggered_by_user_id: newParticipantId // Save who triggered it
       }, { onConflict: 'team_id, treasure_hunt_id' });
     
     if (!upsertError) {

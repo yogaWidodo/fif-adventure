@@ -77,13 +77,22 @@ export async function POST(request: NextRequest): Promise<Response> {
   // 5. Check if Team has checked in (Requirement 7.2)
   const { data: checkin } = await supabase
     .from('activity_registrations')
-    .select('id')
+    .select('id, participant_ids')
     .eq('team_id', team_id)
     .eq('activity_id', activity_id)
-    .single();
+    .maybeSingle();
 
   if (!checkin) {
     return Response.json({ error: 'Tim belum check-in di aktivitas ini.' }, { status: 422 });
+  }
+
+  // Ensure participants being scored are actually checked in
+  const currentQueueIds = (checkin.participant_ids as string[]) || [];
+  const incomingIds = (participant_ids as string[]) || [];
+  const validScoringIds = incomingIds.filter((id: string) => currentQueueIds.includes(id));
+  
+  if (validScoringIds.length === 0) {
+    return Response.json({ error: 'Peserta yang di-scan tidak ditemukan dalam antrean tim.' }, { status: 400 });
   }
 
   // 6. Insert Score Log
@@ -95,20 +104,31 @@ export async function POST(request: NextRequest): Promise<Response> {
       lo_id: userProfile.id,
       points_awarded: points,
       note: note as string,
-      participant_ids: Array.isArray(participant_ids) ? participant_ids : []
+      participant_ids: validScoringIds
     });
 
   if (insertError) {
-    if (insertError.code === '23505') return Response.json({ error: 'Tim ini sudah mendapatkan poin di wahana ini.' }, { status: 409 });
-    return Response.json({ error: 'Gagal menyimpan poin.' }, { status: 500 });
+    // Since we now allow multiple split-team scores, we don't strictly block by unique team_id/activity_id
+    // but the DB might still have a constraint. Let's handle generic errors.
+    return Response.json({ error: 'Gagal menyimpan poin. ' + insertError.message }, { status: 500 });
   }
 
-  // 7. Cleanup: Remove team from queue after successful scoring
-  await supabase
-    .from('activity_registrations')
-    .delete()
-    .eq('team_id', team_id)
-    .eq('activity_id', activity_id);
+  // 7. Cleanup: Remove ONLY the participants who received points from the queue
+  const remainingIds = currentQueueIds.filter((id: string) => !validScoringIds.includes(id));
+  
+  if (remainingIds.length > 0) {
+    // Some members are still in queue
+    await supabase
+      .from('activity_registrations')
+      .update({ participant_ids: remainingIds })
+      .eq('id', checkin.id);
+  } else {
+    // Everyone in this registration has been scored
+    await supabase
+      .from('activity_registrations')
+      .delete()
+      .eq('id', checkin.id);
+  }
 
   return Response.json({ success: true, message: 'Poin berhasil dicatat untuk tim.' });
 }

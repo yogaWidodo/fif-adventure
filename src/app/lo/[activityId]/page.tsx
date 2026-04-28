@@ -220,20 +220,18 @@ export default function ActivityDashboard({
                 </div>
               ) : activity ? (
                 <>
-                  <div className="flex items-start gap-4">
-                    <div className="bg-primary/10 p-3 rounded-lg border border-primary/20 mt-1">
+                  <div className="flex flex-col md:flex-row items-start gap-4">
+                    <div className="bg-primary/10 p-3 rounded-lg border border-primary/20 flex-shrink-0">
                       <MapPin className="w-6 h-6 text-primary torch-glow" />
                     </div>
-                    <div>
-                      <div className="flex items-center gap-3">
-                        <h1 className="font-adventure text-4xl md:text-5xl gold-engraving mb-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex flex-wrap items-center gap-3 mb-2">
+                        <h1 className="font-adventure text-3xl md:text-5xl gold-engraving leading-tight">
                           {activity.name}
                         </h1>
-                        <div className="mb-2">
-                          <DifficultyBadge level={activity.difficulty_level} />
-                        </div>
+                        <DifficultyBadge level={activity.difficulty_level} />
                       </div>
-                      <div className="flex items-center gap-4">
+                      <div className="flex flex-wrap items-center gap-3 md:gap-6">
                         {activity.description && (
                           <p className="text-muted-foreground text-sm italic opacity-70">
                             {activity.description}

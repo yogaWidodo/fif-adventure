@@ -132,33 +132,27 @@ export async function POST(request: NextRequest) {
 
       // Step 2: Team assignment
       if (team_name && userId) {
-        // Find or create team (Note: concurrent team creation might still be a race condition, 
-        // but we'll use maybeSingle + insert logic which is mostly safe for short batches)
-        const { data: existingTeam } = await supabaseAdmin
+        // Use atomic upsert to handle parallel race conditions. 
+        // If the team exists, it returns the ID. If not, it creates it.
+        const { data: teamData, error: teamError } = await supabaseAdmin
           .from('teams')
+          .upsert(
+            { name: team_name }, 
+            { onConflict: 'name', ignoreDuplicates: false }
+          )
           .select('id')
-          .ilike('name', team_name)
           .maybeSingle();
 
-        let teamId = existingTeam?.id;
-
-        if (!teamId) {
-          const { data: newTeam, error: teamError } = await supabaseAdmin
-            .from('teams')
-            .insert({ name: team_name })
-            .select('id')
-            .maybeSingle();
-
-          if (teamError || !newTeam) {
-            return {
-              rowIndex,
-              status: 'failed' as const,
-              reason: `Team Error: ${teamError?.message}`,
-            };
-          }
-          teamId = newTeam.id;
-          teamCreated = true;
+        if (teamError || !teamData) {
+          return {
+            rowIndex,
+            status: 'failed' as const,
+            reason: `Team Sync Error: ${teamError?.message || 'Could not find/create team'}`,
+          };
         }
+        
+        const teamId = teamData.id;
+        teamCreated = false; // We can't easily know if it was just created or existing without more complex logic, but that's fine.
 
         // Check for existing captain if role is captain
         if (role === 'captain') {

@@ -3,7 +3,7 @@
 import { useState, useRef } from 'react';
 import { parseTeamCSV, type MemberRecord } from '@/lib/auth';
 import { Upload, AlertTriangle, CheckCircle, X, FileText, Loader2 } from 'lucide-react';
-
+import { motion } from 'framer-motion';
 interface CSVImporterProps {
   teamId: string;
   teamName?: string;
@@ -22,7 +22,9 @@ export default function CSVImporter({ teamId, teamName, onImportComplete }: CSVI
   const [records, setRecords] = useState<MemberRecord[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
   const [importing, setImporting] = useState(false);
-  const [importResult, setImportResult] = useState<{ success: number; failed: number } | null>(null);
+  const [progress, setProgress] = useState(0);
+  const [importResult, setImportResult] = useState<{ success: number; failed: number; failedRows: any[] } | null>(null);
+  const [currentBatchInfo, setCurrentBatchInfo] = useState<string>('');
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -44,44 +46,75 @@ export default function CSVImporter({ teamId, teamName, onImportComplete }: CSVI
   const handleImport = async () => {
     if (records.length === 0) return;
     setImporting(true);
+    setImportResult(null);
+    setProgress(0);
 
-    try {
-      // Map MemberRecord → ParsedUserRow shape expected by /api/users/bulk
-      const rows = records.map((r) => ({
-        name: r.name,
-        npk: r.npk,
-        role: r.role,
-        birth_date: r.birth_date,
-        team_name: teamName ?? '',
-      }));
+    const batchSize = 25;
+    const totalRecords = records.length;
+    let totalSuccess = 0;
+    let totalFailed = 0;
+    const allFailedRows: any[] = [];
 
-      const res = await fetch('/api/users/bulk', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rows }),
-      });
+    // Map MemberRecord → ParsedUserRow shape expected by /api/users/bulk
+    const allRows = records.map((r) => ({
+      name: r.name,
+      npk: r.npk,
+      role: r.role,
+      birth_date: r.birth_date,
+      team_name: teamName ?? '',
+    }));
 
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        setImportResult({ success: 0, failed: records.length });
-        setImporting(false);
-        return;
+    for (let i = 0; i < allRows.length; i += batchSize) {
+      const batch = allRows.slice(i, i + batchSize);
+      const batchIndex = Math.floor(i / batchSize) + 1;
+      const totalBatches = Math.ceil(allRows.length / batchSize);
+      
+      setCurrentBatchInfo(`Batch ${batchIndex} of ${totalBatches}...`);
+
+      try {
+        const res = await fetch('/api/users/bulk', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ rows: batch }),
+        });
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ error: 'Unknown server error' }));
+          totalFailed += batch.length;
+          allFailedRows.push({ row: `Batch ${batchIndex}`, reason: err.error || 'Server error' });
+        } else {
+          const { report } = await res.json();
+          totalSuccess += (report?.usersCreated ?? 0) + (report?.usersSkipped ?? 0) + (report?.assignmentsSuccess ?? 0);
+          totalFailed += report?.failed ?? 0;
+          if (report?.failedRows) {
+            allFailedRows.push(...report.failedRows.map((fr: any) => ({
+              row: i + fr.row,
+              reason: fr.reason
+            })));
+          }
+        }
+      } catch (err: any) {
+        totalFailed += batch.length;
+        allFailedRows.push({ row: `Batch ${batchIndex}`, reason: err.message || 'Network error' });
       }
 
-      const { report } = await res.json();
-      const successCount = (report?.usersCreated ?? 0) + (report?.usersSkipped ?? 0) + (report?.assignmentsSuccess ?? 0);
-      const failedCount = report?.failed ?? records.length;
-
-      setImportResult({ success: successCount, failed: failedCount });
-
-      if (successCount > 0 && onImportComplete) {
-        onImportComplete();
-      }
-    } catch {
-      setImportResult({ success: 0, failed: records.length });
+      // Update progress
+      const processed = Math.min(i + batchSize, totalRecords);
+      setProgress(Math.round((processed / totalRecords) * 100));
     }
 
+    setImportResult({ 
+      success: totalSuccess, 
+      failed: totalFailed, 
+      failedRows: allFailedRows 
+    });
+
+    if (totalSuccess > 0 && onImportComplete) {
+      onImportComplete();
+    }
+    
     setImporting(false);
+    setCurrentBatchInfo('');
   };
 
   const handleReset = () => {
@@ -191,21 +224,68 @@ export default function CSVImporter({ teamId, teamName, onImportComplete }: CSVI
 
       {/* Import Result */}
       {importResult && (
-        <div className={`border p-4 flex items-center gap-3 ${
+        <div className={`border p-4 space-y-4 ${
           importResult.failed === 0
             ? 'border-green-500/30 bg-green-500/5'
             : 'border-yellow-500/30 bg-yellow-500/5'
         }`}>
-          <CheckCircle className={`w-5 h-5 ${importResult.failed === 0 ? 'text-green-400' : 'text-yellow-400'}`} />
-          <div>
-            <p className="font-adventure text-xs uppercase tracking-widest text-foreground/80">
-              Import Complete
-            </p>
-            <p className="text-[11px] text-muted-foreground mt-0.5">
-              {importResult.success} imported successfully
-              {importResult.failed > 0 && `, ${importResult.failed} failed`}
-            </p>
+          <div className="flex items-center gap-3">
+            <CheckCircle className={`w-5 h-5 ${importResult.failed === 0 ? 'text-green-400' : 'text-yellow-400'}`} />
+            <div>
+              <p className="font-adventure text-xs uppercase tracking-widest text-foreground/80">
+                Import Process Finished
+              </p>
+              <p className="text-[11px] text-muted-foreground mt-0.5">
+                <span className="text-green-400">{importResult.success}</span> successfully processed, 
+                <span className="text-red-400 ml-1">{importResult.failed}</span> failed
+              </p>
+            </div>
           </div>
+
+          {importResult.failedRows.length > 0 && (
+            <div className="border-t border-primary/10 pt-3 mt-3">
+              <p className="text-[10px] font-adventure uppercase tracking-widest text-red-400 mb-2 flex items-center gap-2">
+                <AlertTriangle className="w-3 h-3" />
+                Failure Details
+              </p>
+              <div className="max-h-32 overflow-y-auto space-y-1 pr-2 custom-scrollbar">
+                {importResult.failedRows.map((err, i) => (
+                  <div key={i} className="flex justify-between items-start gap-4 text-[10px] bg-black/20 p-2 rounded-sm">
+                    <span className="text-muted-foreground font-mono">Row {err.row}</span>
+                    <span className="text-red-300 text-right">{err.reason}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          
+          <button 
+            onClick={handleReset}
+            className="w-full py-2 bg-primary/5 hover:bg-primary/10 text-[10px] font-adventure uppercase tracking-[0.2em] text-primary transition-all border border-primary/20"
+          >
+            Start New Import
+          </button>
+        </div>
+      )}
+
+      {/* Progress Indicator */}
+      {importing && (
+        <div className="space-y-3 bg-black/40 p-4 border border-primary/20 rounded-lg animate-pulse">
+          <div className="flex justify-between items-center text-[10px] font-adventure uppercase tracking-widest text-primary/80">
+            <span>{currentBatchInfo}</span>
+            <span>{progress}%</span>
+          </div>
+          <div className="h-1.5 w-full bg-primary/10 rounded-full overflow-hidden">
+            <motion.div 
+              className="h-full bg-primary shadow-[0_0_10px_rgba(var(--primary-rgb),0.5)]"
+              initial={{ width: 0 }}
+              animate={{ width: `${progress}%` }}
+              transition={{ duration: 0.3 }}
+            />
+          </div>
+          <p className="text-[9px] text-muted-foreground italic text-center">
+            Processing massive expedition roster... Please do not close this window.
+          </p>
         </div>
       )}
 

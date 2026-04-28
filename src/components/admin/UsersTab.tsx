@@ -573,33 +573,35 @@ export default function UsersTab() {
   const [showBulkUpload, setShowBulkUpload] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const PAGE_SIZE = 10;
+  const [totalUsers, setTotalUsers] = useState(0);
+  const [countsByRole, setCountsByRole] = useState<Record<string, number>>({});
 
   const fetchUsers = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/users');
+      const params = new URLSearchParams({
+        page: currentPage.toString(),
+        limit: PAGE_SIZE.toString(),
+        search: searchQuery,
+        role: activeRoleTab,
+      });
+      const res = await fetch(`/api/users?${params.toString()}`);
       if (!res.ok) throw new Error('Failed to fetch users');
       const data = await res.json();
       setUsers(data.users ?? []);
+      setTotalUsers(data.total ?? 0);
+      setCountsByRole(data.roleCounts ?? {});
     } catch (e) {
       console.error('[UsersTab] fetch error:', e);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [currentPage, searchQuery, activeRoleTab]);
+
 
   useEffect(() => { fetchUsers(); }, [fetchUsers]);
 
-  const filtered = users.filter(u => {
-    const matchesSearch = !searchQuery.trim() ||
-      u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      u.npk.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesRole = activeRoleTab === 'all' || u.role === activeRoleTab;
-    return matchesSearch && matchesRole;
-  });
-
-  const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
-  const paginated = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+  const totalPages = Math.ceil(totalUsers / PAGE_SIZE);
 
   // Reset to first page when filtering
   useEffect(() => {
@@ -610,13 +612,11 @@ export default function UsersTab() {
     { key: 'all', label: 'All' },
     { key: 'admin', label: 'Admin' },
     { key: 'captain', label: 'Captain' },
-
     { key: 'member', label: 'Member' },
     { key: 'lo', label: 'LO' },
   ];
 
-  const getTabCount = (key: string) =>
-    key === 'all' ? users.length : users.filter(u => u.role === key).length;
+  const getTabCount = (key: string) => countsByRole[key] || 0;
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="p-10 space-y-8">
@@ -639,7 +639,7 @@ export default function UsersTab() {
           <input type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search NPK or name..." className="w-full bg-transparent border-b border-primary/20 pl-8 py-2 text-sm focus:outline-none focus:border-primary transition-all" />
         </div>
         <p className="text-[10px] font-adventure uppercase tracking-widest text-foreground/40">
-          {filtered.length} users
+          {totalUsers} users
         </p>
       </div>
 
@@ -657,14 +657,14 @@ export default function UsersTab() {
             <Loader2 className="w-8 h-8 animate-spin text-primary/40 mb-2" />
             <span className="text-[10px] font-adventure uppercase">Memuat data...</span>
           </div>
-        ) : filtered.length === 0 ? (
+        ) : users.length === 0 ? (
           <div className="p-20 text-center opacity-30">
             <Compass className="w-12 h-12 mx-auto mb-4" />
             <p className="font-adventure text-sm tracking-widest lowercase">no explorers found</p>
           </div>
         ) : (
           <div className="space-y-2">
-            {paginated.map(user => (
+            {users.map(user => (
               <div key={user.id} className="adventure-card p-4 flex items-center justify-between group">
                 <div className="flex items-center gap-6">
                   <div className="text-left">

@@ -10,11 +10,17 @@ function getAdminClient() {
   return createClient(supabaseUrl, supabaseServiceKey);
 }
 
-// GET /api/users — list all users with team name
-export async function GET() {
+// GET /api/users — list users with pagination, search, and filtering
+export async function GET(request: NextRequest) {
+  const { searchParams } = new URL(request.url);
+  const search = searchParams.get('search') || '';
+  const role = searchParams.get('role') || 'all';
+  const page = parseInt(searchParams.get('page') || '1');
+  const limit = parseInt(searchParams.get('limit') || '10');
+
   const supabaseAdmin = getAdminClient();
 
-  const { data, error } = await supabaseAdmin
+  let query = supabaseAdmin
     .from('users')
     .select(`
       id,
@@ -34,8 +40,23 @@ export async function GET() {
           name
         )
       )
-    `)
-    .order('created_at', { ascending: false });
+    `, { count: 'exact' });
+
+  // Filters
+  if (role !== 'all') {
+    query = query.eq('role', role);
+  }
+  if (search) {
+    query = query.or(`name.ilike.%${search}%,npk.ilike.%${search}%`);
+  }
+
+  // Pagination
+  const from = (page - 1) * limit;
+  const to = from + limit - 1;
+
+  const { data, error, count } = await query
+    .order('created_at', { ascending: false })
+    .range(from, to);
 
   if (error) {
     console.error('[GET /api/users] error:', error.message);
@@ -62,7 +83,25 @@ export async function GET() {
     };
   });
 
-  return Response.json({ users });
+  // Get accurate counts for each role from database (unfiltered by search/role)
+  const roles = ['admin', 'captain', 'member', 'lo'];
+  const countPromises = roles.map(r => 
+    supabaseAdmin.from('users').select('*', { count: 'exact', head: true }).eq('role', r)
+  );
+  const totalCountPromise = supabaseAdmin.from('users').select('*', { count: 'exact', head: true });
+  
+  const [countResults, totalResult] = await Promise.all([
+    Promise.all(countPromises),
+    totalCountPromise
+  ]);
+
+  const roleCounts: Record<string, number> = { all: totalResult.count || 0 };
+  
+  roles.forEach((r, i) => {
+    roleCounts[r] = countResults[i].count || 0;
+  });
+
+  return Response.json({ users, total: count || 0, roleCounts });
 }
 
 // POST /api/users — create a single user

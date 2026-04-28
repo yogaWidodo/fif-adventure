@@ -220,18 +220,35 @@ export default function TeamsTab() {
   const [editSlogan, setEditSlogan] = useState('');
   const [editSaving, setEditSaving] = useState(false);
 
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalTeams, setTotalTeams] = useState(0);
+  const itemsPerPage = 20;
+
   const fetchTeams = useCallback(async () => {
     setLoading(true);
+    
+    // Get total count first
+    const { count } = await supabase
+      .from('teams')
+      .select('*', { count: 'exact', head: true });
+    
+    setTotalTeams(count || 0);
+
+    const from = (currentPage - 1) * itemsPerPage;
+    const to = from + itemsPerPage - 1;
+
     const { data: teamsData } = await supabase
       .from('teams')
       .select('*')
-      .order('total_points', { ascending: false });
+      .order('total_points', { ascending: false })
+      .range(from, to);
 
     if (!teamsData) { setLoading(false); return; }
 
     const enriched: TeamWithDetails[] = await Promise.all(
       teamsData.map(async (team) => {
-        const { count } = await supabase
+        const { count: mCount } = await supabase
           .from('users')
           .select('*', { count: 'exact', head: true })
           .eq('team_id', team.id);
@@ -246,13 +263,13 @@ export default function TeamsTab() {
           captainName = cap?.name;
         }
 
-        return { ...team, member_count: count || 0, captain_name: captainName };
+        return { ...team, member_count: mCount || 0, captain_name: captainName };
       })
     );
 
     setTeams(enriched);
     setLoading(false);
-  }, []);
+  }, [currentPage]);
 
   useEffect(() => { fetchTeams(); }, [fetchTeams]);
 
@@ -262,7 +279,8 @@ export default function TeamsTab() {
     const { data } = await supabase
       .from('users')
       .select('id, name, npk, role, birth_date, team_id')
-      .in('team_id', teamList.map(t => t.id));
+      .in('team_id', teamList.map(t => t.id))
+      .limit(5000);
     if (!data) return;
     const map: Record<string, Member[]> = {};
     for (const m of data) {
@@ -278,7 +296,8 @@ export default function TeamsTab() {
     const { data } = await supabase
       .from('score_logs')
       .select('id, team_id, activity_id, points_awarded, created_at, participant_ids')
-      .in('team_id', teamList.map(t => t.id));
+      .in('team_id', teamList.map(t => t.id))
+      .limit(10000);
 
     if (!data) return;
     const map: Record<string, ScoreLog[]> = {};
@@ -405,107 +424,133 @@ export default function TeamsTab() {
           <p className="text-muted-foreground max-w-sm italic">Establish your first expedition team to begin.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 pb-24">
-          {teams.map((team, idx) => {
-            const members = membersMap[team.id] ?? [];
-            const sorted = [...members].sort(
-              (a, b) => (rolePriority[a.role] ?? 9) - (rolePriority[b.role] ?? 9)
-            );
-            const captain = sorted.find(m => m.role === 'captain');
-            const rest = sorted.filter(m => m.role !== 'captain');
+        <div className="space-y-10">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 pb-12">
+            {teams.map((team, idx) => {
+              const members = membersMap[team.id] ?? [];
+              const sorted = [...members].sort(
+                (a, b) => (rolePriority[a.role] ?? 9) - (rolePriority[b.role] ?? 9)
+              );
+              const captain = sorted.find(m => m.role === 'captain');
+              const rest = sorted.filter(m => m.role !== 'captain');
 
-            return (
-              <motion.div
-                key={team.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: idx * 0.05 }}
-                className="adventure-card group relative bg-card/40 backdrop-blur-sm border-primary/20 hover:border-primary/40 transition-all flex flex-col overflow-hidden h-fit"
-              >
-                {/* Team Header */}
-                <div className="p-5 border-b border-primary/10 bg-primary/5">
-                  <div className="flex items-start justify-between gap-4 mb-3">
-                    <div className="min-w-0">
-                      <h3 className="font-adventure text-lg gold-engraving leading-tight truncate group-hover:scale-[1.02] transition-transform origin-left">
-                        {team.name}
-                      </h3>
-                      {team.slogan && (
-                        <p className="text-[9px] italic text-primary/40 mt-1 line-clamp-1">"{team.slogan}"</p>
+              return (
+                <motion.div
+                  key={team.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: idx * 0.05 }}
+                  className="adventure-card group relative bg-card/40 backdrop-blur-sm border-primary/20 hover:border-primary/40 transition-all flex flex-col overflow-hidden h-fit"
+                >
+                  {/* Team Header */}
+                  <div className="p-5 border-b border-primary/10 bg-primary/5">
+                    <div className="flex items-start justify-between gap-4 mb-3">
+                      <div className="min-w-0">
+                        <h3 className="font-adventure text-lg gold-engraving leading-tight truncate group-hover:scale-[1.02] transition-transform origin-left">
+                          {team.name}
+                        </h3>
+                        {team.slogan && (
+                          <p className="text-[9px] italic text-primary/40 mt-1 line-clamp-1">"{team.slogan}"</p>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => openEditModal(team)}
+                        className="shrink-0 p-1.5 rounded bg-primary/5 hover:bg-primary/20 text-primary/40 hover:text-primary transition-all border border-primary/10"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-1.5">
+                        <Users className="w-3 h-3 text-primary/60" />
+                        <span className="text-[10px] font-adventure uppercase tracking-widest text-primary/70">
+                          {team.member_count} Members
+                        </span>
+                      </div>
+                      <div className="bg-primary/20 border border-primary/30 px-2 py-0.5 rounded shadow-[0_0_10px_rgba(var(--primary-rgb),0.2)]">
+                        <span className="text-[10px] font-adventure text-primary tracking-widest">
+                          {team.total_points} PTS
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Team Roster Section */}
+                  <div className="p-4 space-y-3 bg-black/10">
+                    {/* Captain Slot */}
+                    <div>
+                      <p className="text-[8px] font-adventure uppercase tracking-[0.2em] text-primary/40 mb-2 px-1">Command</p>
+                      {captain ? (
+                        <MemberCard 
+                          member={captain} 
+                          teamId={team.id} 
+                          onAssign={handleAssignCaptain} 
+                          teamScoreLogs={scoreLogsMap[team.id] ?? []}
+                          teamTotalPoints={team.total_points}
+                        />
+                      ) : (
+                        <div className="border border-dashed border-primary/10 p-3 rounded bg-black/20 text-center">
+                          <p className="text-[8px] text-primary/20 font-adventure uppercase tracking-widest">Awaiting Captain</p>
+                        </div>
                       )}
                     </div>
-                    <button
-                      onClick={() => openEditModal(team)}
-                      className="shrink-0 p-1.5 rounded bg-primary/5 hover:bg-primary/20 text-primary/40 hover:text-primary transition-all border border-primary/10"
-                    >
-                      <Edit2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
 
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-1.5">
-                      <Users className="w-3 h-3 text-primary/60" />
-                      <span className="text-[10px] font-adventure uppercase tracking-widest text-primary/70">
-                        {team.member_count} Members
-                      </span>
-                    </div>
-                    <div className="bg-primary/20 border border-primary/30 px-2 py-0.5 rounded shadow-[0_0_10px_rgba(var(--primary-rgb),0.2)]">
-                      <span className="text-[10px] font-adventure text-primary tracking-widest">
-                        {team.total_points} PTS
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Team Roster Section */}
-                <div className="p-4 space-y-3 bg-black/10">
-                  {/* Captain Slot */}
-                  <div>
-                    <p className="text-[8px] font-adventure uppercase tracking-[0.2em] text-primary/40 mb-2 px-1">Command</p>
-                    {captain ? (
-                      <MemberCard 
-                        member={captain} 
-                        teamId={team.id} 
-                        onAssign={handleAssignCaptain} 
-                        teamScoreLogs={scoreLogsMap[team.id] ?? []}
-                        teamTotalPoints={team.total_points}
-                      />
-                    ) : (
-                      <div className="border border-dashed border-primary/10 p-3 rounded bg-black/20 text-center">
-                        <p className="text-[8px] text-primary/20 font-adventure uppercase tracking-widest">Awaiting Captain</p>
+                    {/* Other Members */}
+                    {rest.length > 0 && (
+                      <div>
+                        <div className="flex items-center gap-2 mb-2 px-1">
+                           <p className="text-[8px] font-adventure uppercase tracking-[0.2em] text-foreground/20">Expeditioners</p>
+                           <span className="h-px flex-1 bg-primary/5" />
+                        </div>
+                        <div className="space-y-1 max-h-[200px] overflow-y-auto custom-scrollbar pr-1">
+                          {rest.map(m => (
+                            <MemberCard 
+                              key={m.id} 
+                              member={m} 
+                              teamId={team.id} 
+                              onAssign={handleAssignCaptain} 
+                              teamScoreLogs={scoreLogsMap[team.id] ?? []}
+                              teamTotalPoints={team.total_points}
+                            />
+                          ))}
+                        </div>
                       </div>
                     )}
                   </div>
 
-                  {/* Other Members */}
-                  {rest.length > 0 && (
-                    <div>
-                      <div className="flex items-center gap-2 mb-2 px-1">
-                         <p className="text-[8px] font-adventure uppercase tracking-[0.2em] text-foreground/20">Expeditioners</p>
-                         <span className="h-px flex-1 bg-primary/5" />
-                      </div>
-                      <div className="space-y-1 max-h-[200px] overflow-y-auto custom-scrollbar pr-1">
-                        {rest.map(m => (
-                          <MemberCard 
-                            key={m.id} 
-                            member={m} 
-                            teamId={team.id} 
-                            onAssign={handleAssignCaptain} 
-                            teamScoreLogs={scoreLogsMap[team.id] ?? []}
-                            teamTotalPoints={team.total_points}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
+                  {/* Card Background Decoration */}
+                  <div className="absolute -bottom-4 -right-4 opacity-[0.02] pointer-events-none group-hover:opacity-[0.05] transition-opacity">
+                     <Compass className="w-24 h-24 rotate-12" />
+                  </div>
+                </motion.div>
+              );
+            })}
+          </div>
 
-                {/* Card Background Decoration */}
-                <div className="absolute -bottom-4 -right-4 opacity-[0.02] pointer-events-none group-hover:opacity-[0.05] transition-opacity">
-                   <Compass className="w-24 h-24 rotate-12" />
-                </div>
-              </motion.div>
-            );
-          })}
+          {/* Pagination Controls */}
+          {totalTeams > itemsPerPage && (
+            <div className="flex justify-center items-center gap-6 pb-24 border-t border-primary/10 pt-8">
+              <button
+                onClick={() => { setCurrentPage(p => Math.max(1, p - 1)); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+                disabled={currentPage === 1}
+                className="px-6 py-2 text-[10px] font-adventure uppercase tracking-[0.3em] border border-primary/20 text-primary hover:bg-primary/10 transition-all disabled:opacity-20 disabled:hover:bg-transparent"
+              >
+                Previous Page
+              </button>
+              <div className="flex flex-col items-center">
+                <span className="text-[10px] font-adventure text-primary/60 uppercase tracking-widest mb-1">Fleet Sector</span>
+                <span className="text-xl font-adventure gold-engraving">{currentPage} <span className="text-sm opacity-40">/ {Math.ceil(totalTeams / itemsPerPage)}</span></span>
+              </div>
+              <button
+                onClick={() => { setCurrentPage(p => p + 1); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+                disabled={currentPage >= Math.ceil(totalTeams / itemsPerPage)}
+                className="px-6 py-2 text-[10px] font-adventure uppercase tracking-[0.3em] border border-primary/20 text-primary hover:bg-primary/10 transition-all disabled:opacity-20 disabled:hover:bg-transparent"
+              >
+                Next Page
+              </button>
+            </div>
+          )}
         </div>
       )}
 

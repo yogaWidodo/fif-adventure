@@ -10,6 +10,7 @@ import { useAuth } from '@/context/AuthContext';
 import AuthGuard from '@/components/AuthGuard';
 import TeamQueueList from '@/components/lo/TeamQueueList';
 import TeamHistoryList from '@/components/lo/TeamHistoryList';
+import Copyright from '@/components/Copyright';
 import ScanModal from '@/components/lo/ScanModal';
 
 interface ActivityInfo {
@@ -316,6 +317,7 @@ export default function ActivityDashboard({
               </div>
             </motion.div>
           )}
+          <Copyright />
         </div>
 
         {/* Toast notification — fixed overlay — Requirements 6.6, 7.7 */}

@@ -10,6 +10,7 @@ import { useTimerContext } from '@/context/TimerContext';
 import AuthGuard from '@/components/AuthGuard';
 import MapPanel from '@/components/MapPanel';
 import ExpeditionTimer from '@/components/ExpeditionTimer';
+import Copyright from '@/components/Copyright';
 import { supabase } from '@/lib/supabase';
 import { generateUserBarcode } from '@/lib/auth';
 
@@ -200,13 +201,7 @@ export default function CaptainPortal() {
 
             <MapPanel title="Expedition Map" subtitle="TSC Adventure Grounds" collapsible />
 
-            <footer className="pt-8 pb-12 text-center">
-              <div className="flex items-center gap-4 mb-2 justify-center opacity-30">
-                <span className="h-px w-12 bg-gradient-to-r from-transparent to-primary/40" />
-                <span className="font-adventure text-[8px] tracking-[0.4em] uppercase">Link Established</span>
-                <span className="h-px w-12 bg-gradient-to-l from-transparent to-primary/40" />
-              </div>
-            </footer>
+            <Copyright />
           </div>
         </div>
 

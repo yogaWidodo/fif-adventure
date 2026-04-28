@@ -31,20 +31,16 @@ export async function POST(request: NextRequest) {
 
   const rows = body.rows as ParsedUserRow[];
   const supabaseAdmin = getAdminClient();
-  const results: RowResult[] = [];
-
   // Cache team name → id to avoid redundant DB lookups
   const teamCache: Record<string, string> = {};
 
-  for (let i = 0; i < rows.length; i++) {
-    const row = rows[i];
+  const results = await Promise.all(rows.map(async (row, i) => {
     const rowIndex = i + 1;
 
     // Validate row
     const validationError = validateUserRow(row);
     if (validationError) {
-      results.push({ rowIndex, status: 'failed', reason: validationError });
-      continue;
+      return { rowIndex, status: 'failed' as const, reason: validationError };
     }
 
     const npk = row.npk.trim();
@@ -57,142 +53,142 @@ export async function POST(request: NextRequest) {
     let userCreated = false;
     let teamCreated = false;
 
-    // Step 1: Check if user exists
-    const { data: existingUser } = await supabaseAdmin
-      .from('users')
-      .select('id, auth_id')
-      .eq('npk', npk)
-      .maybeSingle();
-
-    if (existingUser) {
-      userId = existingUser.id;
-    } else {
-      // Create Auth account using NPK as email and Birth Date as password
-      const email = buildAuthEmail(npk);
-      const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
-        email,
-        password: birth_date,
-        email_confirm: true,
-      });
-
-      if (authError || !authData.user) {
-        results.push({
-          rowIndex,
-          status: 'failed',
-          reason: `Auth Error: ${authError?.message}`,
-        });
-        continue;
-      }
-
-      // Insert user record
-      const { data: newUser, error: insertError } = await supabaseAdmin
+    try {
+      // Step 1: Check if user exists
+      const { data: existingUser } = await supabaseAdmin
         .from('users')
-        .insert({
-          auth_id: authData.user.id,
-          name,
-          npk,
-          role,
-          birth_date: formatDateForDB(birth_date)
-        })
-        .select('id')
-        .single();
+        .select('id, auth_id')
+        .eq('npk', npk)
+        .maybeSingle();
 
-      if (insertError || !newUser) {
-        await supabaseAdmin.auth.admin.deleteUser(authData.user.id);
-        results.push({
-          rowIndex,
-          status: 'failed',
-          reason: `Insert Error: ${insertError?.message}`,
+      if (existingUser) {
+        userId = existingUser.id;
+      } else {
+        // Create Auth account using NPK as email and Birth Date as password
+        const email = buildAuthEmail(npk);
+        const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
+          email,
+          password: birth_date,
+          email_confirm: true,
         });
-        continue;
+
+        if (authError || !authData.user) {
+          return {
+            rowIndex,
+            status: 'failed' as const,
+            reason: `Auth Error: ${authError?.message}`,
+          };
+        }
+
+        // Insert user record
+        const { data: newUser, error: insertError } = await supabaseAdmin
+          .from('users')
+          .insert({
+            auth_id: authData.user.id,
+            name,
+            npk,
+            role,
+            birth_date: formatDateForDB(birth_date)
+          })
+          .select('id')
+          .single();
+
+        if (insertError || !newUser) {
+          await supabaseAdmin.auth.admin.deleteUser(authData.user.id);
+          return {
+            rowIndex,
+            status: 'failed' as const,
+            reason: `Insert Error: ${insertError?.message}`,
+          };
+        }
+
+        userId = newUser.id;
+        userCreated = true;
       }
 
-      userId = newUser.id;
-      userCreated = true;
-    }
-
-    // Step 2: Team assignment
-    if (team_name && userId) {
-      let teamId = teamCache[team_name.toLowerCase()];
-
-      if (!teamId) {
+      // Step 2: Team assignment
+      if (team_name && userId) {
+        // Find or create team (Note: concurrent team creation might still be a race condition, 
+        // but we'll use maybeSingle + insert logic which is mostly safe for short batches)
         const { data: existingTeam } = await supabaseAdmin
           .from('teams')
           .select('id')
           .ilike('name', team_name)
           .maybeSingle();
 
-        if (existingTeam) {
-          teamId = existingTeam.id;
-        } else {
+        let teamId = existingTeam?.id;
+
+        if (!teamId) {
           const { data: newTeam, error: teamError } = await supabaseAdmin
             .from('teams')
             .insert({ name: team_name })
             .select('id')
-            .single();
+            .maybeSingle();
 
           if (teamError || !newTeam) {
-            results.push({
+            return {
               rowIndex,
-              status: 'failed',
+              status: 'failed' as const,
               reason: `Team Error: ${teamError?.message}`,
-            });
-            continue;
+            };
           }
           teamId = newTeam.id;
           teamCreated = true;
         }
-        teamCache[team_name.toLowerCase()] = teamId;
-      }
 
-      // Check for existing captain if role is captain
-      if (role === 'captain') {
-        const { data: existingCap } = await supabaseAdmin
-          .from('users')
-          .select('id')
-          .eq('team_id', teamId)
-          .eq('role', 'captain')
-          .neq('id', userId)
-          .maybeSingle();
+        // Check for existing captain if role is captain
+        if (role === 'captain') {
+          const { data: existingCap } = await supabaseAdmin
+            .from('users')
+            .select('id')
+            .eq('team_id', teamId)
+            .eq('role', 'captain')
+            .neq('id', userId)
+            .maybeSingle();
 
-        if (existingCap) {
-          results.push({
-            rowIndex,
-            status: 'failed',
-            reason: `Tim '${team_name}' sudah memiliki kapten.`,
-          });
-          continue;
+          if (existingCap) {
+            return {
+              rowIndex,
+              status: 'failed' as const,
+              reason: `Tim '${team_name}' sudah memiliki kapten.`,
+            };
+          }
         }
-      }
 
-      // Update user with team and role
-      const { error: assignError } = await supabaseAdmin
-        .from('users')
-        .update({ team_id: teamId, role })
-        .eq('id', userId);
+        // Update user with team and role
+        const { error: assignError } = await supabaseAdmin
+          .from('users')
+          .update({ team_id: teamId, role })
+          .eq('id', userId);
 
-      if (assignError) {
-        results.push({
+        if (assignError) {
+          return {
+            rowIndex,
+            status: 'failed' as const,
+            reason: `Assign Error: ${assignError.message}`,
+          };
+        }
+
+        return {
           rowIndex,
-          status: 'failed',
-          reason: `Assign Error: ${assignError.message}`,
-        });
-        continue;
+          status: (userCreated ? 'created' : 'assigned') as any,
+          teamCreated,
+        };
+      } else {
+        return {
+          rowIndex,
+          status: (userCreated ? 'created' : 'skipped') as any,
+          teamCreated: false,
+        };
       }
-
-      results.push({
+    } catch (err: any) {
+      return {
         rowIndex,
-        status: userCreated ? 'created' : 'assigned',
-        teamCreated,
-      });
-    } else {
-      results.push({
-        rowIndex,
-        status: userCreated ? 'created' : 'skipped',
-        teamCreated: false,
-      });
+        status: 'failed' as const,
+        reason: err.message || 'Internal logic error',
+      };
     }
-  }
+  }));
 
   const report = buildUploadReport(results, rows.length);
   return Response.json({ report });

@@ -49,7 +49,7 @@ export default function CSVImporter({ teamId, teamName, onImportComplete }: CSVI
     setImportResult(null);
     setProgress(0);
 
-    const batchSize = 25;
+    const batchSize = 5; // Reduced from 25 to 5 to prevent Vercel timeouts (auth creation is slow)
     const totalRecords = records.length;
     let totalSuccess = 0;
     let totalFailed = 0;
@@ -69,7 +69,7 @@ export default function CSVImporter({ teamId, teamName, onImportComplete }: CSVI
       const batchIndex = Math.floor(i / batchSize) + 1;
       const totalBatches = Math.ceil(allRows.length / batchSize);
       
-      setCurrentBatchInfo(`Batch ${batchIndex} of ${totalBatches}...`);
+      setCurrentBatchInfo(`Processing batch ${batchIndex} of ${totalBatches}...`);
 
       try {
         const res = await fetch('/api/users/bulk', {
@@ -150,12 +150,28 @@ export default function CSVImporter({ teamId, teamName, onImportComplete }: CSVI
             <p className="font-adventure text-sm text-foreground/60 uppercase tracking-widest mb-1">
               Upload CSV File
             </p>
-            <p className="text-[10px] text-muted-foreground italic">
+            <p className="text-[10px] text-muted-foreground italic mb-2">
               Required columns: name, npk, birth_date, role
+            </p>
+            <p className="text-[9px] text-yellow-500/80 font-adventure uppercase tracking-tighter">
+              ⚠️ Maximum 500 rows per upload for stability
             </p>
           </>
         )}
       </div>
+
+      {/* Row Count Warning */}
+      {records.length > 500 && (
+        <div className="border border-yellow-500/30 bg-yellow-500/5 p-3 flex items-start gap-3">
+          <AlertTriangle className="w-4 h-4 text-yellow-400 shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <p className="text-xs font-adventure uppercase text-yellow-400">File Too Large ({records.length} rows)</p>
+            <p className="text-[10px] text-muted-foreground">
+              Please split your CSV into files of maximum 500 rows each to ensure a successful import without server timeouts.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Validation Errors */}
       {errors.length > 0 && (
@@ -275,9 +291,9 @@ export default function CSVImporter({ teamId, teamName, onImportComplete }: CSVI
             <span>{currentBatchInfo}</span>
             <span>{progress}%</span>
           </div>
-          <div className="h-1.5 w-full bg-primary/10 rounded-full overflow-hidden">
+          <div className="h-1.5 w-full bg-primary/10 rounded-full overflow-hidden border border-primary/5">
             <motion.div 
-              className="h-full bg-primary shadow-[0_0_10px_rgba(var(--primary-rgb),0.5)]"
+              className="h-full bg-primary shadow-[0_0_15px_rgba(212,175,55,0.4)]"
               initial={{ width: 0 }}
               animate={{ width: `${progress}%` }}
               transition={{ duration: 0.3 }}
@@ -293,8 +309,8 @@ export default function CSVImporter({ teamId, teamName, onImportComplete }: CSVI
       {records.length > 0 && !importResult && (
         <button
           onClick={handleImport}
-          disabled={importing}
-          className="w-full flex items-center justify-center gap-3 bg-primary/10 hover:bg-primary/20 border border-primary/30 hover:border-primary/50 text-primary py-4 font-adventure uppercase tracking-widest text-xs transition-all disabled:opacity-40"
+          disabled={importing || records.length > 500}
+          className="w-full flex items-center justify-center gap-3 bg-primary/10 hover:bg-primary/20 border border-primary/30 hover:border-primary/50 text-primary py-4 font-adventure uppercase tracking-widest text-xs transition-all disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {importing ? (
             <>

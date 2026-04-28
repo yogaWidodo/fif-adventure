@@ -15,6 +15,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { generateUserBarcode } from '@/lib/auth';
 import { calculateBadges } from '@/lib/badges';
 import ExpeditionTimer from '@/components/ExpeditionTimer';
+import Copyright from '@/components/Copyright';
 
 interface TeamMember {
   id: string;
@@ -586,6 +587,7 @@ export default function MemberPortal() {
               )}
             </>
           )}
+          <Copyright />
         </div>
 
         {/* Bottom Navigation - Fixed & Ergonomic */}

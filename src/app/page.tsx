@@ -6,6 +6,7 @@ import { Compass, Map as MapIcon, ShieldCheck, UserCircle, LogOut } from 'lucide
 import { useAuth } from '@/context/AuthContext';
 import { getRoleRedirect } from '@/lib/auth';
 import MapPanel from '@/components/MapPanel';
+import Copyright from '@/components/Copyright';
 
 export default function Home() {
   const { userRole, logout } = useAuth();
@@ -108,6 +109,7 @@ export default function Home() {
             End Expedition Session
           </motion.button>
         )}
+        <Copyright />
       </main>
 
       {/* Decorative Corners */}

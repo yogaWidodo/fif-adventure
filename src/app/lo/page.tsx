@@ -8,6 +8,7 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import AuthGuard from '@/components/AuthGuard';
 import ExpeditionTimer from '@/components/ExpeditionTimer';
+import Copyright from '@/components/Copyright';
 
 interface Wahana {
   id: string;
@@ -197,16 +198,7 @@ export default function LOPortal() {
               )}
             </section>
 
-            {/* Footer */}
-            <footer className="mt-16 flex flex-col items-center opacity-40">
-              <div className="flex items-center gap-4 mb-4">
-                <span className="h-px w-24 bg-gradient-to-r from-transparent to-primary/40" />
-                <span className="font-adventure text-[9px] tracking-[0.5em] uppercase">
-                  End of Scroll
-                </span>
-                <span className="h-px w-24 bg-gradient-to-l from-transparent to-primary/40" />
-              </div>
-            </footer>
+            <Copyright />
           </div>
         </div>
       </div>

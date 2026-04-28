@@ -103,27 +103,29 @@ export default function TeamQueueList({
   return (
     <div className="adventure-card border-primary/20 bg-card/90 overflow-hidden">
       {/* Header */}
-      <div className="flex items-center gap-3 px-6 py-4 border-b border-primary/20 bg-primary/5">
-        <Users className="w-4 h-4 text-primary" />
-        <h3 className="font-adventure text-sm uppercase tracking-[0.3em] text-primary">
-          Team Queue
-        </h3>
+      <div className="flex items-center justify-between px-6 py-4 border-b border-primary/20 bg-primary/5">
+        <div className="flex items-center gap-3">
+          <Users className="w-4 h-4 text-primary" />
+          <h3 className="font-adventure text-xs md:text-sm uppercase tracking-[0.3em] text-primary">
+            Team Queue
+          </h3>
+        </div>
         {!loading && (
-          <span className="ml-auto text-[10px] font-adventure text-primary/50 bg-primary/10 px-2 py-0.5 border border-primary/20">
-            {entries.length} team{entries.length !== 1 ? 's' : ''}
+          <span className="text-[9px] font-adventure text-primary/50 bg-primary/10 px-2 py-0.5 border border-primary/20 flex-shrink-0">
+            {entries.length} TEAM{entries.length !== 1 ? 'S' : ''}
           </span>
         )}
       </div>
 
       {/* Column Headers */}
-      <div className="grid grid-cols-12 gap-2 px-6 py-3 border-b border-primary/10 bg-black/20">
-        <div className="col-span-5 font-adventure text-[9px] uppercase tracking-[0.3em] text-primary/50">
+      <div className="grid grid-cols-12 gap-2 px-6 py-2 border-b border-primary/10 bg-black/20">
+        <div className="col-span-5 font-adventure text-[8px] md:text-[9px] uppercase tracking-[0.3em] text-primary/40">
           Team
         </div>
-        <div className="col-span-4 font-adventure text-[9px] uppercase tracking-[0.3em] text-primary/50">
+        <div className="col-span-4 font-adventure text-[8px] md:text-[9px] uppercase tracking-[0.3em] text-primary/40 text-center">
           Check-in
         </div>
-        <div className="col-span-3 font-adventure text-[9px] uppercase tracking-[0.3em] text-primary/50 text-right">
+        <div className="col-span-3 font-adventure text-[8px] md:text-[9px] uppercase tracking-[0.3em] text-primary/40 text-right">
           Score
         </div>
       </div>
@@ -150,10 +152,10 @@ export default function TeamQueueList({
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="flex flex-col items-center justify-center p-16 opacity-40 text-center"
+              className="flex flex-col items-center justify-center p-12 opacity-40 text-center"
             >
-              <Users className="w-8 h-8 text-primary/40 mb-3" />
-              <p className="font-adventure text-xs tracking-widest italic">
+              <Users className="w-8 h-8 text-primary/40 mb-4" />
+              <p className="font-adventure text-[10px] uppercase tracking-[0.2em] text-primary/60 italic leading-relaxed max-w-[200px]">
                 No teams have checked in yet
               </p>
             </motion.div>
@@ -179,32 +181,35 @@ export default function TeamQueueList({
                   `}
                 >
                   {/* Team name */}
-                  <div className="col-span-5">
+                  <div className="col-span-5 flex flex-col gap-1 min-w-0">
                     <p
-                      className={`font-adventure text-sm tracking-tight truncate transition-colors ${
+                      className={`font-adventure text-xs md:text-sm tracking-tight truncate transition-colors ${
                         isSelected ? 'text-primary' : 'text-foreground'
                       }`}
                     >
                       {entry.team_name}
                     </p>
                     {/* Participant Names */}
-                    <div className="mt-1 flex flex-wrap gap-1">
+                    <div className="flex flex-wrap gap-1">
                       {entry.participant_ids.length > 0 ? (
-                        entry.participant_ids.map(pid => (
-                          <span key={pid} className="text-[9px] px-1.5 py-0.5 bg-primary/5 border border-primary/10 text-primary/70 rounded-sm">
-                            {userMap.get(pid) || 'Unknown'}
+                        entry.participant_ids.slice(0, 3).map(pid => (
+                          <span key={pid} className="text-[8px] px-1.5 py-0.5 bg-primary/5 border border-primary/10 text-primary/70 rounded-sm truncate max-w-[60px]">
+                            {userMap.get(pid) || '...'}
                           </span>
                         ))
                       ) : (
-                        <span className="text-[9px] text-muted-foreground italic">No members scanned yet</span>
+                        <span className="text-[8px] text-muted-foreground italic opacity-50">Pending</span>
+                      )}
+                      {entry.participant_ids.length > 3 && (
+                        <span className="text-[8px] text-primary/40">+{entry.participant_ids.length - 3}</span>
                       )}
                     </div>
                   </div>
 
                   {/* Check-in time */}
-                  <div className="col-span-4 flex items-center gap-1.5">
+                  <div className="col-span-4 flex items-center justify-center gap-1.5">
                     <Clock className="w-3 h-3 text-primary/40 flex-shrink-0" />
-                    <span className="text-[11px] font-mono text-muted-foreground">
+                    <span className="text-[10px] font-mono text-muted-foreground">
                       {formatTime(entry.created_at)}
                     </span>
                   </div>

@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
     let teamCreated = false;
 
     try {
-      // Step 1: Check if user exists
+      // Step 1: Check if user exists in public.users
       const { data: existingUser } = await supabaseAdmin
         .from('users')
         .select('id, auth_id')
@@ -63,28 +63,49 @@ export async function POST(request: NextRequest) {
 
       if (existingUser) {
         userId = existingUser.id;
+        // Update name and birth_date in case there are corrections in the CSV
+        await supabaseAdmin
+          .from('users')
+          .update({
+            name,
+            birth_date: formatDateForDB(birth_date)
+          })
+          .eq('id', userId);
       } else {
-        // Create Auth account using NPK as email and Birth Date as password
+        // Create or Link Auth account
         const email = buildAuthEmail(npk);
+        let authUserId: string | null = null;
+
+        // Try to create auth user
         const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
           email,
           password: birth_date,
           email_confirm: true,
         });
 
-        if (authError || !authData.user) {
-          return {
-            rowIndex,
-            status: 'failed' as const,
-            reason: `Auth Error: ${authError?.message}`,
-          };
+        if (authError) {
+          // If already exists in Auth but not in public.users (orphan auth account)
+          if (authError.message.includes('already registered')) {
+            // Find the existing auth user to link them
+            const { data: listData } = await supabaseAdmin.auth.admin.listUsers();
+            const foundAuthUser = listData.users.find(u => u.email === email);
+            if (foundAuthUser) {
+              authUserId = foundAuthUser.id;
+            } else {
+              return { rowIndex, status: 'failed' as const, reason: `Auth Conflict: ${authError.message}` };
+            }
+          } else {
+            return { rowIndex, status: 'failed' as const, reason: `Auth Error: ${authError.message}` };
+          }
+        } else {
+          authUserId = authData.user.id;
         }
 
         // Insert user record
         const { data: newUser, error: insertError } = await supabaseAdmin
           .from('users')
           .insert({
-            auth_id: authData.user.id,
+            auth_id: authUserId,
             name,
             npk,
             role,
@@ -94,7 +115,10 @@ export async function POST(request: NextRequest) {
           .single();
 
         if (insertError || !newUser) {
-          await supabaseAdmin.auth.admin.deleteUser(authData.user.id);
+          // Only delete auth user if we JUST created them in this run
+          if (!authError) {
+            await supabaseAdmin.auth.admin.deleteUser(authUserId!);
+          }
           return {
             rowIndex,
             status: 'failed' as const,

@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   UserPlus, Edit2, UserCheck, UserMinus, Upload, Download,
-  Search, X, Loader2, Compass, MapPin,
+  Search, X, Loader2, Compass, MapPin, AlertTriangle, CheckCircle, Database
 } from 'lucide-react';
 import AssignLocationModal from '@/components/admin/AssignLocationModal';
 import { supabase } from '@/lib/supabase';
@@ -311,27 +311,36 @@ function BulkUploadPanel({
   onSuccess: () => void;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [fileName, setFileName] = useState<string | null>(null);
   const [allRows, setAllRows] = useState<ParsedUserRow[]>([]);
   const [preview, setPreview] = useState<ParsedUserRow[]>([]);
   const [parseErrors, setParseErrors] = useState<string[]>([]);
   const [importing, setImporting] = useState(false);
-  const [report, setReport] = useState<UploadReport | null>(null);
+  const [progress, setProgress] = useState(0);
+  const [currentBatchInfo, setCurrentBatchInfo] = useState('');
+  const [report, setReport] = useState<{
+    success: number;
+    failed: number;
+    failedRows: Array<{ row: number | string; reason: string }>;
+  } | null>(null);
 
   const downloadTemplate = () => {
     const header = 'name,npk,role,birth_date,team_name';
     const rows = [
       'Budi Santoso,12345,captain,17081995,Tim Elang',
       'Siti Rahayu,12346,member,20101996,Tim Elang',
+      'Officer One,LO101,lo,01011990,',
     ];
     const csv = [header, ...rows].join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href = url; a.download = 'template_v2.csv'; a.click();
+    const a = document.createElement('a'); a.href = url; a.download = 'template_users_v2.csv'; a.click();
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    setFileName(file.name);
     const reader = new FileReader();
     reader.onload = (ev) => {
       const content = ev.target?.result as string;
@@ -340,6 +349,7 @@ function BulkUploadPanel({
       setPreview(result.rows.slice(0, 5));
       setParseErrors(result.errors);
       setReport(null);
+      setProgress(0);
     };
     reader.readAsText(file);
   };
@@ -347,48 +357,201 @@ function BulkUploadPanel({
   const handleImport = async () => {
     if (allRows.length === 0 || parseErrors.length > 0) return;
     setImporting(true);
-    try {
-      const res = await fetch('/api/users/bulk', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rows: allRows }),
-      });
-      const data = await res.json();
-      setReport(data.report);
-      if (data.report) onSuccess();
-    } catch {
-      setParseErrors(['Gagal menghubungi server']);
-    } finally {
-      setImporting(false);
+    setReport(null);
+    setProgress(0);
+
+    const batchSize = 5; 
+    const totalRecords = allRows.length;
+    let totalSuccess = 0;
+    let totalFailed = 0;
+    const allFailedRows: any[] = [];
+
+    for (let i = 0; i < allRows.length; i += batchSize) {
+      const batch = allRows.slice(i, i + batchSize);
+      const batchIndex = Math.floor(i / batchSize) + 1;
+      const totalBatches = Math.ceil(allRows.length / batchSize);
+      
+      setCurrentBatchInfo(`Processing batch ${batchIndex} of ${totalBatches}...`);
+
+      try {
+        const res = await fetch('/api/users/bulk', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ rows: batch }),
+        });
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ error: 'Unknown server error' }));
+          totalFailed += batch.length;
+          allFailedRows.push({ row: `Batch ${batchIndex}`, reason: err.error || 'Server error' });
+        } else {
+          const { report: batchReport } = await res.json();
+          totalSuccess += (batchReport?.usersCreated ?? 0) + (batchReport?.usersSkipped ?? 0) + (batchReport?.assignmentsSuccess ?? 0);
+          totalFailed += batchReport?.failed ?? 0;
+          if (batchReport?.failedRows) {
+            allFailedRows.push(...batchReport.failedRows.map((fr: any) => ({
+              row: i + fr.row,
+              reason: fr.reason
+            })));
+          }
+        }
+      } catch (err: any) {
+        totalFailed += batch.length;
+        allFailedRows.push({ row: `Batch ${batchIndex}`, reason: err.message || 'Network error' });
+      }
+
+      const processed = Math.min(i + batchSize, totalRecords);
+      setProgress(Math.round((processed / totalRecords) * 100));
     }
+
+    setReport({
+      success: totalSuccess,
+      failed: totalFailed,
+      failedRows: allFailedRows,
+    });
+
+    if (totalSuccess > 0) onSuccess();
+    setImporting(false);
+    setCurrentBatchInfo('');
+  };
+
+  const handleReset = () => {
+    setFileName(null);
+    setAllRows([]);
+    setPreview([]);
+    setParseErrors([]);
+    setReport(null);
+    setProgress(0);
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   return (
-    <div className="adventure-card p-6 space-y-4">
-      <div className="flex justify-between items-center">
-        <h4 className="font-adventure text-primary text-sm uppercase">Import Users V2</h4>
-        <button onClick={downloadTemplate} className="text-[9px] font-adventure text-primary/60 border border-primary/20 px-3 py-1 hover:bg-primary/10">Download Template</button>
+    <div className="adventure-card p-6 space-y-6">
+      <div className="flex justify-between items-center border-b border-primary/10 pb-4">
+        <div>
+          <h4 className="font-adventure text-primary text-sm uppercase tracking-widest">Bulk Import Explorers</h4>
+          <p className="text-[10px] text-muted-foreground italic">Sistem batching aktif (5 rows/batch)</p>
+        </div>
+        <button onClick={downloadTemplate} className="flex items-center gap-2 text-[9px] font-adventure text-primary/60 border border-primary/20 px-3 py-1.5 hover:bg-primary/10 transition-all">
+          <Download className="w-3 h-3" />
+          Template CSV
+        </button>
       </div>
-      {!report ? (
+
+      {!report && !importing && (
         <div className="space-y-4">
-          <div onClick={() => fileInputRef.current?.click()} className="border-2 border-dashed border-primary/20 p-8 text-center cursor-pointer hover:border-primary/40 transition-all">
-            <Upload className="w-8 h-8 text-primary/30 mx-auto mb-2" />
-            <p className="text-[10px] text-foreground/40 uppercase tracking-widest font-adventure">Select CSV File</p>
+          <div 
+            onClick={() => fileInputRef.current?.click()} 
+            className="border-2 border-dashed border-primary/20 p-10 text-center cursor-pointer hover:border-primary/40 transition-all bg-black/20 group"
+          >
+            <Upload className="w-10 h-10 text-primary/30 mx-auto mb-3 group-hover:scale-110 transition-transform" />
+            <p className="text-[11px] text-foreground/60 uppercase tracking-[0.2em] font-adventure mb-1">
+              {fileName || 'Drop CSV file here or click to browse'}
+            </p>
+            <p className="text-[9px] text-muted-foreground italic">Support: Name, NPK, Role, Birth Date, Team</p>
             <input ref={fileInputRef} type="file" className="hidden" accept=".csv" onChange={handleFileChange} />
           </div>
-          {preview.length > 0 && (
-            <div className="text-[10px] text-foreground/50">
-              Preview: {preview.map(r => r.name).join(', ')}...
-              <button onClick={handleImport} className="block mt-4 w-full bg-primary/20 py-2 font-adventure text-primary">IMPORT {allRows.length} USERS</button>
+
+          {allRows.length > 500 && (
+            <div className="p-3 bg-yellow-500/5 border border-yellow-500/20 flex gap-3 items-start">
+              <AlertTriangle className="w-4 h-4 text-yellow-500 shrink-0 mt-0.5" />
+              <p className="text-[10px] text-yellow-200/70 leading-relaxed">
+                <span className="text-yellow-500 font-bold uppercase tracking-wider">Warning:</span> File memiliki {allRows.length} baris. Sangat disarankan untuk membagi file menjadi maksimal 500 baris untuk menghindari limitasi server Vercel.
+              </p>
             </div>
           )}
-          {parseErrors.map(err => <p key={err} className="text-red-400 text-[10px]">{err}</p>)}
+
+          {preview.length > 0 && parseErrors.length === 0 && (
+            <div className="space-y-4">
+              <div className="bg-black/40 border border-primary/10 p-3">
+                <p className="text-[9px] font-adventure uppercase text-primary/60 mb-2">Preview (First 5 records)</p>
+                <div className="space-y-1">
+                  {preview.map((r, i) => (
+                    <div key={i} className="flex justify-between text-[10px] font-mono border-b border-white/5 pb-1 last:border-0">
+                      <span className="text-foreground/80">{r.name}</span>
+                      <span className="text-foreground/40">{r.npk} · {r.role}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <button 
+                onClick={handleImport} 
+                className="w-full bg-primary/10 hover:bg-primary/20 border border-primary/30 text-primary py-3 font-adventure text-xs uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-3"
+              >
+                <Database className="w-4 h-4" />
+                Begin Deployment ({allRows.length} Users)
+              </button>
+            </div>
+          )}
+
+          {parseErrors.length > 0 && (
+            <div className="p-4 bg-red-900/10 border border-red-500/20 space-y-2">
+              <p className="text-[10px] font-adventure uppercase text-red-400 flex items-center gap-2">
+                <AlertTriangle className="w-3 h-3" /> Format Errors
+              </p>
+              {parseErrors.map((err, i) => (
+                <p key={i} className="text-[10px] text-red-300/70 font-mono">{err}</p>
+              ))}
+            </div>
+          )}
         </div>
-      ) : (
-        <div className="grid grid-cols-2 gap-4">
-          <div className="bg-primary/5 p-3 border border-primary/10"><p className="text-[9px] text-primary/60 uppercase">Created</p><p className="text-xl font-adventure">{report.usersCreated}</p></div>
-          <div className="bg-red-900/5 p-3 border border-red-500/10"><p className="text-[9px] text-red-500/60 uppercase">Failed</p><p className="text-xl font-adventure">{report.failed}</p></div>
-          <button onClick={() => setReport(null)} className="col-span-2 text-[9px] font-adventure uppercase text-primary/40 py-2 border border-primary/10">Upload Again</button>
+      )}
+
+      {importing && (
+        <div className="py-8 space-y-4">
+          <div className="flex justify-between items-center text-[10px] font-adventure uppercase tracking-widest text-primary/80">
+            <span className="flex items-center gap-2">
+              <Loader2 className="w-3 h-3 animate-spin" />
+              {currentBatchInfo}
+            </span>
+            <span>{progress}%</span>
+          </div>
+          <div className="h-2 w-full bg-primary/10 rounded-full overflow-hidden border border-primary/5">
+            <motion.div 
+              className="h-full bg-primary shadow-[0_0_15px_rgba(212,175,55,0.4)]"
+              initial={{ width: 0 }}
+              animate={{ width: `${progress}%` }}
+            />
+          </div>
+          <p className="text-[9px] text-muted-foreground italic text-center">Jangan tutup halaman ini sampai proses selesai.</p>
+        </div>
+      )}
+
+      {report && (
+        <div className="space-y-6">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="bg-green-500/5 p-4 border border-green-500/20 text-center">
+              <p className="text-[9px] text-green-400/60 uppercase font-adventure tracking-widest mb-1">Successfully Integrated</p>
+              <p className="text-3xl font-adventure text-green-400">{report.success}</p>
+            </div>
+            <div className="bg-red-500/5 p-4 border border-red-500/20 text-center">
+              <p className="text-[9px] text-red-400/60 uppercase font-adventure tracking-widest mb-1">Failed to Process</p>
+              <p className="text-3xl font-adventure text-red-400">{report.failed}</p>
+            </div>
+          </div>
+
+          {report.failedRows.length > 0 && (
+            <div className="bg-black/40 border border-red-500/20 p-4">
+              <p className="text-[10px] font-adventure uppercase text-red-400 mb-3 flex items-center gap-2">
+                <AlertTriangle className="w-3 h-3" /> Failure Details
+              </p>
+              <div className="max-h-40 overflow-y-auto space-y-1.5 pr-2 custom-scrollbar">
+                {report.failedRows.map((err, i) => (
+                  <div key={i} className="flex justify-between items-start gap-4 text-[10px] bg-red-500/5 p-2 rounded-sm border border-red-500/10">
+                    <span className="text-muted-foreground font-mono shrink-0">Row {err.row}</span>
+                    <span className="text-red-300/80 text-right italic">{err.reason}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <button 
+            onClick={handleReset} 
+            className="w-full bg-primary/5 hover:bg-primary/10 border border-primary/20 py-3 font-adventure text-[10px] uppercase tracking-[0.2em] text-primary transition-all"
+          >
+            Acknowledge & Clear
+          </button>
         </div>
       )}
     </div>

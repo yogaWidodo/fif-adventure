@@ -279,7 +279,7 @@ export default function TeamsTab() {
       .from('score_logs')
       .select('id, team_id, activity_id, points_awarded, created_at, participant_ids')
       .in('team_id', teamList.map(t => t.id));
-    
+
     if (!data) return;
     const map: Record<string, ScoreLog[]> = {};
     for (const log of data) {
@@ -390,23 +390,22 @@ export default function TeamsTab() {
         </div>
       </header>
 
-      {/* Kanban board */}
+      {/* Responsive Grid Layout */}
       {loading ? (
         <div className="flex flex-col items-center justify-center p-32 opacity-30 italic">
           <Loader2 className="w-10 h-10 animate-spin mb-4 text-primary" />
-          <span className="text-sm font-content">Memuat data tim...</span>
+          <span className="text-sm font-content">Scanning team rosters...</span>
         </div>
       ) : teams.length === 0 ? (
         <div className="adventure-card border-dashed border-primary/10 p-24 flex flex-col items-center justify-center text-center opacity-50">
           <div className="bg-primary/5 p-6 rounded-full mb-6 border border-primary/10">
             <Compass className="w-12 h-12 text-primary" />
           </div>
-          <h3 className="font-adventure text-2xl mb-2 gold-engraving">Belum Ada Tim</h3>
-          <p className="text-muted-foreground max-w-sm italic">Buat tim baru untuk memulai.</p>
+          <h3 className="font-adventure text-2xl mb-2 gold-engraving">No Teams Established</h3>
+          <p className="text-muted-foreground max-w-sm italic">Establish your first expedition team to begin.</p>
         </div>
       ) : (
-        /* Horizontal scroll kanban */
-        <div className="flex gap-5 overflow-x-auto pb-4 items-start">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 pb-24">
           {teams.map((team, idx) => {
             const members = membersMap[team.id] ?? [];
             const sorted = [...members].sort(
@@ -418,83 +417,92 @@ export default function TeamsTab() {
             return (
               <motion.div
                 key={team.id}
-                initial={{ opacity: 0, y: 16 }}
+                initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: idx * 0.04 }}
-                className="flex-shrink-0 w-64 bg-card border border-primary/20 flex flex-col"
+                transition={{ delay: idx * 0.05 }}
+                className="adventure-card group relative bg-card/40 backdrop-blur-sm border-primary/20 hover:border-primary/40 transition-all flex flex-col overflow-hidden h-fit"
               >
-                {/* Column header */}
-                <div className="p-4 border-b border-primary/15 bg-primary/5">
-                  <div className="flex items-start justify-between gap-2 mb-1">
-                    <h3 className="font-adventure text-sm text-foreground leading-tight">{team.name}</h3>
+                {/* Team Header */}
+                <div className="p-5 border-b border-primary/10 bg-primary/5">
+                  <div className="flex items-start justify-between gap-4 mb-3">
+                    <div className="min-w-0">
+                      <h3 className="font-adventure text-lg gold-engraving leading-tight truncate group-hover:scale-[1.02] transition-transform origin-left">
+                        {team.name}
+                      </h3>
+                      {team.slogan && (
+                        <p className="text-[9px] italic text-primary/40 mt-1 line-clamp-1">"{team.slogan}"</p>
+                      )}
+                    </div>
                     <button
                       onClick={() => openEditModal(team)}
-                      className="shrink-0 p-1 text-foreground/30 hover:text-primary transition-colors"
-                      aria-label={`Edit ${team.name}`}
+                      className="shrink-0 p-1.5 rounded bg-primary/5 hover:bg-primary/20 text-primary/40 hover:text-primary transition-all border border-primary/10"
                     >
-                      <Edit2 className="w-3 h-3" />
+                      <Edit2 className="w-3.5 h-3.5" />
                     </button>
                   </div>
-                  {team.slogan && (
-                    <p className="text-[10px] italic text-muted-foreground/50 mb-2 line-clamp-1">"{team.slogan}"</p>
-                  )}
-                  <div className="flex items-center justify-between">
-                    <span className="text-[9px] font-adventure uppercase tracking-widest text-primary/60">
-                      <Users className="w-3 h-3 inline mr-1" />{team.member_count} members
-                    </span>
-                    <span className="text-[10px] font-adventure text-primary bg-primary/15 border border-primary/20 px-2 py-0.5">
-                      {team.total_points} pts
-                    </span>
+
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-1.5">
+                      <Users className="w-3 h-3 text-primary/60" />
+                      <span className="text-[10px] font-adventure uppercase tracking-widest text-primary/70">
+                        {team.member_count} Members
+                      </span>
+                    </div>
+                    <div className="bg-primary/20 border border-primary/30 px-2 py-0.5 rounded shadow-[0_0_10px_rgba(var(--primary-rgb),0.2)]">
+                      <span className="text-[10px] font-adventure text-primary tracking-widest">
+                        {team.total_points} PTS
+                      </span>
+                    </div>
                   </div>
                 </div>
 
-                {/* Member list */}
-                <div className="flex-1 p-3 space-y-1.5 overflow-y-auto max-h-[420px]">
-                  {sorted.length === 0 ? (
-                    <p className="text-[10px] text-foreground/20 italic text-center py-6">No members yet</p>
-                  ) : (
-                    <>
-                      {/* Captain slot */}
-                      {captain ? (
-                        <MemberCard 
-                          member={captain} 
-                          teamId={team.id} 
-                          onAssign={handleAssignCaptain} 
-                          teamScoreLogs={scoreLogsMap[team.id] ?? []}
-                          teamTotalPoints={team.total_points}
-                        />
-                      ) : (
-                        <div className="border border-dashed border-primary/15 p-2 text-center">
-                          <p className="text-[9px] text-foreground/20 font-adventure uppercase tracking-wider">No Captain</p>
-                        </div>
-                      )}
+                {/* Team Roster Section */}
+                <div className="p-4 space-y-3 bg-black/10">
+                  {/* Captain Slot */}
+                  <div>
+                    <p className="text-[8px] font-adventure uppercase tracking-[0.2em] text-primary/40 mb-2 px-1">Command</p>
+                    {captain ? (
+                      <MemberCard 
+                        member={captain} 
+                        teamId={team.id} 
+                        onAssign={handleAssignCaptain} 
+                        teamScoreLogs={scoreLogsMap[team.id] ?? []}
+                        teamTotalPoints={team.total_points}
+                      />
+                    ) : (
+                      <div className="border border-dashed border-primary/10 p-3 rounded bg-black/20 text-center">
+                        <p className="text-[8px] text-primary/20 font-adventure uppercase tracking-widest">Awaiting Captain</p>
+                      </div>
+                    )}
+                  </div>
 
-
-
-                      {/* Divider */}
-                      {rest.length > 0 && (
-                        <div className="flex items-center gap-2 py-1">
-                          <span className="h-px flex-1 bg-primary/10" />
-                          <span className="text-[8px] font-adventure uppercase tracking-widest text-foreground/20">Members</span>
-                          <span className="h-px flex-1 bg-primary/10" />
-                        </div>
-                      )}
-
-                      {rest.map(m => (
-                        <MemberCard 
-                          key={m.id} 
-                          member={m} 
-                          teamId={team.id} 
-                          onAssign={handleAssignCaptain} 
-                          teamScoreLogs={scoreLogsMap[team.id] ?? []}
-                          teamTotalPoints={team.total_points}
-                        />
-                      ))}
-                    </>
+                  {/* Other Members */}
+                  {rest.length > 0 && (
+                    <div>
+                      <div className="flex items-center gap-2 mb-2 px-1">
+                         <p className="text-[8px] font-adventure uppercase tracking-[0.2em] text-foreground/20">Expeditioners</p>
+                         <span className="h-px flex-1 bg-primary/5" />
+                      </div>
+                      <div className="space-y-1 max-h-[200px] overflow-y-auto custom-scrollbar pr-1">
+                        {rest.map(m => (
+                          <MemberCard 
+                            key={m.id} 
+                            member={m} 
+                            teamId={team.id} 
+                            onAssign={handleAssignCaptain} 
+                            teamScoreLogs={scoreLogsMap[team.id] ?? []}
+                            teamTotalPoints={team.total_points}
+                          />
+                        ))}
+                      </div>
+                    </div>
                   )}
                 </div>
 
-                {/* Removed redundant column footer */}
+                {/* Card Background Decoration */}
+                <div className="absolute -bottom-4 -right-4 opacity-[0.02] pointer-events-none group-hover:opacity-[0.05] transition-opacity">
+                   <Compass className="w-24 h-24 rotate-12" />
+                </div>
               </motion.div>
             );
           })}

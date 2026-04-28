@@ -178,9 +178,14 @@ export default function ScanModal({
       return;
     }
 
-    const timer = setTimeout(() => startCamera(), 150);
-    return () => clearTimeout(timer);
-  }, [isOpen, startCamera, stopCamera]);
+    // Only start camera if we are in scanning phase
+    if (phase === 'scanning') {
+      const timer = setTimeout(() => startCamera(), 150);
+      return () => clearTimeout(timer);
+    } else {
+      stopCamera();
+    }
+  }, [isOpen, phase, startCamera, stopCamera]);
 
   useEffect(() => () => { stopCamera(); }, [stopCamera]);
 
@@ -374,8 +379,7 @@ export default function ScanModal({
     }
     
     setPhase('giving_point');
-    // Re-start camera for scanning members one-by-one in confirmation phase
-    setTimeout(() => startCamera(), 100);
+    // We stop the camera via useEffect when phase changes
   };
 
   const submitPoint = async () => {
@@ -441,7 +445,7 @@ export default function ScanModal({
     setConfirmedMemberIds([]);
     setErrorMsg('');
     processingRef.current = false;
-    setTimeout(() => startCamera(), 150);
+    // useEffect will handle startCamera
   };
 
   const handleClose = () => {
@@ -492,7 +496,7 @@ export default function ScanModal({
             </div>
 
             {/* Camera viewfinder — only shown during scanning */}
-            {(phase === 'scanning' || phase === 'giving_point') && (
+            {phase === 'scanning' && (
               <div className="relative bg-black">
                 <div id={scannerId} className="w-full" style={{ minHeight: '280px' }} />
 
@@ -595,7 +599,7 @@ export default function ScanModal({
                       </p>
                       <h3 className="font-adventure text-2xl text-primary gold-engraving">Konfirmasi Member</h3>
                       <p className="text-[11px] text-muted-foreground mt-2 italic font-content">
-                        "Scan ulang barcode setiap member untuk konfirmasi kehadiran."
+                        "Pilih member yang berpartisipasi untuk memberikan poin."
                       </p>
                     </div>
 
@@ -607,10 +611,17 @@ export default function ScanModal({
                         return (
                           <div 
                             key={memberId} 
-                            className={`flex items-center justify-between p-3 border rounded-sm transition-all duration-300 ${
+                            onClick={() => {
+                              if (isConfirmed) {
+                                setConfirmedMemberIds(prev => prev.filter(id => id !== memberId));
+                              } else {
+                                setConfirmedMemberIds(prev => [...prev, memberId]);
+                              }
+                            }}
+                            className={`flex items-center justify-between p-3 border rounded-sm transition-all duration-300 cursor-pointer ${
                               isConfirmed 
                                 ? 'bg-primary/20 border-primary/40 shadow-[0_0_15px_rgba(var(--primary-rgb),0.1)]' 
-                                : 'bg-white/5 border-white/10 opacity-60'
+                                : 'bg-white/5 border-white/10 opacity-60 hover:bg-white/10'
                             }`}
                           >
                             <div className="flex items-center gap-3">

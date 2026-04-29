@@ -50,6 +50,7 @@ interface ScanModalProps {
   isOpen: boolean;
   activityId: string;
   activityName: string;
+  activityType: string;
   activityPoints: number;
   onClose: () => void;
   onCheckinSuccess: (teamName: string, hintGranted?: boolean) => void;
@@ -83,6 +84,7 @@ export default function ScanModal({
   isOpen,
   activityId,
   activityName: _activityName,
+  activityType,
   activityPoints,
   onClose,
   onCheckinSuccess,
@@ -319,7 +321,14 @@ export default function ScanModal({
         setSelectedMemberIds([userRecord.id]); 
       }
 
-      setPhase('choosing'); 
+      // --- NEW: DIRECT FLOW FOR CHALLENGE ---
+      if (activityType !== 'wahana') {
+        // Direct to scoring, confirm the scanned member
+        setConfirmedMemberIds([userRecord.id]);
+        setPhase('giving_point');
+      } else {
+        setPhase('choosing');
+      }
     }
     else {
       setErrorMsg('QR code tidak dikenali. Gunakan barcode member atau tim.');

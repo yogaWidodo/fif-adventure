@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Users, Trophy, MapPin, CheckCircle2, Circle, Camera,
@@ -91,6 +91,8 @@ export default function MemberPortal() {
   const [activeTab, setActiveTab] = useState<'log' | 'map' | 'crew' | 'tasks' | 'ranking'>('log');
   const [discoveredActivity, setDiscoveredActivity] = useState<any>(null);
   const [discoveredHint, setDiscoveredHint] = useState<any>(null);
+  const [globalChallenge, setGlobalChallenge] = useState<any>(null);
+  const notifiedChallengeIds = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (!user?.team_id) {
@@ -100,87 +102,74 @@ export default function MemberPortal() {
 
     fetchAll(user.team_id);
 
-    // Real-time subscription for discovery and progress updates
     const teamId = user.team_id;
-    const channel = supabase
+
+    // 1. Team Updates Channel (Check-ins & Scoring)
+    const teamChannel = supabase
       .channel(`team-updates-${teamId}`)
-      // Watch for check-ins (updates progress bar)
       .on(
         'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'activity_registrations',
-          filter: `team_id=eq.${teamId}`,
-        },
+        { event: '*', schema: 'public', table: 'activity_registrations', filter: `team_id=eq.${teamId}` },
         async (payload) => {
-          // Refresh the whole data set to ensure everything is in sync
           fetchAll(teamId);
-
           if (payload.eventType === 'INSERT') {
             const newReg = payload.new as any;
-            
-            // Only show the popup if THIS user is part of the check-in
             const isMeScanned = Array.isArray(newReg.participant_ids) && newReg.participant_ids.includes(user?.id);
-            
             if (isMeScanned) {
-              const { data: activity } = await supabase
-                .from('activities')
-                .select('id, name, description, how_to_play, type, max_points, difficulty_level')
-                .eq('id', newReg.activity_id)
-                .single();
-
-              if (activity) {
-                setDiscoveredActivity(activity);
-              }
+              const { data: activity } = await supabase.from('activities').select('*').eq('id', newReg.activity_id).single();
+              if (activity) setDiscoveredActivity(activity);
             }
           }
         }
       )
-      // Watch for scoring (updates points and moves activity to history)
       .on(
         'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'score_logs',
-          filter: `team_id=eq.${teamId}`,
-        },
-        () => {
-          fetchAll(teamId);
+        { event: '*', schema: 'public', table: 'score_logs', filter: `team_id=eq.${teamId}` },
+        () => fetchAll(teamId)
+      )
+      .subscribe();
+
+    // 2. Global Activities Channel (Challenge Popups Hidden -> Public)
+    const globalChannel = supabase
+      .channel('global-activities')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'activities', filter: 'type=eq.challenge_popup' },
+        (payload) => {
+          const newAct = payload.new as any;
+          const oldAct = payload.old as any;
+          // Logic: Show notification only if it JUST became visible and not already notified in this session
+          const becameVisible = newAct.is_visible && !notifiedChallengeIds.current.has(newAct.id);
+          if (becameVisible) {
+            notifiedChallengeIds.current.add(newAct.id);
+            setGlobalChallenge(newAct);
+            fetchAll(teamId);
+          }
         }
       )
-      // Watch for new hints
+      .subscribe();
+
+    // 3. Hint Updates Channel
+    const hintChannel = supabase
+      .channel(`hint-updates-${teamId}`)
       .on(
         'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'treasure_hunt_hints',
-          filter: `team_id=eq.${teamId}`,
-        },
+        { event: 'INSERT', schema: 'public', table: 'treasure_hunt_hints', filter: `team_id=eq.${teamId}` },
         async (payload) => {
           const newHint = payload.new as any;
-          fetchAll(teamId); // Update hints list for everyone
-
-          // Only show the popup if THIS user triggered the hint
+          fetchAll(teamId);
           if (newHint.triggered_by_user_id === user?.id) {
-            const { data: treasure } = await supabase
-              .from('treasure_hunts')
-              .select('id, name, hint_text, points')
-              .eq('id', newHint.treasure_hunt_id)
-              .single();
-
-            if (treasure) {
-              setDiscoveredHint(treasure);
-            }
+            const { data: treasure } = await supabase.from('treasure_hunts').select('*').eq('id', newHint.treasure_hunt_id).single();
+            if (treasure) setDiscoveredHint(treasure);
           }
         }
       )
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      supabase.removeChannel(teamChannel);
+      supabase.removeChannel(globalChannel);
+      supabase.removeChannel(hintChannel);
     };
   }, [user?.team_id]);
 
@@ -437,11 +426,10 @@ export default function MemberPortal() {
                       {activities.map((act) => {
                         const status = getActivityStatus(act.id);
                         return (
-                          <div key={act.id} className={`flex items-center gap-3 p-3 rounded border transition-all ${
-                            status === 'done' ? 'border-primary/40 bg-primary/10 opacity-100' : 
-                            status === 'in-progress' ? 'border-amber-500/40 bg-amber-500/5 opacity-100' :
-                            'border-white/5 bg-black/20 opacity-40'
-                          }`}>
+                          <div key={act.id} className={`flex items-center gap-3 p-3 rounded border transition-all ${status === 'done' ? 'border-primary/40 bg-primary/10 opacity-100' :
+                              status === 'in-progress' ? 'border-amber-500/40 bg-amber-500/5 opacity-100' :
+                                'border-white/5 bg-black/20 opacity-40'
+                            }`}>
                             {status === 'done' ? (
                               <CheckCircle2 className="w-4 h-4 text-primary" />
                             ) : status === 'in-progress' ? (
@@ -554,9 +542,9 @@ export default function MemberPortal() {
                       {leaderboard.slice(0, 10).map((t) => (
                         <div key={t.id} className={`flex items-center gap-4 p-4 transition-colors ${t.id === user?.team_id ? 'bg-primary/10 border-l-2 border-primary' : 'hover:bg-white/5'}`}>
                           <div className={`w-8 h-8 rounded-full flex items-center justify-center font-adventure text-sm ${t.rank === 1 ? 'bg-yellow-500/20 text-yellow-500 border border-yellow-500/40' :
-                              t.rank === 2 ? 'bg-gray-400/20 text-gray-400 border border-gray-400/40' :
-                                t.rank === 3 ? 'bg-amber-700/20 text-amber-700 border border-amber-700/40' :
-                                  'text-foreground/40'
+                            t.rank === 2 ? 'bg-gray-400/20 text-gray-400 border border-gray-400/40' :
+                              t.rank === 3 ? 'bg-amber-700/20 text-amber-700 border border-amber-700/40' :
+                                'text-foreground/40'
                             }`}>
                             #{t.rank}
                           </div>
@@ -657,7 +645,7 @@ export default function MemberPortal() {
         </div>
 
         {/* QR Code Modal - Optimized for Mobile Sheet Feel */}
-        <AnimatePresence> 
+        <AnimatePresence>
           {showQR && user?.team_id && (
             <motion.div
               initial={{ opacity: 0 }}

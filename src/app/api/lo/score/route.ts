@@ -74,25 +74,42 @@ export async function POST(request: NextRequest): Promise<Response> {
     return Response.json({ error: 'Anda tidak di-assign ke aktivitas ini' }, { status: 403 });
   }
 
-  // 5. Check if Team has checked in (Requirement 7.2)
-  const { data: checkin } = await supabase
-    .from('activity_registrations')
-    .select('id, participant_ids')
-    .eq('team_id', team_id)
-    .eq('activity_id', activity_id)
-    .maybeSingle();
+  // 4.5 Get Activity Type
+  const { data: activityData } = await supabase
+    .from('activities')
+    .select('type')
+    .eq('id', activity_id)
+    .single();
 
-  if (!checkin) {
-    return Response.json({ error: 'Tim belum check-in di aktivitas ini.' }, { status: 422 });
+  const isWahana = activityData?.type === 'wahana';
+
+  // 5. Check if Team has checked in (Only for Wahana)
+  let checkin = null;
+  if (isWahana) {
+    const { data: checkinData } = await supabase
+      .from('activity_registrations')
+      .select('id, participant_ids')
+      .eq('team_id', team_id)
+      .eq('activity_id', activity_id)
+      .maybeSingle();
+    checkin = checkinData;
+
+    if (!checkin) {
+      return Response.json({ error: 'Tim belum check-in di aktivitas ini.' }, { status: 422 });
+    }
   }
 
-  // Ensure participants being scored are actually checked in
-  const currentQueueIds = (checkin.participant_ids as string[]) || [];
+  // Ensure participants being scored are valid
   const incomingIds = (participant_ids as string[]) || [];
-  const validScoringIds = incomingIds.filter((id: string) => currentQueueIds.includes(id));
-  
-  if (validScoringIds.length === 0) {
-    return Response.json({ error: 'Peserta yang di-scan tidak ditemukan dalam antrean tim.' }, { status: 400 });
+  let validScoringIds = incomingIds;
+
+  if (isWahana && checkin) {
+    const currentQueueIds = (checkin.participant_ids as string[]) || [];
+    validScoringIds = incomingIds.filter((id: string) => currentQueueIds.includes(id));
+    
+    if (validScoringIds.length === 0) {
+      return Response.json({ error: 'Peserta yang di-scan tidak ditemukan dalam antrean tim.' }, { status: 400 });
+    }
   }
 
   // 6. Insert Score Log
@@ -113,21 +130,22 @@ export async function POST(request: NextRequest): Promise<Response> {
     return Response.json({ error: 'Gagal menyimpan poin. ' + insertError.message }, { status: 500 });
   }
 
-  // 7. Cleanup: Remove ONLY the participants who received points from the queue
-  const remainingIds = currentQueueIds.filter((id: string) => !validScoringIds.includes(id));
-  
-  if (remainingIds.length > 0) {
-    // Some members are still in queue
-    await supabase
-      .from('activity_registrations')
-      .update({ participant_ids: remainingIds })
-      .eq('id', checkin.id);
-  } else {
-    // Everyone in this registration has been scored
-    await supabase
-      .from('activity_registrations')
-      .delete()
-      .eq('id', checkin.id);
+  // 7. Cleanup: Only for Wahana (Remove participants from queue)
+  if (isWahana && checkin) {
+    const currentQueueIds = (checkin.participant_ids as string[]) || [];
+    const remainingIds = currentQueueIds.filter((id: string) => !validScoringIds.includes(id));
+    
+    if (remainingIds.length > 0) {
+      await supabase
+        .from('activity_registrations')
+        .update({ participant_ids: remainingIds })
+        .eq('id', checkin.id);
+    } else {
+      await supabase
+        .from('activity_registrations')
+        .delete()
+        .eq('id', checkin.id);
+    }
   }
 
   return Response.json({ success: true, message: 'Poin berhasil dicatat untuk tim.' });

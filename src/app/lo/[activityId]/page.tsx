@@ -19,6 +19,7 @@ interface ActivityInfo {
   description: string | null;
   points: number;
   difficulty_level: string;
+  type: string;
 }
 
 type ToastState = {
@@ -62,7 +63,7 @@ export default function ActivityDashboard({
       // Step 1: Fetch ALL assignments for this LO
       const { data: assignments, error: assignmentError } = await supabase
         .from('lo_assignments')
-        .select('activity_id, activities(id, name, description, max_points, difficulty_level)')
+        .select('activity_id, activities(id, name, description, max_points, difficulty_level, type)')
         .eq('lo_id', user.id);
 
       if (assignmentError || !assignments || assignments.length === 0) {
@@ -91,7 +92,8 @@ export default function ActivityDashboard({
           name: act.name,
           description: act.description,
           points: act.max_points,
-          difficulty_level: act.difficulty_level || 'Medium'
+          difficulty_level: act.difficulty_level || 'Medium',
+          type: act.type || 'wahana'
         });
       }
       setLoadingActivity(false);
@@ -370,6 +372,7 @@ export default function ActivityDashboard({
             isOpen={isScanModalOpen}
             activityId={activityId}
             activityName={activity.name}
+            activityType={activity.type}
             activityPoints={activity.points}
             onClose={handleScanModalClose}
             onCheckinSuccess={handleCheckinSuccess}

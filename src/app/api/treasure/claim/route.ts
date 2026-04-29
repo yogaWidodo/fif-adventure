@@ -50,16 +50,27 @@ export async function POST(request: NextRequest): Promise<Response> {
   // Since we use RPC in the DB for some complex ops, we can also do it here if simple.
   // Actually, the spec recommends using RPC for atomicity.
 
-  // Requirement 4.6.5.b: Check if team has hint
-  const { data: hint } = await supabaseAdmin
-    .from('treasure_hunt_hints')
-    .select('id')
-    .eq('team_id', userProfile.team_id)
-    .eq('treasure_hunt_id', treasure_hunt_id)
+  // Requirement 4.6.5.d: Check quota and metadata (Row Locking)
+  const { data: th, error: thError } = await supabaseAdmin
+    .from('treasure_hunts')
+    .select('id, name, points, remaining_quota, is_public')
+    .eq('id', treasure_hunt_id)
     .single();
 
-  if (!hint) {
-    return Response.json({ error: 'Kamu belum memiliki petunjuk untuk treasure ini.' }, { status: 403 });
+  if (thError || !th) return Response.json({ error: 'Treasure not found' }, { status: 404 });
+
+  // Requirement 4.6.5.b: Check if team has hint (SKIP if public)
+  if (!th.is_public) {
+    const { data: hint } = await supabaseAdmin
+      .from('treasure_hunt_hints')
+      .select('id')
+      .eq('team_id', userProfile.team_id)
+      .eq('treasure_hunt_id', treasure_hunt_id)
+      .single();
+
+    if (!hint) {
+      return Response.json({ error: 'Kamu belum memiliki petunjuk untuk treasure ini.' }, { status: 403 });
+    }
   }
 
   // Requirement 4.6.5.c: Check if already claimed
@@ -73,15 +84,6 @@ export async function POST(request: NextRequest): Promise<Response> {
   if (existingClaim) {
     return Response.json({ error: 'Treasure ini sudah diklaim oleh tim kamu.' }, { status: 409 });
   }
-
-  // Requirement 4.6.5.d: Check quota and decrement atomis (Row Locking)
-  const { data: th, error: thError } = await supabaseAdmin
-    .from('treasure_hunts')
-    .select('id, points, remaining_quota')
-    .eq('id', treasure_hunt_id)
-    .single();
-
-  if (thError || !th) return Response.json({ error: 'Treasure not found' }, { status: 404 });
 
   if (th.remaining_quota <= 0) {
     return Response.json({ error: 'Treasure Hunt ini sudah habis diklaim tim lain.' }, { status: 409 });

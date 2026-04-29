@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import type { NextRequest } from 'next/server';
 import { buildAuthEmail, formatDateForDB } from '@/lib/userManagement';
 import { isValidRole } from '@/lib/auth';
+import { getAuthenticatedClient } from '@/lib/serverAuth';
 
 // Requirements: 3.3, 3.4, 3.5, 3.7, 3.8, 7.5, 2.3, 2.4, 2.5, 2.6
 
@@ -16,11 +17,27 @@ function getAdminClient() {
   return createClient(supabaseUrl, supabaseServiceKey);
 }
 
-// PATCH /api/users/[id] — update user fields
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  // 1. Authenticate Requester
+  const auth = await getAuthenticatedClient(request);
+  if (!auth) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const { supabase: userSupabase, userId: requesterId } = auth;
+
+  // 2. Verify Admin Role
+  const { data: requesterProfile } = await userSupabase
+    .from('users')
+    .select('role')
+    .eq('auth_id', requesterId)
+    .single();
+
+  if (!requesterProfile || requesterProfile.role !== 'admin') {
+    return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
+  }
+
   const { id } = await params;
 
   let body: {
@@ -150,9 +167,26 @@ export async function PATCH(
 
 // DELETE /api/users/[id] — soft-delete (Req. 4.1: preserve historical log)
 export async function DELETE(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  // 1. Authenticate Requester
+  const auth = await getAuthenticatedClient(request);
+  if (!auth) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const { supabase: userSupabase, userId: requesterId } = auth;
+
+  // 2. Verify Admin Role
+  const { data: requesterProfile } = await userSupabase
+    .from('users')
+    .select('role')
+    .eq('auth_id', requesterId)
+    .single();
+
+  if (!requesterProfile || requesterProfile.role !== 'admin') {
+    return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
+  }
+
   const { id } = await params;
   const supabaseAdmin = getAdminClient();
 

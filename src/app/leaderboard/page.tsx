@@ -125,7 +125,7 @@ export default function LeaderboardPage() {
   }, []);
 
   return (
-    <div className="relative min-h-screen flex flex-col items-center overflow-hidden font-content selection:bg-primary selection:text-primary-foreground">
+    <div className="relative min-h-screen flex flex-col items-center overflow-y-auto font-content selection:bg-primary selection:text-primary-foreground custom-scrollbar">
       {/* Immersive Background */}
       <div
         className="fixed inset-0 z-0 bg-cover bg-center opacity-30 mix-blend-luminosity"

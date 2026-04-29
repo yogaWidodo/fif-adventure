@@ -10,7 +10,8 @@ export async function GET() {
   // Requirement 4.0: Get timer settings from 'settings' table
   const { data: settings, error } = await supabase
     .from('settings')
-    .select('key, value');
+    .select('key, value')
+    .in('key', ['event_status', 'event_duration_minutes', 'event_started_at', 'event_elapsed_seconds']);
 
   if (error || !settings) {
     return NextResponse.json({ error: 'Failed to fetch timer settings' }, { status: 500 });

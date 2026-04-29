@@ -52,13 +52,14 @@ export default function SoundManager() {
     };
   }, []);
 
-  // Handle Play/Pause and Muting
+  // Handle Play/Pause and Muting with Fade effect
   useEffect(() => {
     if (!audioRef.current || !hasInteracted) return;
 
+    let fadeInterval: ReturnType<typeof setInterval>;
+
     if (isMuted) {
-      // Fade out volume before pausing or just mute
-      const fadeOut = setInterval(() => {
+      fadeInterval = setInterval(() => {
         if (audioRef.current && audioRef.current.volume > 0.05) {
           audioRef.current.volume -= 0.05;
         } else {
@@ -67,25 +68,28 @@ export default function SoundManager() {
             audioRef.current.volume = 0;
           }
           setIsPlaying(false);
-          clearInterval(fadeOut);
+          clearInterval(fadeInterval);
         }
       }, 50);
     } else {
-      // Start playing and fade in
       audioRef.current.play().then(() => {
         setIsPlaying(true);
-        const fadeIn = setInterval(() => {
-          if (audioRef.current && audioRef.current.volume < 0.4) {
+        fadeInterval = setInterval(() => {
+          if (audioRef.current && audioRef.current.volume < 0.35) {
             audioRef.current.volume += 0.05;
           } else {
             if (audioRef.current) audioRef.current.volume = 0.4;
-            clearInterval(fadeIn);
+            clearInterval(fadeInterval);
           }
         }, 50);
       }).catch(err => {
         console.warn('Audio play failed:', err);
       });
     }
+
+    return () => {
+      if (fadeInterval) clearInterval(fadeInterval);
+    };
   }, [isMuted, hasInteracted]);
 
   const toggleMute = () => {

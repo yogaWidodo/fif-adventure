@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import type { NextRequest } from 'next/server';
+import { getAuthenticatedClient } from '@/lib/serverAuth';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
@@ -17,6 +18,12 @@ function haversineDistance(lat1: number, lng1: number, lat2: number, lng2: numbe
 }
 
 export async function POST(request: NextRequest) {
+  // 1. Authenticate Requester
+  const auth = await getAuthenticatedClient(request);
+  if (!auth) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const { supabase: userSupabase, userId: requesterAuthId } = auth;
+
   let body: { user_id?: unknown; lat?: unknown; lng?: unknown };
   try {
     body = await request.json();
@@ -28,6 +35,22 @@ export async function POST(request: NextRequest) {
 
   if (!user_id || typeof user_id !== 'string') {
     return Response.json({ error: 'user_id required' }, { status: 400 });
+  }
+
+  // Verify that the user is marking attendance for THEMSELVES, or is an Admin
+  const { data: requesterProfile } = await userSupabase
+    .from('users')
+    .select('id, role')
+    .eq('auth_id', requesterAuthId)
+    .single();
+
+  if (!requesterProfile) {
+    return Response.json({ error: 'User profile not found' }, { status: 403 });
+  }
+
+  // Security Check: Only allow self-attendance or admin-attendance
+  if (requesterProfile.id !== user_id && requesterProfile.role !== 'admin') {
+    return Response.json({ error: 'Hanya bisa mencatat absensi untuk diri sendiri.' }, { status: 403 });
   }
 
   const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
@@ -99,7 +122,24 @@ export async function POST(request: NextRequest) {
 }
 
 /** GET /api/attendance — return attendance summary for admin */
-export async function GET() {
+export async function GET(request: NextRequest) {
+  // 1. Authenticate Requester
+  const auth = await getAuthenticatedClient(request);
+  if (!auth) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const { supabase: userSupabase, userId: requesterAuthId } = auth;
+
+  // 2. Verify Admin Role
+  const { data: requesterProfile } = await userSupabase
+    .from('users')
+    .select('role')
+    .eq('auth_id', requesterAuthId)
+    .single();
+
+  if (!requesterProfile || requesterProfile.role !== 'admin') {
+    return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
+  }
+
   const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
   const { data: users, error } = await supabaseAdmin

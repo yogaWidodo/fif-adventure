@@ -112,6 +112,23 @@ export async function POST(request: NextRequest): Promise<Response> {
     }
   }
 
+  // 5.5 Member-Level Protection: Check if any of these members already scored for this activity
+  const { data: allActivityScores } = await supabase
+    .from('score_logs')
+    .select('participant_ids')
+    .eq('activity_id', activity_id);
+
+  if (allActivityScores && allActivityScores.length > 0) {
+    const alreadyScoredIds = new Set(allActivityScores.flatMap((log: any) => log.participant_ids || []));
+    const doubleScanned = validScoringIds.filter(id => alreadyScoredIds.has(id));
+    
+    if (doubleScanned.length > 0) {
+      return Response.json({ 
+        error: `Gagal: ${doubleScanned.length} peserta sudah pernah mendapatkan poin di aktivitas ini sebelumnya.` 
+      }, { status: 400 });
+    }
+  }
+
   // 6. Insert Score Log
   const { error: insertError } = await supabase
     .from('score_logs')

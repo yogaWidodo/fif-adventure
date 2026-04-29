@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import type { NextRequest } from 'next/server';
 import { buildAuthEmail, formatDateForDB } from '@/lib/userManagement';
 import { isValidRole } from '@/lib/auth';
+import { getAuthenticatedClient } from '@/lib/serverAuth';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
@@ -12,6 +13,23 @@ function getAdminClient() {
 
 // GET /api/users — list users with pagination, search, and filtering
 export async function GET(request: NextRequest) {
+  // 1. Authenticate Requester
+  const auth = await getAuthenticatedClient(request);
+  if (!auth) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const { supabase: userSupabase, userId: requesterId } = auth;
+
+  // 2. Verify Admin Role
+  const { data: requesterProfile } = await userSupabase
+    .from('users')
+    .select('role')
+    .eq('auth_id', requesterId)
+    .single();
+
+  if (!requesterProfile || requesterProfile.role !== 'admin') {
+    return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
+  }
+
   const { searchParams } = new URL(request.url);
   const search = searchParams.get('search') || '';
   const role = searchParams.get('role') || 'all';
@@ -106,6 +124,23 @@ export async function GET(request: NextRequest) {
 
 // POST /api/users — create a single user
 export async function POST(request: NextRequest) {
+  // 1. Authenticate Requester
+  const auth = await getAuthenticatedClient(request);
+  if (!auth) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const { supabase: userSupabase, userId: requesterId } = auth;
+
+  // 2. Verify Admin Role
+  const { data: requesterProfile } = await userSupabase
+    .from('users')
+    .select('role')
+    .eq('auth_id', requesterId)
+    .single();
+
+  if (!requesterProfile || requesterProfile.role !== 'admin') {
+    return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
+  }
+
   let body: { name?: unknown; npk?: unknown; role?: unknown; birth_date?: unknown };
   try {
     body = await request.json();

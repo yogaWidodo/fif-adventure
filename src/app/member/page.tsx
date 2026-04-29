@@ -787,6 +787,49 @@ export default function MemberPortal() {
             </motion.div>
           )}
         </AnimatePresence>
+
+        <AnimatePresence>
+          {globalChallenge && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[120] bg-black/95 flex items-center justify-center p-6"
+            >
+              <motion.div
+                initial={{ scale: 0.8, opacity: 0, y: 50 }}
+                animate={{ scale: 1, opacity: 1, y: 0 }}
+                exit={{ scale: 0.8, opacity: 0 }}
+                className="adventure-card w-full max-w-lg overflow-hidden border-accent/40 shadow-[0_0_60px_rgba(var(--accent-rgb),0.3)]"
+              >
+                <div className="relative h-48 bg-accent/20 flex flex-col items-center justify-center">
+                  <div className="absolute inset-0 bg-[url('/images/jungle_hq_bg.png')] bg-cover bg-center opacity-30 animate-pulse" />
+                  <div className="relative z-10 bg-accent/20 p-5 rounded-full border border-accent/40 mb-4">
+                    <Flame className="w-10 h-10 text-accent torch-glow" />
+                  </div>
+                  <h2 className="relative z-10 font-adventure text-2xl md:text-3xl text-accent tracking-widest text-center px-6 uppercase">
+                    New Challenge Revealed!
+                  </h2>
+                </div>
+                <div className="p-8 text-center space-y-6">
+                  <div className="space-y-2">
+                    <p className="text-xl font-adventure text-foreground gold-engraving">{globalChallenge.name}</p>
+                    <p className="text-sm font-content text-foreground/80 italic leading-relaxed">
+                      "{globalChallenge.description || 'A new limited-time challenge has appeared in the jungle!'}"
+                    </p>
+                  </div>
+                  <div className="inline-flex items-center gap-2 bg-accent/10 border border-accent/20 px-4 py-2 rounded-full">
+                    <Trophy className="w-4 h-4 text-accent" />
+                    <span className="font-adventure text-xs text-accent">Worth {globalChallenge.max_points} Points</span>
+                  </div>
+                </div>
+                <div className="p-6 bg-accent/5 border-t border-accent/10">
+                  <button onClick={() => setGlobalChallenge(null)} className="w-full py-4 font-adventure text-sm uppercase tracking-[0.4em] bg-accent text-accent-foreground hover:bg-accent/90 transition-all shadow-[0_10px_20px_rgba(0,0,0,0.4)] active:scale-95">Prepare for Mission</button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </AuthGuard>
   );

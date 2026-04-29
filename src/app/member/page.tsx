@@ -84,11 +84,16 @@ export default function MemberPortal() {
   const [registrations, setRegistrations] = useState<Registration[]>([]);
   const [hints, setHints] = useState<HintWithTreasure[]>([]);
   const [claims, setClaims] = useState<TreasureHuntClaim[]>([]);
+  const [publicTreasures, setPublicTreasures] = useState<any[]>([]);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [scoreLogs, setScoreLogs] = useState<ScoreLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [showQR, setShowQR] = useState(false);
   const [activeTab, setActiveTab] = useState<'log' | 'map' | 'crew' | 'tasks' | 'ranking'>('log');
+  const [showWahana, setShowWahana] = useState(true);
+  const [showChallenges, setShowChallenges] = useState(true);
+  const [showPublic, setShowPublic] = useState(true);
+  const [showHidden, setShowHidden] = useState(true);
   const [discoveredActivity, setDiscoveredActivity] = useState<any>(null);
   const [discoveredHint, setDiscoveredHint] = useState<any>(null);
   const [globalChallenge, setGlobalChallenge] = useState<any>(null);
@@ -166,43 +171,61 @@ export default function MemberPortal() {
       )
       .subscribe();
 
+    // 4. Public Treasure Updates (Quota changes)
+    const treasureChannel = supabase
+      .channel('public-treasures')
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'treasure_hunts' }, () => {
+        fetchAll(teamId);
+      })
+      .subscribe();
+
+    // 5. Team Claim Updates
+    const teamClaimChannel = supabase
+      .channel(`team-claims-${teamId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'treasure_hunt_claims', filter: `team_id=eq.${teamId}` }, () => {
+        fetchAll(teamId);
+      })
+      .subscribe();
+
     return () => {
       supabase.removeChannel(teamChannel);
       supabase.removeChannel(globalChannel);
       supabase.removeChannel(hintChannel);
+      supabase.removeChannel(treasureChannel);
+      supabase.removeChannel(teamClaimChannel);
     };
   }, [user?.team_id]);
 
   const fetchAll = async (teamId: string) => {
     setLoading(true);
 
-    const [teamRes, membersRes, actRes, regRes, hintsRes, claimRes, lbRes, logsRes] = await Promise.all([
+    const results = await Promise.all([
       supabase.from('teams').select('id, name, slogan, total_points').eq('id', teamId).maybeSingle(),
       supabase.from('users').select('id, name, role').eq('team_id', teamId).order('role'),
       supabase.from('activities').select('id, name, type, max_points').eq('is_visible', true).order('name'),
       supabase.from('activity_registrations').select('activity_id, checked_in_at, participant_ids').eq('team_id', teamId),
-      supabase
-        .from('treasure_hunt_hints')
-        .select('id, treasure_hunt_id, received_at, treasure_hunts(id, name, hint_text, points)')
-        .eq('team_id', teamId)
-        .order('received_at', { ascending: false }),
+      supabase.from('treasure_hunt_hints').select('id, treasure_hunt_id, received_at, treasure_hunts(id, name, hint_text, points)').eq('team_id', teamId).order('received_at', { ascending: false }),
       supabase.from('treasure_hunt_claims').select('treasure_hunt_id').eq('team_id', teamId),
       fetch('/api/leaderboard').then(r => r.ok ? r.json() : []),
-      supabase
-        .from('score_logs')
-        .select('id, activity_id, points_awarded, created_at, participant_ids, activities(name)')
-        .eq('team_id', teamId)
-        .order('created_at', { ascending: false })
+      supabase.from('score_logs').select('*, activities(name)').eq('team_id', teamId).order('created_at', { ascending: false }),
+      supabase.from('treasure_hunts').select('*').eq('is_public', true)
     ]);
 
-    setTeam(teamRes.data ?? null);
-    setMembers((membersRes.data ?? []) as TeamMember[]);
-    setActivities(actRes.data ?? []);
-    setRegistrations(regRes.data ?? []);
-    setHints((hintsRes.data ?? []) as unknown as HintWithTreasure[]);
-    setClaims((claimRes.data ?? []) as TreasureHuntClaim[]);
-    setLeaderboard(Array.isArray(lbRes) ? lbRes : []);
-    setScoreLogs((logsRes.data ?? []) as any as ScoreLog[]);
+    const [teamRes, membersRes, actRes, regRes, hintsRes, claimRes, lbRes, logsRes, publicThRes] = results;
+
+    if (teamRes.data) setTeam(teamRes.data);
+    if (membersRes.data) setMembers(membersRes.data as TeamMember[]);
+    if (actRes.data) setActivities(actRes.data);
+    if (regRes.data) setRegistrations(regRes.data);
+    if (hintsRes.data) setHints(hintsRes.data as unknown as HintWithTreasure[]);
+    if (claimRes.data) setClaims(claimRes.data);
+    if (Array.isArray(lbRes)) {
+      const ranked = lbRes.map((t: any, i: number) => ({ ...t, rank: i + 1 }));
+      setLeaderboard(ranked);
+    }
+    if (logsRes.data) setScoreLogs(logsRes.data as any as ScoreLog[]);
+    if (publicThRes.data) setPublicTreasures(publicThRes.data);
+
     setLoading(false);
   };
 
@@ -418,77 +441,197 @@ export default function MemberPortal() {
 
               {activeTab === 'tasks' && (
                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-4">
-                  <div className="adventure-card p-4 bg-primary/5">
-                    <h3 className="font-adventure text-sm text-primary mb-3 flex items-center gap-2">
-                      <MapPin className="w-4 h-4" /> Checklist Wahana
-                    </h3>
-                    <div className="space-y-2">
-                      {activities.map((act) => {
-                        const status = getActivityStatus(act.id);
-                        return (
-                          <div key={act.id} className={`flex items-center gap-3 p-3 rounded border transition-all ${status === 'done' ? 'border-primary/40 bg-primary/10 opacity-100' :
-                              status === 'in-progress' ? 'border-amber-500/40 bg-amber-500/5 opacity-100' :
-                                'border-white/5 bg-black/20 opacity-40'
-                            }`}>
-                            {status === 'done' ? (
-                              <CheckCircle2 className="w-4 h-4 text-primary" />
-                            ) : status === 'in-progress' ? (
-                              <div className="relative">
-                                <Circle className="w-4 h-4 text-amber-500/40" />
-                                <div className="absolute inset-0 bg-amber-500/40 rounded-full animate-ping" />
+                  {/* Wahana Stations Section */}
+                  <div className="adventure-card overflow-hidden">
+                    <button
+                      onClick={() => setShowWahana(!showWahana)}
+                      className="w-full p-4 flex items-center justify-between bg-primary/5 hover:bg-primary/10 transition-colors"
+                    >
+                      <h3 className="font-adventure text-sm text-primary flex items-center gap-2">
+                        <MapPin className="w-4 h-4" /> Expedition Stations
+                      </h3>
+                      <ChevronDown className={`w-4 h-4 text-primary/40 transition-transform ${showWahana ? 'rotate-180' : ''}`} />
+                    </button>
+                    <AnimatePresence>
+                      {showWahana && (
+                        <motion.div
+                          initial={{ height: 0 }}
+                          animate={{ height: 'auto' }}
+                          exit={{ height: 0 }}
+                          className="px-4 pb-4 space-y-2"
+                        >
+                          {activities.filter(a => a.type === 'wahana').map((act) => {
+                            const status = getActivityStatus(act.id);
+                            return (
+                              <div key={act.id} className={`flex items-center gap-3 p-3 rounded border transition-all ${status === 'done' ? 'border-primary/40 bg-primary/10 opacity-100' :
+                                  status === 'in-progress' ? 'border-amber-500/40 bg-amber-500/5 opacity-100' :
+                                    'border-white/5 bg-black/20 opacity-40'
+                                }`}>
+                                {status === 'done' ? (
+                                  <CheckCircle2 className="w-4 h-4 text-primary" />
+                                ) : status === 'in-progress' ? (
+                                  <div className="relative">
+                                    <Circle className="w-4 h-4 text-amber-500/40" />
+                                    <div className="absolute inset-0 bg-amber-500/40 rounded-full animate-ping" />
+                                  </div>
+                                ) : (
+                                  <Circle className="w-4 h-4 text-white/10" />
+                                )}
+                                <div className="flex-1 min-w-0">
+                                  <p className={`font-adventure text-[11px] truncate ${status !== 'not-started' ? 'text-foreground' : 'text-foreground/60'}`}>
+                                    {act.name}
+                                  </p>
+                                  <p className="text-[8px] uppercase opacity-40 font-adventure">{act.max_points} Pts</p>
+                                </div>
+                                {status === 'done' && <span className="text-[8px] font-adventure text-primary uppercase tracking-widest">Done</span>}
                               </div>
-                            ) : (
-                              <Circle className="w-4 h-4 text-white/10" />
-                            )}
-                            <div className="flex-1 min-w-0">
-                              <p className={`font-adventure text-xs truncate ${status !== 'not-started' ? 'text-foreground' : 'text-foreground/60'}`}>
-                                {act.name}
-                              </p>
-                              <p className="text-[9px] uppercase opacity-40 font-adventure">{act.max_points} Pts • {act.type}</p>
-                            </div>
-                            {status === 'done' && (
-                              <span className="text-[8px] font-adventure text-primary uppercase tracking-widest">Done</span>
-                            )}
-                            {status === 'in-progress' && (
-                              <span className="text-[8px] font-adventure text-amber-500 uppercase tracking-widest animate-pulse">In Progress</span>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
+                            );
+                          })}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </div>
 
-                  {/* Treasure Hints in Tasks Tab */}
-                  <div className="adventure-card p-4">
-                    <h3 className="font-adventure text-sm text-primary mb-3 flex items-center gap-2">
-                      <Gem className="w-4 h-4" /> Hidden Treasures
-                    </h3>
-                    {hints.length === 0 ? (
-                      <div className="py-6 text-center">
-                        <Lock className="w-5 h-5 text-white/10 mx-auto mb-2" />
-                        <p className="text-[10px] italic opacity-30">Scan wahana rahasia untuk membuka hint!</p>
-                      </div>
-                    ) : (
-                      <div className="space-y-3">
-                        {hints.map((hint) => {
-                          const th = hint.treasure_hunts;
-                          const claimed = th ? claims.some(c => c.treasure_hunt_id === th.id) : false;
-                          return (
-                            <div key={hint.id} className={`p-3 rounded border border-dashed ${claimed ? 'border-green-500/30 bg-green-500/5' : 'border-primary/30 bg-black/20'}`}>
-                              <div className="flex justify-between items-start mb-2">
-                                <p className="font-adventure text-xs text-primary">{th?.name}</p>
-                                {claimed && <CheckCircle2 className="w-3 h-3 text-green-500" />}
+                  {/* Challenges Section */}
+                  <div className="adventure-card overflow-hidden">
+                    <button
+                      onClick={() => setShowChallenges(!showChallenges)}
+                      className="w-full p-4 flex items-center justify-between bg-amber-500/5 hover:bg-amber-500/10 transition-colors"
+                    >
+                      <h3 className="font-adventure text-sm text-amber-500 flex items-center gap-2">
+                        <Flame className="w-4 h-4" /> Team Challenges
+                      </h3>
+                      <ChevronDown className={`w-4 h-4 text-amber-500/40 transition-transform ${showChallenges ? 'rotate-180' : ''}`} />
+                    </button>
+                    <AnimatePresence>
+                      {showChallenges && (
+                        <motion.div
+                          initial={{ height: 0 }}
+                          animate={{ height: 'auto' }}
+                          exit={{ height: 0 }}
+                          className="px-4 pb-4 space-y-2"
+                        >
+                          {activities.filter(a => a.type.startsWith('challenge')).map((act) => {
+                            const status = getActivityStatus(act.id);
+                            return (
+                              <div key={act.id} className={`flex items-center gap-3 p-3 rounded border transition-all ${status === 'done' ? 'border-amber-500/40 bg-amber-500/10 opacity-100' :
+                                  'border-white/5 bg-black/20 opacity-40'
+                                }`}>
+                                {status === 'done' ? (
+                                  <CheckCircle2 className="w-4 h-4 text-amber-500" />
+                                ) : (
+                                  <Circle className="w-4 h-4 text-white/10" />
+                                )}
+                                <div className="flex-1 min-w-0">
+                                  <p className={`font-adventure text-[11px] truncate ${status !== 'not-started' ? 'text-foreground' : 'text-foreground/60'}`}>
+                                    {act.name}
+                                  </p>
+                                  <p className="text-[8px] uppercase opacity-40 font-adventure">{act.max_points} Pts</p>
+                                </div>
+                                {status === 'done' && <span className="text-[8px] font-adventure text-amber-500 uppercase tracking-widest">Completed</span>}
                               </div>
-                              <p className="text-[11px] text-white/60 italic leading-relaxed mb-2">"{th?.hint_text}"</p>
-                              <div className="flex justify-between items-center text-[8px] font-adventure opacity-40 uppercase">
-                                <span>{th?.points} Pts</span>
-                                <span>{new Date(hint.received_at).toLocaleDateString()}</span>
-                              </div>
+                            );
+                          })}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+
+                  {/* Public Treasures */}
+                  <div className="adventure-card overflow-hidden border-accent/20">
+                    <button
+                      onClick={() => setShowPublic(!showPublic)}
+                      className="w-full p-4 flex items-center justify-between bg-accent/5 hover:bg-accent/10 transition-colors"
+                    >
+                      <h3 className="font-adventure text-sm text-accent mb-0 flex items-center gap-2">
+                        <Sword className="w-4 h-4" /> Public Treasures
+                      </h3>
+                      <ChevronDown className={`w-4 h-4 text-accent/40 transition-transform ${showPublic ? 'rotate-180' : ''}`} />
+                    </button>
+                    <AnimatePresence>
+                      {showPublic && (
+                        <motion.div
+                          initial={{ height: 0 }}
+                          animate={{ height: 'auto' }}
+                          exit={{ height: 0 }}
+                          className="px-4 pb-4 space-y-3"
+                        >
+                          {publicTreasures.length === 0 ? (
+                            <p className="text-[10px] italic opacity-30 text-center py-4">Belum ada tantangan publik.</p>
+                          ) : (
+                            publicTreasures.map((th) => {
+                              const claimed = claims.some(c => c.treasure_hunt_id === th.id);
+                              return (
+                                <div key={th.id} className={`p-3 rounded border ${claimed ? 'border-green-500/30 bg-green-500/5 opacity-60' : 'border-accent/30 bg-accent/5 shadow-[inset_0_0_10px_rgba(var(--accent-rgb),0.1)]'}`}>
+                                  <div className="flex justify-between items-start mb-1">
+                                    <div className="flex items-center gap-2">
+                                      <p className="font-adventure text-xs text-accent">{th.name}</p>
+                                      <span className="text-[7px] px-1 bg-accent/20 text-accent rounded border border-accent/20 uppercase tracking-tighter pt-0.5">Public</span>
+                                    </div>
+                                    {claimed && <CheckCircle2 className="w-3 h-3 text-green-500" />}
+                                  </div>
+                                  <p className="text-[10px] text-white/70 mb-2 leading-relaxed">
+                                    {claimed ? 'Tantangan ini telah berhasil diselesaikan oleh tim kamu.' : 'Cari lokasi ini dan scan kodenya untuk mendapatkan poin tambahan!'}
+                                  </p>
+                                  <div className="flex justify-between items-center text-[8px] font-adventure opacity-60 uppercase">
+                                    <span className="flex items-center gap-1"><Trophy className="w-2.5 h-2.5" /> {th.points} Pts</span>
+                                    <span className="text-accent/80">{th.remaining_quota} Quota Left</span>
+                                  </div>
+                                </div>
+                              );
+                            })
+                          )}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+
+                  {/* Hidden Treasures */}
+                  <div className="adventure-card overflow-hidden">
+                    <button
+                      onClick={() => setShowHidden(!showHidden)}
+                      className="w-full p-4 flex items-center justify-between hover:bg-white/5 transition-colors"
+                    >
+                      <h3 className="font-adventure text-sm text-primary flex items-center gap-2">
+                        <Gem className="w-4 h-4" /> Hidden Treasures
+                      </h3>
+                      <ChevronDown className={`w-4 h-4 text-white/20 transition-transform ${showHidden ? 'rotate-180' : ''}`} />
+                    </button>
+                    <AnimatePresence>
+                      {showHidden && (
+                        <motion.div
+                          initial={{ height: 0 }}
+                          animate={{ height: 'auto' }}
+                          exit={{ height: 0 }}
+                          className="px-4 pb-4 space-y-3"
+                        >
+                          {hints.length === 0 ? (
+                            <div className="py-6 text-center">
+                              <Lock className="w-5 h-5 text-white/10 mx-auto mb-2" />
+                              <p className="text-[10px] italic opacity-30">Scan wahana rahasia untuk membuka hint!</p>
                             </div>
-                          );
-                        })}
-                      </div>
-                    )}
+                          ) : (
+                            hints.map((hint) => {
+                              const th = hint.treasure_hunts;
+                              const claimed = th ? claims.some(c => c.treasure_hunt_id === th.id) : false;
+                              return (
+                                <div key={hint.id} className={`p-3 rounded border border-dashed ${claimed ? 'border-green-500/30 bg-green-500/5' : 'border-primary/30 bg-black/20'}`}>
+                                  <div className="flex justify-between items-start mb-2">
+                                    <p className="font-adventure text-xs text-primary">{th?.name}</p>
+                                    {claimed && <CheckCircle2 className="w-3 h-3 text-green-500" />}
+                                  </div>
+                                  <p className="text-[11px] text-white/60 italic leading-relaxed mb-2">"{th?.hint_text}"</p>
+                                  <div className="flex justify-between items-center text-[8px] font-adventure opacity-40 uppercase">
+                                    <span>{th?.points} Pts</span>
+                                    <span>{new Date(hint.received_at).toLocaleDateString()}</span>
+                                  </div>
+                                </div>
+                              );
+                            })
+                          )}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </div>
                 </motion.div>
               )}
@@ -594,8 +737,15 @@ export default function MemberPortal() {
                 onClick={() => setActiveTab('tasks')}
                 className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'tasks' ? 'text-primary' : 'text-white/40'}`}
               >
-                <MapPin className="w-5 h-5" />
+                <ScrollText className="w-5 h-5" />
                 <span className="text-[8px] uppercase font-adventure tracking-widest pt-1">Tasks</span>
+              </button>
+              <button
+                onClick={() => setActiveTab('map')}
+                className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'map' ? 'text-primary' : 'text-white/40'}`}
+              >
+                <MapPin className="w-5 h-5" />
+                <span className="text-[8px] uppercase font-adventure tracking-widest pt-1">Map</span>
               </button>
             </div>
 

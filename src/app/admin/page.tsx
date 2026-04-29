@@ -1081,9 +1081,6 @@ function ChallengesTab() {
     </TabLayout>
   );
 }
-
-// ─── Treasure Tab ─────────────────────────────────────────────────────────────
-
 const MAX_TREASURE = 20;
 
 // ─── Treasure Tab ─────────────────────────────────────────────────────────────
@@ -1112,9 +1109,7 @@ function TreasureTab() {
     setLoading(false);
   }, []);
 
-  useEffect(() => { fetchTreasures(); }, [fetchTreasures]);
-
-  const fetchClaims = async (treasureId: string) => {
+  const fetchClaims = useCallback(async (treasureId: string) => {
     const { data } = await supabase
       .from('treasure_hunt_claims')
       .select('team_id, teams(name)')
@@ -1122,7 +1117,40 @@ function TreasureTab() {
 
     setClaimTeams((data || []).map((s: any) => ({ team_name: s.teams?.name || 'Unknown' })));
     setExpandedClaims(treasureId);
-  };
+  }, []);
+
+  useEffect(() => { fetchTreasures(); }, [fetchTreasures]);
+
+  // Real-time subscription for treasure hunts (quota updates)
+  useEffect(() => {
+    const channel = supabase
+      .channel('treasure_hunts_changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'treasure_hunts' }, () => {
+        fetchTreasures();
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [fetchTreasures]);
+
+  // Real-time subscription for claims (claim list updates)
+  useEffect(() => {
+    if (!expandedClaims) return;
+
+    const channel = supabase
+      .channel(`claims_${expandedClaims}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'treasure_hunt_claims',
+        filter: `treasure_hunt_id=eq.${expandedClaims}`
+      }, () => {
+        fetchClaims(expandedClaims);
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [expandedClaims, fetchClaims]);
 
   const handleOpenModal = (th?: TreasureHunt) => {
     if (th) {

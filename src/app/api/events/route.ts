@@ -22,7 +22,7 @@ export async function GET(request: NextRequest): Promise<Response> {
   const auth = await getAuthenticatedClient(request);
   if (!auth) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const supabase = createClient(supabaseUrl, supabaseAnonKey);
+  const { supabase } = auth;
 
   const { data, error } = await supabase
     .from('events')
@@ -34,8 +34,5 @@ export async function GET(request: NextRequest): Promise<Response> {
     return Response.json({ error: 'Failed to fetch events' }, { status: 500 });
   }
 
-  return new Response(JSON.stringify((data ?? []) as EventListItem[]), {
-    status: 200,
-    headers: { 'Content-Type': 'application/json' },
-  });
+  return Response.json((data ?? []) as EventListItem[]);
 }

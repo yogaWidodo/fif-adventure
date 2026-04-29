@@ -41,28 +41,26 @@ export async function POST(request: NextRequest): Promise<Response> {
     return Response.json({ error: 'activity_id is required' }, { status: 400 });
   }
 
-  // 3. Validate Event Status (Requirement 4.0)
-  const { data: statusData } = await supabase
-    .from('settings')
-    .select('value')
-    .eq('key', 'event_status')
-    .single();
+  // 3, 4, 4.5 Parallel Validation: Status, User Profile, and Activity Data
+  const [statusRes, profileRes, activityRes] = await Promise.all([
+    supabase.from('settings').select('value').eq('key', 'event_status').single(),
+    supabase.from('users').select('id, role').eq('auth_id', userId).single(),
+    supabase.from('activities').select('type').eq('id', activity_id).single()
+  ]);
 
-  if (statusData?.value !== 'running') {
+  if (statusRes.data?.value !== 'running') {
     return Response.json({ error: 'Event sedang tidak berlangsung.' }, { status: 403 });
   }
 
-  // 4. Get LO profile and verify assignment
-  const { data: userProfile } = await supabase
-    .from('users')
-    .select('id, role')
-    .eq('auth_id', userId)
-    .single();
-
+  const userProfile = profileRes.data;
   if (!userProfile || userProfile.role !== 'lo') {
     return Response.json({ error: 'Forbidden: Role LO diperlukan' }, { status: 403 });
   }
 
+  const activityData = activityRes.data;
+  const isWahana = activityData?.type === 'wahana';
+
+  // 4.6 Verify Assignment (Requires User Profile)
   const { data: assignment } = await supabase
     .from('lo_assignments')
     .select('activity_id')
@@ -73,15 +71,6 @@ export async function POST(request: NextRequest): Promise<Response> {
   if (!assignment) {
     return Response.json({ error: 'Anda tidak di-assign ke aktivitas ini' }, { status: 403 });
   }
-
-  // 4.5 Get Activity Type
-  const { data: activityData } = await supabase
-    .from('activities')
-    .select('type')
-    .eq('id', activity_id)
-    .single();
-
-  const isWahana = activityData?.type === 'wahana';
 
   // 5. Check if Team has checked in (Only for Wahana)
   let checkin = null;
@@ -112,21 +101,18 @@ export async function POST(request: NextRequest): Promise<Response> {
     }
   }
 
-  // 5.5 Member-Level Protection: Check if any of these members already scored for this activity
-  const { data: allActivityScores } = await supabase
+  // 5.5 Member-Level Protection: Optimized Check for Duplicate Scores
+  const { data: duplicateScore } = await supabase
     .from('score_logs')
-    .select('participant_ids')
-    .eq('activity_id', activity_id);
+    .select('id')
+    .eq('activity_id', activity_id)
+    .overlaps('participant_ids', validScoringIds)
+    .maybeSingle();
 
-  if (allActivityScores && allActivityScores.length > 0) {
-    const alreadyScoredIds = new Set(allActivityScores.flatMap((log: any) => log.participant_ids || []));
-    const doubleScanned = validScoringIds.filter(id => alreadyScoredIds.has(id));
-    
-    if (doubleScanned.length > 0) {
-      return Response.json({ 
-        error: `Gagal: ${doubleScanned.length} peserta sudah pernah mendapatkan poin di aktivitas ini sebelumnya.` 
-      }, { status: 400 });
-    }
+  if (duplicateScore) {
+    return Response.json({ 
+      error: `Gagal: Ada peserta yang sudah pernah mendapatkan poin di aktivitas ini sebelumnya.` 
+    }, { status: 400 });
   }
 
   // 6. Insert Score Log

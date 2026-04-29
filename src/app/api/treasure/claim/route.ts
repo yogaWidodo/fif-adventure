@@ -107,7 +107,13 @@ export async function POST(request: NextRequest): Promise<Response> {
   }
 
   // Atomically decrement quota
-  await supabaseAdmin.rpc('decrement_th_quota', { p_th_id: treasure_hunt_id });
+  const { error: rpcError } = await supabaseAdmin.rpc('decrement_th_quota', { p_th_id: treasure_hunt_id });
+  
+  if (rpcError) {
+    console.error('[TreasureClaim] Quota decrement error:', rpcError);
+    // Even if quota update fails, we already inserted the claim record.
+    // In a real production app, this should be wrapped in a transaction.
+  }
 
   return Response.json({
     success: true,

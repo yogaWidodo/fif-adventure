@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import type { NextRequest } from 'next/server';
+import { getAuthenticatedClient } from '@/lib/serverAuth';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,7 +18,10 @@ interface EventListItem {
   end_time: string | null;
 }
 
-export async function GET(_request: NextRequest): Promise<Response> {
+export async function GET(request: NextRequest): Promise<Response> {
+  const auth = await getAuthenticatedClient(request);
+  if (!auth) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+
   const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
   const { data, error } = await supabase

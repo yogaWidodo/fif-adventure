@@ -73,6 +73,21 @@ export async function POST(request: NextRequest): Promise<Response> {
     return Response.json({ error: 'Tim ini sudah mendapatkan poin untuk aktivitas ini.' }, { status: 409 });
   }
 
+  // 4c. Check if specific member already received points for this activity (Member-Level Protection)
+  const newParticipantId = typeof participant_id === 'string' ? participant_id : null;
+  if (newParticipantId) {
+    const { data: memberExistingScore } = await supabase
+      .from('score_logs')
+      .select('id')
+      .eq('activity_id', activity_id)
+      .contains('participant_ids', [newParticipantId])
+      .maybeSingle();
+
+    if (memberExistingScore) {
+      return Response.json({ error: 'Member ini sudah pernah mendapatkan poin di aktivitas ini sebelumnya.' }, { status: 409 });
+    }
+  }
+
   // 5. Check-in logic: Cumulative for individual scans
   // Check if team already in queue
   const { data: existingReg } = await supabase
@@ -81,8 +96,6 @@ export async function POST(request: NextRequest): Promise<Response> {
     .eq('team_id', team_id)
     .eq('activity_id', activity_id)
     .maybeSingle();
-
-  const newParticipantId = typeof participant_id === 'string' ? participant_id : null;
 
   if (existingReg) {
     const pIds = Array.isArray(existingReg.participant_ids) ? existingReg.participant_ids : [];

@@ -93,7 +93,6 @@ export default function ExpeditionTimer({ onExpired, className = '', variant = '
           expiredFiredRef.current = true;
           setIsExpiredLocally(true);
           onExpired?.();
-          supabase.from('settings').update({ value: 'finished' }).eq('key', 'event_status').then();
         }
       }, 1000);
 

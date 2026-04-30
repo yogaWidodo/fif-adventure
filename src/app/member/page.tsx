@@ -58,7 +58,14 @@ interface ScoreLog {
 }
 
 interface TreasureHuntClaim {
+  id: string;
   treasure_hunt_id: string;
+  claimed_by: string;
+  claimed_at: string;
+  treasure_hunts: {
+    name: string;
+    points: number;
+  } | null;
 }
 
 interface TeamData {
@@ -205,7 +212,7 @@ export default function MemberPortal() {
       supabase.from('activities').select('id, name, type, max_points').eq('is_visible', true).order('name'),
       supabase.from('activity_registrations').select('activity_id, checked_in_at, participant_ids').eq('team_id', teamId),
       supabase.from('treasure_hunt_hints').select('id, treasure_hunt_id, received_at, treasure_hunts(id, name, hint_text, points)').eq('team_id', teamId).order('received_at', { ascending: false }),
-      supabase.from('treasure_hunt_claims').select('treasure_hunt_id').eq('team_id', teamId),
+      supabase.from('treasure_hunt_claims').select('treasure_hunt_id, claimed_by, claimed_at, treasure_hunts(name, points)').eq('team_id', teamId),
       fetch('/api/leaderboard').then(r => r.ok ? r.json() : []),
       supabase.from('score_logs').select('*, activities(name)').eq('team_id', teamId).order('created_at', { ascending: false }),
       supabase.from('treasure_hunts').select('*').eq('is_public', true)
@@ -218,7 +225,7 @@ export default function MemberPortal() {
     if (actRes.data) setActivities(actRes.data);
     if (regRes.data) setRegistrations(regRes.data);
     if (hintsRes.data) setHints(hintsRes.data as unknown as HintWithTreasure[]);
-    if (claimRes.data) setClaims(claimRes.data);
+    if (claimRes.data) setClaims(claimRes.data as any[]);
     if (Array.isArray(lbRes)) {
       const ranked = lbRes.map((t: any, i: number) => ({ ...t, rank: i + 1 }));
       setLeaderboard(ranked);
@@ -251,11 +258,42 @@ export default function MemberPortal() {
     return sum + pointsPerPerson;
   }, 0);
 
+  const myTreasureContribution = claims.reduce((sum, c) => {
+    if (c.claimed_by === user?.id) {
+      return sum + (c.treasure_hunts?.points || 0);
+    }
+    return sum;
+  }, 0);
+
+  const totalMyPoints = myTotalContribution + myTreasureContribution;
+
   const contributionPercentage = team?.total_points && team.total_points > 0
-    ? Math.round((myTotalContribution / team.total_points) * 100)
+    ? Math.round((totalMyPoints / team.total_points) * 100)
     : 0;
 
-  const badges = calculateBadges(user?.id ?? '', scoreLogs, team?.total_points ?? 0);
+  const badges = calculateBadges(user?.id ?? '', scoreLogs, team?.total_points ?? 0, claims, myRank);
+
+  const getMemberContribution = (memberId: string) => {
+    const missionPoints = scoreLogs.reduce((sum, log) => {
+      if (log.participant_ids?.includes(memberId)) {
+        return sum + (log.points_awarded / (log.participant_ids.length || 1));
+      }
+      return sum;
+    }, 0);
+
+    const treasurePoints = claims.reduce((sum, c) => {
+      if (c.claimed_by === memberId) {
+        return sum + (c.treasure_hunts?.points || 0);
+      }
+      return sum;
+    }, 0);
+
+    return {
+      mission: Math.round(missionPoints),
+      treasure: Math.round(treasurePoints),
+      total: Math.round(missionPoints + treasurePoints)
+    };
+  };
 
   const roleLabel = (role: string) => {
     switch (role) {
@@ -264,6 +302,7 @@ export default function MemberPortal() {
       default: return { label: 'Member', icon: null };
     }
   };
+
 
   return (
     <AuthGuard allowedRoles={['member']}>
@@ -366,54 +405,99 @@ export default function MemberPortal() {
                     </div>
                   </div>
 
-                  {/* Personal Stats & Badges - Compact Grid */}
+                  {/* Personal Stats & Badges - Detailed Breakdown */}
                   <div className="grid grid-cols-2 gap-3">
-                    <div className="adventure-card p-3 bg-black/40">
+                    <div className="adventure-card p-3 bg-black/40 border-primary/10">
                       <div className="flex items-center gap-2 mb-2">
-                        <Flame className="w-3 h-3 text-accent" />
-                        <span className="text-[8px] uppercase font-adventure text-primary/70 tracking-widest pt-0.5">Contribution</span>
+                        <Sword className="w-3 h-3 text-accent" />
+                        <span className="text-[8px] uppercase font-adventure text-primary/70 tracking-widest pt-0.5">Mission Pts</span>
                       </div>
-                      <p className="font-adventure text-lg leading-none">{Math.round(myTotalContribution)} <span className="text-[10px] opacity-40">Pts</span></p>
+                      <p className="font-adventure text-lg leading-none text-white">{Math.round(myTotalContribution)}</p>
                     </div>
-                    <div className="adventure-card p-3 bg-black/40">
+                    <div className="adventure-card p-3 bg-black/40 border-primary/10">
                       <div className="flex items-center gap-2 mb-2">
                         <Gem className="w-3 h-3 text-primary" />
-                        <span className="text-[8px] uppercase font-adventure text-primary/70 tracking-widest pt-0.5">Share</span>
+                        <span className="text-[8px] uppercase font-adventure text-primary/70 tracking-widest pt-0.5">Treasure Pts</span>
                       </div>
-                      <p className="font-adventure text-lg leading-none">{contributionPercentage}% <span className="text-[10px] opacity-40">Total</span></p>
+                      <p className="font-adventure text-lg leading-none text-white">{Math.round(myTreasureContribution)}</p>
+                    </div>
+                    <div className="col-span-2 adventure-card p-3 bg-primary/10 border-primary/20 flex justify-between items-center">
+                      <div className="flex items-center gap-3">
+                        <div className="p-1.5 rounded-full bg-primary/20">
+                          <Flame className="w-3.5 h-3.5 text-primary" />
+                        </div>
+                        <div>
+                          <p className="text-[8px] uppercase font-adventure text-primary/70 tracking-widest leading-none">Total Contribution</p>
+                          <p className="font-adventure text-xl text-primary mt-1">{Math.round(totalMyPoints)} <span className="text-[10px] opacity-40">Pts</span></p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-[8px] uppercase font-adventure text-primary/40 tracking-widest leading-none mb-1">Team Share</p>
+                        <p className="font-adventure text-sm text-primary">{contributionPercentage}%</p>
+                      </div>
                     </div>
                   </div>
 
-                  {/* My Journey Timeline - Streamlined for Mobile */}
+                  {/* My Journey Timeline - Merged Mission & Treasure Discoveries */}
                   <div className="adventure-card overflow-hidden">
                     <div className="px-4 py-3 border-b border-primary/10 flex justify-between items-center">
                       <div className="flex items-center gap-2">
                         <MapPin className="w-3.5 h-3.5 text-primary" />
                         <span className="font-adventure text-[10px] tracking-widest text-primary uppercase pt-0.5">My Recent Discoveries</span>
                       </div>
-                      <span className="text-[9px] font-adventure opacity-30 uppercase">{myScoreLogs.length} Records</span>
                     </div>
-                    <div className="p-4 space-y-4 max-h-[240px] overflow-y-auto">
-                      {myScoreLogs.length === 0 ? (
-                        <p className="text-[11px] text-foreground/40 italic text-center py-4">Belum ada aktivitas tercatat.</p>
-                      ) : (
-                        <div className="relative pl-3 border-l border-primary/20 space-y-4">
-                          {myScoreLogs.slice(0, 5).map((log) => (
-                            <div key={log.id} className="relative">
-                              <div className="absolute -left-[18.5px] top-1.5 w-2.5 h-2.5 bg-black border border-primary rounded-full" />
-                              <div className="flex justify-between items-center">
-                                <p className="font-adventure text-xs text-foreground/90 truncate mr-2">{log.activities?.name}</p>
-                                <span className="text-[10px] font-adventure text-primary/80 flex-shrink-0">
-                                  +{Math.round(log.points_awarded / (log.participant_ids?.length || 1))}
-                                </span>
+                    <div className="p-4 space-y-4 max-h-[300px] overflow-y-auto">
+                      {(() => {
+                        // Merge score logs and treasure claims into a single timeline
+                        const missionLogs = scoreLogs.filter(log => log.participant_ids && user?.id && log.participant_ids.includes(user.id))
+                          .map(log => ({
+                            id: log.id,
+                            name: log.activities?.name || 'Mission',
+                            points: Math.round(log.points_awarded / (log.participant_ids?.length || 1)),
+                            date: new Date(log.created_at),
+                            type: 'mission'
+                          }));
+
+                        const treasureLogs = claims.map(c => ({
+                          id: c.treasure_hunt_id,
+                          name: c.treasure_hunts?.name || 'Treasure',
+                          points: c.treasure_hunts?.points || 0,
+                          date: new Date(c.claimed_at),
+                          type: 'treasure'
+                        }));
+
+                        const combinedTimeline = [...missionLogs, ...treasureLogs]
+                          .sort((a, b) => b.date.getTime() - a.date.getTime());
+
+                        if (combinedTimeline.length === 0) {
+                          return <p className="text-[11px] text-foreground/40 italic text-center py-4">Belum ada aktivitas tercatat.</p>;
+                        }
+
+                        return (
+                          <div className="relative pl-3 border-l border-primary/20 space-y-4">
+                            {combinedTimeline.slice(0, 8).map((item) => (
+                              <div key={`${item.type}-${item.id}`} className="relative">
+                                <div className={`absolute -left-[18.5px] top-1.5 w-2.5 h-2.5 bg-black border rounded-full ${item.type === 'treasure' ? 'border-accent shadow-[0_0_5px_rgba(var(--accent-rgb),0.5)]' : 'border-primary'}`} />
+                                <div className="flex justify-between items-center">
+                                  <div className="flex items-center gap-2 truncate">
+                                    {item.type === 'treasure' && <Gem className="w-2.5 h-2.5 text-accent" />}
+                                    <p className="font-adventure text-xs text-foreground/90 truncate">{item.name}</p>
+                                  </div>
+                                  <span className={`text-[10px] font-adventure flex-shrink-0 ${item.type === 'treasure' ? 'text-accent' : 'text-primary/80'}`}>
+                                    +{item.points}
+                                  </span>
+                                </div>
+                                <div className="flex justify-between items-center mt-0.5">
+                                  <p className="text-[8px] uppercase font-adventure text-white/20">
+                                    {item.date.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+                                  </p>
+                                  {item.type === 'treasure' && <span className="text-[7px] font-adventure text-accent/40 uppercase tracking-tighter">Treasure Claimed</span>}
+                                </div>
                               </div>
-                              <p className="text-[8px] uppercase font-adventure text-white/20 mt-0.5">
-                                {new Date(log.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
-                              </p>
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                            ))}
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
 
@@ -464,8 +548,8 @@ export default function MemberPortal() {
                             const status = getActivityStatus(act.id);
                             return (
                               <div key={act.id} className={`flex items-center gap-3 p-3 rounded border transition-all ${status === 'done' ? 'border-primary/40 bg-primary/10 opacity-100' :
-                                  status === 'in-progress' ? 'border-amber-500/40 bg-amber-500/5 opacity-100' :
-                                    'border-white/5 bg-black/20 opacity-40'
+                                status === 'in-progress' ? 'border-amber-500/40 bg-amber-500/5 opacity-100' :
+                                  'border-white/5 bg-black/20 opacity-40'
                                 }`}>
                                 {status === 'done' ? (
                                   <CheckCircle2 className="w-4 h-4 text-primary" />
@@ -515,7 +599,7 @@ export default function MemberPortal() {
                             const status = getActivityStatus(act.id);
                             return (
                               <div key={act.id} className={`flex items-center gap-3 p-3 rounded border transition-all ${status === 'done' ? 'border-amber-500/40 bg-amber-500/10 opacity-100' :
-                                  'border-white/5 bg-black/20 opacity-40'
+                                'border-white/5 bg-black/20 opacity-40'
                                 }`}>
                                 {status === 'done' ? (
                                   <CheckCircle2 className="w-4 h-4 text-amber-500" />
@@ -643,22 +727,104 @@ export default function MemberPortal() {
                       <Users className="w-4 h-4 text-primary" />
                       <h3 className="font-adventure text-sm text-primary pt-0.5">Expedition Crew</h3>
                     </div>
-                    <div className="divide-y divide-white/5">
-                      {members.map((m) => {
+                    <div className="p-4 space-y-4">
+                      {[...members].sort((a, b) => {
+                        if (a.role === 'captain') return -1;
+                        if (b.role === 'captain') return 1;
+                        if (a.role === 'vice_captain') return -1;
+                        if (b.role === 'vice_captain') return 1;
+                        return 0;
+                      }).map((m) => {
                         const { label, icon } = roleLabel(m.role);
+                        const stats = getMemberContribution(m.id);
+                        const percentage = team.total_points && team.total_points > 0
+                          ? Math.round((stats.total / team.total_points) * 100)
+                          : 0;
+                        const isMe = m.id === user?.id;
+
                         return (
-                          <div key={m.id} className="flex items-center gap-3 p-4">
-                            <div className="w-8 h-8 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center font-adventure text-xs text-primary">
-                              {m.name.charAt(0)}
-                            </div>
-                            <div className="flex-1">
-                              <p className="text-xs font-content text-white/90">{m.name}</p>
-                              <div className="flex items-center gap-1 opacity-40">
-                                {icon}
-                                <span className="text-[9px] font-adventure uppercase tracking-widest pt-0.5">{label}</span>
+                          <div
+                            key={m.id}
+                            className={`relative overflow-hidden p-4 rounded-xl border transition-all ${isMe
+                              ? 'bg-primary/10 border-primary/40 shadow-[0_0_15px_rgba(var(--primary-rgb),0.1)]'
+                              : 'bg-black/40 border-primary/10'
+                              }`}
+                          >
+                            {/* Role Decoration for Captains */}
+                            {m.role === 'captain' && (
+                              <div className="absolute top-0 right-0 p-1 bg-primary/20 rounded-bl-lg border-b border-l border-primary/20">
+                                <Crown className="w-3 h-3 text-primary" />
+                              </div>
+                            )}
+
+                            <div className="flex items-center gap-4">
+                              {/* Avatar Area */}
+                              <div className="relative">
+                                <div className={`w-12 h-12 rounded-full border-2 flex items-center justify-center font-adventure text-xl ${m.role === 'captain'
+                                  ? 'border-primary bg-primary/20 text-primary shadow-[0_0_10px_rgba(var(--primary-rgb),0.3)]'
+                                  : 'border-primary/20 bg-primary/5 text-primary/60'
+                                  }`}>
+                                  {m.name.charAt(0)}
+                                </div>
+                                {isMe && (
+                                  <div className="absolute -top-1 -left-1 w-3 h-3 bg-green-500 rounded-full border-2 border-black shadow-sm" />
+                                )}
+                              </div>
+
+                              {/* Name & Role */}
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <h4 className="font-adventure text-sm tracking-wide text-white truncate">{m.name}</h4>
+                                  {isMe && <span className="text-[7px] bg-primary text-black font-bold px-1.5 py-0.5 rounded-sm uppercase tracking-tighter">You</span>}
+                                </div>
+                                <div className="flex items-center gap-1.5 mt-0.5 opacity-60">
+                                  {icon && <span className="scale-75 origin-left opacity-80">{icon}</span>}
+                                  <span className="text-[9px] font-adventure uppercase tracking-[0.2em] text-primary/80">{label}</span>
+                                </div>
+                              </div>
+
+                              {/* Main Stats */}
+                              <div className="text-right">
+                                <div className="flex flex-col items-end">
+                                  <span className="text-lg font-adventure text-primary leading-none tracking-tight">
+                                    {stats.total} <span className="text-[10px] opacity-40">Pts</span>
+                                  </span>
+                                  <div className="flex items-center gap-1 mt-1">
+                                    <Flame className="w-2.5 h-2.5 text-accent opacity-60" />
+                                    <span className="text-[10px] font-adventure text-accent leading-none pt-0.5">{percentage}% <span className="text-[8px] opacity-40 uppercase tracking-tighter ml-0.5">Share</span></span>
+                                  </div>
+                                </div>
                               </div>
                             </div>
-                            {m.id === user?.id && <span className="bg-primary/20 text-primary text-[8px] font-adventure px-1.5 py-0.5 rounded uppercase">You</span>}
+
+                            {/* Detailed Breakdown Footer */}
+                            <div className="mt-4 pt-3 border-t border-primary/5 flex items-center justify-between">
+                              <div className="flex gap-4">
+                                <div className="flex items-center gap-1.5 group">
+                                  <div className="p-1 rounded bg-white/5 group-hover:bg-accent/10 transition-colors">
+                                    <Sword className="w-3 h-3 text-accent/60" />
+                                  </div>
+                                  <div className="flex flex-col">
+                                    <span className="text-[7px] font-adventure text-primary/40 uppercase tracking-widest leading-none">Missions</span>
+                                    <span className="text-[10px] font-adventure text-white/90 leading-none mt-1">{stats.mission}</span>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-1.5 group">
+                                  <div className="p-1 rounded bg-white/5 group-hover:bg-primary/10 transition-colors">
+                                    <Gem className="w-3 h-3 text-primary/60" />
+                                  </div>
+                                  <div className="flex flex-col">
+                                    <span className="text-[7px] font-adventure text-primary/40 uppercase tracking-widest leading-none">Treasures</span>
+                                    <span className="text-[10px] font-adventure text-white/90 leading-none mt-1">{stats.treasure}</span>
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="h-6 w-px bg-primary/10" />
+                              <div className="pl-4">
+                                <p className="text-[8px] font-adventure text-primary/30 uppercase tracking-widest leading-none mb-1">Rank in Team</p>
+                                <p className="text-[10px] font-adventure text-primary/60 text-right"># {members.sort((a, b) => getMemberContribution(b.id).total - getMemberContribution(a.id).total).findIndex(x => x.id === m.id) + 1}</p>
+                              </div>
+                            </div>
                           </div>
                         );
                       })}

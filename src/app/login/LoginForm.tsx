@@ -5,6 +5,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Hash, Calendar, ChevronRight, MapPin, Loader2, ShieldAlert } from 'lucide-react';
 import { getRoleRedirect } from '@/lib/auth';
+import { supabase } from '@/lib/supabase';
 
 type GeoStatus = 'idle' | 'locating' | 'success' | 'denied' | 'out_of_range' | 'skipped';
 
@@ -21,14 +22,36 @@ export default function LoginForm() {
   const searchParams = useSearchParams();
   const redirect = searchParams.get('redirect') || null;
 
-  /** After successful login, try to record attendance via geolocation */
+    /** After successful login, try to record attendance via geolocation */
   const recordAttendance = async (userId: string, destination: string) => {
-    // Admin tidak perlu absensi geolokasi
+    // 1. Check if geofence is enabled
+    const { data: geoSetting } = await supabase
+      .from('settings')
+      .select('value')
+      .eq('key', 'geofence_enabled')
+      .maybeSingle();
+    
+    const isGeofenceEnabled = geoSetting?.value === 'true';
+
+    // 2. If geofence is disabled, skip geolocation request
+    if (!isGeofenceEnabled) {
+      setGeoStatus('success');
+      setGeoMessage('Ekspedisi dimulai!');
+      await fetch('/api/attendance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: userId }),
+      });
+      setTimeout(() => router.push(destination), 800);
+      return;
+    }
+
+    // 3. Admin tidak perlu absensi geolokasi (though we already checked this in handleSubmit)
     setGeoStatus('locating');
     setGeoMessage('Mendeteksi lokasi Anda...');
 
     if (!navigator.geolocation) {
-      // No geolocation support — send without coords (API will decide based on geofence setting)
+      // No geolocation support
       setGeoStatus('skipped');
       await fetch('/api/attendance', {
         method: 'POST',

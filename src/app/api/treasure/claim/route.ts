@@ -106,14 +106,7 @@ export async function POST(request: NextRequest): Promise<Response> {
     return Response.json({ error: 'Gagal mengklaim treasure' }, { status: 500 });
   }
 
-  // Atomically decrement quota
-  const { error: rpcError } = await supabaseAdmin.rpc('decrement_th_quota', { p_th_id: treasure_hunt_id });
-  
-  if (rpcError) {
-    console.error('[TreasureClaim] Quota decrement error:', rpcError);
-    // Even if quota update fails, we already inserted the claim record.
-    // In a real production app, this should be wrapped in a transaction.
-  }
+  // Quota is now automatically decremented via Postgres Trigger 'trg_decrement_quota_on_claim'
 
   return Response.json({
     success: true,

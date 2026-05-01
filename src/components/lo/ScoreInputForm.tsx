@@ -123,7 +123,7 @@ export default function ScoreInputForm({
           </p>
           <p className="font-adventure text-lg gold-engraving">{teamName}</p>
           <p className="text-[10px] font-adventure text-primary/40 mt-1">
-            Max points: {maxPoints}
+            Poin/orang: {maxPoints}
           </p>
         </div>
 
@@ -188,7 +188,7 @@ export default function ScoreInputForm({
               </div>
               <p className="text-[9px] font-adventure text-primary/40 mt-1 text-right">
                 {isInputValid
-                  ? `${Math.round((scoreNum / maxPoints) * 100)}% of max`
+                  ? `${Math.round((scoreNum / maxPoints) * 100)}%`
                   : 'Out of range'}
               </p>
             </div>

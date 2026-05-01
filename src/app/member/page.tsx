@@ -565,7 +565,7 @@ export default function MemberPortal() {
                                   <p className={`font-adventure text-[11px] truncate ${status !== 'not-started' ? 'text-foreground' : 'text-foreground/60'}`}>
                                     {act.name}
                                   </p>
-                                  <p className="text-[8px] uppercase opacity-40 font-adventure">{act.max_points} Pts</p>
+                                  <p className="text-[8px] uppercase opacity-40 font-adventure">{act.max_points} Pts/org</p>
                                 </div>
                                 {status === 'done' && <span className="text-[8px] font-adventure text-primary uppercase tracking-widest">Done</span>}
                               </div>
@@ -610,7 +610,7 @@ export default function MemberPortal() {
                                   <p className={`font-adventure text-[11px] truncate ${status !== 'not-started' ? 'text-foreground' : 'text-foreground/60'}`}>
                                     {act.name}
                                   </p>
-                                  <p className="text-[8px] uppercase opacity-40 font-adventure">{act.max_points} Pts</p>
+                                  <p className="text-[8px] uppercase opacity-40 font-adventure">{act.max_points} Pts/org</p>
                                 </div>
                                 {status === 'done' && <span className="text-[8px] font-adventure text-amber-500 uppercase tracking-widest">Completed</span>}
                               </div>
@@ -1136,7 +1136,7 @@ export default function MemberPortal() {
                   </div>
                   <div className="inline-flex items-center gap-2 bg-accent/10 border border-accent/20 px-4 py-2 rounded-full">
                     <Trophy className="w-4 h-4 text-accent" />
-                    <span className="font-adventure text-xs text-accent">Worth {globalChallenge.max_points} Points</span>
+                    <span className="font-adventure text-xs text-accent">{globalChallenge.max_points} Poin/Orang</span>
                   </div>
                 </div>
                 <div className="p-6 bg-accent/5 border-t border-accent/10">

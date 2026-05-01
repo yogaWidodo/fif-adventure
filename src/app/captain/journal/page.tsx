@@ -193,7 +193,7 @@ export default function TeamJournal() {
                         <h4 className="font-adventure text-lg tracking-tight leading-none text-[#2b1d0e] mb-1.5">{act.name}</h4>
                         <div className="flex items-center gap-3">
                           <p className="text-[10px] uppercase font-adventure text-[#8b4513]/60 italic tracking-tighter">
-                            {act.type.replace('challenge_', '')} • {act.max_points} Pts
+                            {act.type.replace('challenge_', '')} • {act.max_points} Pts/org
                           </p>
                           <div className={`px-2 py-0.5 rounded-full text-[8px] font-adventure uppercase border ${
                             act.difficulty_level === 'Easy' ? 'bg-green-100 border-green-200 text-green-700' :
@@ -387,11 +387,11 @@ export default function TeamJournal() {
                       <div className="flex items-center gap-2">
                         <Flame className="w-4 h-4 text-primary" />
                         <span className="text-[10px] font-adventure text-primary/60 uppercase tracking-widest">
-                          Potential Prestige
+                          Poin/Peserta
                         </span>
                       </div>
                       <span className="text-lg font-adventure text-primary">
-                        {selectedActivity.max_points} pts
+                        {selectedActivity.max_points} pts/org
                       </span>
                     </div>
                   </div>

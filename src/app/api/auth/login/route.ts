@@ -83,30 +83,26 @@ export async function POST(request: NextRequest) {
   let targetAuthId = userRecord.auth_id;
 
   if (!targetAuthId) {
-    // Try to find by email if auth_id was missing in our record
-    const { data: { users: authUsers } } = await supabaseAdmin.auth.admin.listUsers();
-    const existingAuthUser = authUsers.find(u => u.email === email);
-    
-    if (existingAuthUser) {
-      targetAuthId = existingAuthUser.id;
-      // Update our record with the found auth_id for next time
-      await supabaseAdmin.from('users').update({ auth_id: targetAuthId }).eq('id', userRecord.id);
-    } else {
-      // Create the auth user if it doesn't exist
-      const { data: newAuthUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
-        email,
-        password: cleanBirthDate, // Password is ddmmyyyy
-        email_confirm: true,
-        user_metadata: { name: userRecord.name }
-      });
+    // PERF FIX: Avoid listUsers() which pulls ALL auth users (O(n)).
+    // Strategy: Try to create the auth user. If it already exists (409),
+    // signInWithPassword below will still work and we get the ID from the session.
+    const { data: newAuthUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
+      email,
+      password: cleanBirthDate, // Password is ddmmyyyy
+      email_confirm: true,
+      user_metadata: { name: userRecord.name }
+    });
 
-      if (createError || !newAuthUser.user) {
-        console.error('[login] failed to create auth user:', createError?.message);
-        return Response.json({ error: 'Gagal menginisialisasi sesi' }, { status: 500 });
-      }
+    if (newAuthUser?.user) {
+      // New auth user created successfully
       targetAuthId = newAuthUser.user.id;
-      // Save auth_id to our record
       await supabaseAdmin.from('users').update({ auth_id: targetAuthId }).eq('id', userRecord.id);
+    } else if (createError?.message?.includes('already been registered') || createError?.status === 422) {
+      // Auth user already exists — proceed to signIn below, which will yield the auth_id
+      // We'll extract auth_id from the session after sign-in
+    } else if (createError) {
+      console.error('[login] failed to create auth user:', createError.message);
+      return Response.json({ error: 'Gagal menginisialisasi sesi' }, { status: 500 });
     }
   }
 
@@ -119,7 +115,23 @@ export async function POST(request: NextRequest) {
 
   if (authError || !authData.session) {
     console.error('[login] Supabase Auth sign-in failed:', authError?.message);
+
+    // Forward rate-limit errors to client for retry logic
+    if (authError?.status === 429 || authError?.message?.toLowerCase().includes('rate limit')) {
+      return Response.json(
+        { error: 'Terlalu banyak permintaan login. Silakan tunggu beberapa detik.' },
+        { status: 429, headers: { 'Retry-After': '3' } }
+      );
+    }
+
     return Response.json({ error: 'Gagal masuk ke sistem' }, { status: 401 });
+  }
+
+  // PERF FIX: If auth_id wasn't in our record, save it now for future O(1) lookups
+  if (!userRecord.auth_id && authData.session.user?.id) {
+    await supabaseAdmin.from('users')
+      .update({ auth_id: authData.session.user.id })
+      .eq('id', userRecord.id);
   }
 
   // Final Response

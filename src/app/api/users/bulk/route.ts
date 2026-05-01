@@ -86,13 +86,16 @@ export async function POST(request: NextRequest) {
         if (authError) {
           // If already exists in Auth but not in public.users (orphan auth account)
           if (authError.message.includes('already registered')) {
-            // Find the existing auth user to link them
-            const { data: listData } = await supabaseAdmin.auth.admin.listUsers();
-            const foundAuthUser = listData.users.find(u => u.email === email);
-            if (foundAuthUser) {
-              authUserId = foundAuthUser.id;
+            // PERF FIX: Avoid listUsers() which pulls ALL users O(n).
+            // Use signInWithPassword to discover the auth_id of the existing user.
+            const { data: signInData } = await supabaseAdmin.auth.signInWithPassword({
+              email,
+              password: birth_date,
+            });
+            if (signInData?.user) {
+              authUserId = signInData.user.id;
             } else {
-              return { rowIndex, status: 'failed' as const, reason: `Auth Conflict: ${authError.message}` };
+              return { rowIndex, status: 'failed' as const, reason: `Auth Conflict: user exists but password mismatch` };
             }
           } else {
             return { rowIndex, status: 'failed' as const, reason: `Auth Error: ${authError.message}` };

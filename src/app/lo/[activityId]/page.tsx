@@ -242,7 +242,7 @@ export default function ActivityDashboard({
                         )}
                         <span className="flex items-center gap-1.5 text-[10px] font-adventure uppercase tracking-widest text-primary/60 bg-primary/10 px-3 py-1 border border-primary/20 flex-shrink-0">
                           <Flame className="w-3 h-3" />
-                          {activity.points} pts max
+                          {activity.points} pts/org
                         </span>
                       </div>
                     </div>

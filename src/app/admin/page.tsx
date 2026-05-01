@@ -779,7 +779,7 @@ function WahanaTab() {
                     </span>
                   )}
                   <DifficultyBadge level={act.difficulty_level} />
-                  <span className="text-[10px] font-adventure text-primary bg-primary/10 px-2 py-0.5">{act.max_points} MAX PTS</span>
+                  <span className="text-[10px] font-adventure text-primary bg-primary/10 px-2 py-0.5">{act.max_points} PTS/ORG</span>
                 </div>
               </div>
               <h3 className="font-adventure text-lg text-foreground mb-1 group-hover:text-primary transition-colors">{act.name}</h3>
@@ -806,7 +806,7 @@ function WahanaTab() {
           <ModalField label="Wahana Name" value={newName} onChange={setNewName} placeholder="e.g. Temple of Doom" />
           <ModalField label="Description (Lore)" value={newDesc} onChange={setNewDesc} placeholder="What happens here?" />
           <ModalField label="How to Play (Steps)" value={newHowTo} onChange={setNewHowTo} placeholder="1. Walk in\n2. Solve... " />
-          <ModalField label="Max Points" value={newPoints} onChange={setNewPoints} placeholder="e.g. 100" type="number" />
+          <ModalField label="Poin/Orang" value={newPoints} onChange={setNewPoints} placeholder="e.g. 100" type="number" />
           <DifficultySelector value={newLevel} onChange={setNewLevel} />
           <div>
             <label className="block text-[10px] uppercase tracking-widest font-adventure text-[#2b1d0e]/60 mb-2">Linked Private Treasure Hunt</label>
@@ -1015,7 +1015,7 @@ function ChallengesTab() {
                         </span>
                       )}
                       <DifficultyBadge level={act.difficulty_level} />
-                      <span className="text-[10px] font-adventure text-primary bg-primary/10 px-2 py-0.5">{act.max_points} MAX PTS</span>
+                      <span className="text-[10px] font-adventure text-primary bg-primary/10 px-2 py-0.5">{act.max_points} PTS/ORG</span>
                     </div>
                   </div>
                   <h3 className="font-adventure text-lg text-foreground mb-1 group-hover:text-primary transition-colors">{act.name}</h3>
@@ -1041,7 +1041,7 @@ function ChallengesTab() {
           <ModalField label="Challenge Name" value={newName} onChange={setNewName} placeholder="e.g. Bridge of Doom" />
           <ModalField label="Description (Lore)" value={newDesc} onChange={setNewDesc} placeholder="Misi apa ini?" />
           <ModalField label="How to Play (Steps)" value={newHowTo} onChange={setNewHowTo} placeholder="1. Cross... " />
-          <ModalField label="Points" value={newPoints} onChange={setNewPoints} placeholder="e.g. 50" type="number" />
+          <ModalField label="Poin/Orang" value={newPoints} onChange={setNewPoints} placeholder="e.g. 50" type="number" />
           <DifficultySelector value={newLevel} onChange={setNewLevel} />
           <div>
             <label className="block text-[10px] uppercase tracking-widest font-adventure text-[#2b1d0e]/60 mb-2">Challenge Type</label>

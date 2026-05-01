@@ -166,7 +166,7 @@ export default function LOPortal() {
                             </div>
                             <div className="flex flex-col items-end gap-2">
                               <span className="text-[9px] font-adventure uppercase tracking-widest text-primary/60 bg-primary/10 px-2 py-0.5 border border-primary/20">
-                                {wahana.points} pts
+                                {wahana.points} pts/org
                               </span>
                               <DifficultyBadge level={wahana.difficulty_level} />
                             </div>

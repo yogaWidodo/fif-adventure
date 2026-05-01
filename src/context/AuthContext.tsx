@@ -75,12 +75,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const login = async (npk: string, birthDate: string): Promise<{ success: boolean; role?: Role; userId?: string; error?: string }> => {
-    try {
+    const MAX_RETRIES = 3;
+
+    const attemptLogin = async (attempt: number): Promise<Response> => {
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ npk, birth_date: birthDate }),
       });
+
+      // Retry on 429 (rate limit) with exponential backoff
+      if (response.status === 429 && attempt < MAX_RETRIES) {
+        const backoff = Math.pow(2, attempt) * 1000 + Math.random() * 1000;
+        await new Promise(r => setTimeout(r, backoff));
+        return attemptLogin(attempt + 1);
+      }
+
+      return response;
+    };
+
+    try {
+      const response = await attemptLogin(0);
 
       if (!response.ok) {
         const errorData = await response.json();

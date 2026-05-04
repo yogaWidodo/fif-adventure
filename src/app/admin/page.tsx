@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import dynamic from 'next/dynamic';
-import { supabase } from '@/lib/supabase';
+import { supabase, fetchAllUsers } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import AuthGuard from '@/components/AuthGuard';
 import UsersTab from '@/components/admin/UsersTab';
@@ -1589,7 +1589,7 @@ function AuditTab() {
   // Fetch users for mapping
   useEffect(() => {
     const fetchUsers = async () => {
-      const { data } = await supabase.from('users').select('id, name');
+      const data = await fetchAllUsers('id, name');
       if (data) setUserMap(new Map(data.map(u => [u.id, u.name])));
     };
     fetchUsers();

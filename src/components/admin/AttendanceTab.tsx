@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { Users, UserCheck, UserX, MapPin, RefreshCw, Download, Search, Loader2, FileText } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
+import { supabase, fetchAllUsers } from '@/lib/supabase';
 import Pagination from '@/components/admin/Pagination';
 
 interface AttendanceUser {
@@ -134,7 +134,7 @@ export default function AttendanceTab() {
       // Since participant_ids is a JSONB array, we need to handle it.
       // For Option 1, it usually has 1 element.
       // To get names, we'll fetch all users once for mapping (more efficient than joining in a complex query here)
-      const { data: allUsers } = await supabase.from('users').select('id, name, npk');
+      const allUsers = await fetchAllUsers('id, name, npk');
       const userMap = new Map(allUsers?.map(u => [u.id, u]) ?? []);
 
       const headers = 'Waktu,Nama,NPK,Tim,Wahana,Poin';

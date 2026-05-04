@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { History, Clock, CheckCircle2, Compass, Award, Users } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
+import { supabase, fetchAllUsers } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 
 interface HistoryEntry {
@@ -31,7 +31,7 @@ export default function TeamHistoryList({
   // Fetch users for mapping names
   useEffect(() => {
     const fetchUserNames = async () => {
-      const { data } = await supabase.from('users').select('id, name');
+      const data = await fetchAllUsers('id, name');
       if (data) {
         setUserMap(new Map(data.map(u => [u.id, u.name])));
       }

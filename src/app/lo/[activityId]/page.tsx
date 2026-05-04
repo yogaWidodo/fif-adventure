@@ -121,7 +121,7 @@ export default function ActivityDashboard({
   // Requirement 6.6: close modal, show success toast, refresh queue
   const handleCheckinSuccess = (teamName: string, hintGranted?: boolean) => {
     // We DON'T close the modal here anymore to allow "Scan Anggota Berikutnya"
-    const message = hintGranted 
+    const message = hintGranted
       ? `Check-in berhasil: Tim ${teamName} telah tiba & mendapatkan hint rahasia! 💎`
       : `Check-in berhasil: Tim ${teamName} telah tiba!`;
     setToast({ type: 'success', message });
@@ -132,10 +132,10 @@ export default function ActivityDashboard({
   const handleScoringSuccess = (teamName: string, score: number) => {
     setIsScanModalOpen(false);
     setSelectedQueueTeam(null);
-    
-    setToast({ 
-      type: 'success', 
-      message: `Poin berhasil diberikan: ${score} poin untuk Tim ${teamName}!` 
+
+    setToast({
+      type: 'success',
+      message: `Poin berhasil diberikan: ${score} poin untuk Tim ${teamName}!`
     });
     setRefreshTrigger((prev) => prev + 1);
   };
@@ -265,21 +265,19 @@ export default function ActivityDashboard({
               <div className="flex items-center gap-1 p-1 bg-primary/5 border border-primary/20 rounded-lg mb-6 w-fit">
                 <button
                   onClick={() => setActiveTab('queue')}
-                  className={`px-6 py-2 rounded-md font-adventure text-[10px] uppercase tracking-widest transition-all ${
-                    activeTab === 'queue' 
-                      ? 'bg-primary text-primary-foreground shadow-lg' 
+                  className={`px-6 py-2 rounded-md font-adventure text-[10px] uppercase tracking-widest transition-all ${activeTab === 'queue'
+                      ? 'bg-primary text-primary-foreground shadow-lg'
                       : 'text-primary/60 hover:text-primary hover:bg-primary/10'
-                  }`}
+                    }`}
                 >
                   Antrean
                 </button>
                 <button
                   onClick={() => setActiveTab('history')}
-                  className={`px-6 py-2 rounded-md font-adventure text-[10px] uppercase tracking-widest transition-all ${
-                    activeTab === 'history' 
-                      ? 'bg-primary text-primary-foreground shadow-lg' 
+                  className={`px-6 py-2 rounded-md font-adventure text-[10px] uppercase tracking-widest transition-all ${activeTab === 'history'
+                      ? 'bg-primary text-primary-foreground shadow-lg'
                       : 'text-primary/60 hover:text-primary hover:bg-primary/10'
-                  }`}
+                    }`}
                 >
                   Riwayat
                 </button>
@@ -388,7 +386,7 @@ export default function ActivityDashboard({
 function DifficultyBadge({ level }: { level: string }) {
   const colorClass = level === 'Easy' ? 'bg-green-600 text-white' : level === 'Hard' ? 'bg-red-600 text-white' : 'bg-amber-500 text-white';
   const flames = level === 'Easy' ? 1 : level === 'Hard' ? 3 : 2;
-  
+
   return (
     <div className={`flex items-center gap-1.5 px-3 py-1 rounded-sm shadow-lg ${colorClass}`}>
       <div className="flex -space-x-0.5">

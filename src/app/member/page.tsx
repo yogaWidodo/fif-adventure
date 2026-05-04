@@ -28,6 +28,9 @@ interface Activity {
   name: string;
   type: string;
   max_points: number;
+  description?: string | null;
+  how_to_play?: string | null;
+  difficulty_level?: string;
 }
 
 interface Registration {
@@ -104,6 +107,7 @@ export default function MemberPortal() {
   const [discoveredActivity, setDiscoveredActivity] = useState<any>(null);
   const [discoveredHint, setDiscoveredHint] = useState<any>(null);
   const [globalChallenge, setGlobalChallenge] = useState<any>(null);
+  const [selectedActivity, setSelectedActivity] = useState<any>(null);
   const notifiedChallengeIds = useRef<Set<string>>(new Set());
 
   useEffect(() => {
@@ -209,7 +213,7 @@ export default function MemberPortal() {
     const results = await Promise.all([
       supabase.from('teams').select('id, name, slogan, total_points').eq('id', teamId).maybeSingle(),
       supabase.from('users').select('id, name, role').eq('team_id', teamId).order('role'),
-      supabase.from('activities').select('id, name, type, max_points').eq('is_visible', true).order('name'),
+      supabase.from('activities').select('id, name, type, max_points, description, how_to_play, difficulty_level').eq('is_visible', true).order('name'),
       supabase.from('activity_registrations').select('activity_id, checked_in_at, participant_ids').eq('team_id', teamId),
       supabase.from('treasure_hunt_hints').select('id, treasure_hunt_id, received_at, treasure_hunts(id, name, hint_text, points)').eq('team_id', teamId).order('received_at', { ascending: false }),
       supabase.from('treasure_hunt_claims').select('treasure_hunt_id, claimed_by, claimed_at, treasure_hunts(name, points)').eq('team_id', teamId),
@@ -548,9 +552,9 @@ export default function MemberPortal() {
                           {activities.filter(a => a.type === 'wahana').map((act) => {
                             const status = getActivityStatus(act.id);
                             return (
-                              <div key={act.id} className={`flex items-center gap-3 p-3 rounded border transition-all ${status === 'done' ? 'border-primary/40 bg-primary/10 opacity-100' :
-                                status === 'in-progress' ? 'border-amber-500/40 bg-amber-500/5 opacity-100' :
-                                  'border-white/5 bg-black/20 opacity-40'
+                              <div key={act.id} onClick={() => setSelectedActivity(act)} className={`flex items-center gap-3 p-3 rounded border transition-all cursor-pointer hover:bg-white/5 active:scale-[0.98] ${status === 'done' ? 'border-primary/40 bg-primary/10 opacity-100' :
+                                status === 'in-progress' ? 'border-amber-500/40 bg-amber-500/5 opacity-100 animate-pulse-subtle' :
+                                  'border-white/5 bg-black/20 opacity-70 hover:opacity-100'
                                 }`}>
                                 {status === 'done' ? (
                                   <CheckCircle2 className="w-4 h-4 text-primary" />
@@ -599,8 +603,8 @@ export default function MemberPortal() {
                           {activities.filter(a => a.type.startsWith('challenge')).map((act) => {
                             const status = getActivityStatus(act.id);
                             return (
-                              <div key={act.id} className={`flex items-center gap-3 p-3 rounded border transition-all ${status === 'done' ? 'border-amber-500/40 bg-amber-500/10 opacity-100' :
-                                'border-white/5 bg-black/20 opacity-40'
+                              <div key={act.id} onClick={() => setSelectedActivity(act)} className={`flex items-center gap-3 p-3 rounded border transition-all cursor-pointer hover:bg-white/5 active:scale-[0.98] ${status === 'done' ? 'border-amber-500/40 bg-amber-500/10 opacity-100' :
+                                'border-white/5 bg-black/20 opacity-70 hover:opacity-100'
                                 }`}>
                                 {status === 'done' ? (
                                   <CheckCircle2 className="w-4 h-4 text-amber-500" />
@@ -1142,6 +1146,103 @@ export default function MemberPortal() {
                 </div>
                 <div className="p-6 bg-accent/5 border-t border-accent/10">
                   <button onClick={() => setGlobalChallenge(null)} className="w-full py-4 font-adventure text-sm uppercase tracking-[0.4em] bg-accent text-accent-foreground hover:bg-accent/90 transition-all shadow-[0_10px_20px_rgba(0,0,0,0.4)] active:scale-95">Prepare for Mission</button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Selected Activity Details Modal */}
+        <AnimatePresence>
+          {selectedActivity && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/90 backdrop-blur-sm"
+              onClick={() => setSelectedActivity(null)}
+            >
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0, y: 20 }}
+                animate={{ scale: 1, opacity: 1, y: 0 }}
+                exit={{ scale: 0.9, opacity: 0, y: 20 }}
+                className="adventure-card w-full max-w-lg overflow-hidden border-primary/30"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {/* Modal Header */}
+                <div className="relative h-32 bg-primary/20 flex items-center justify-center overflow-hidden">
+                  <div className="absolute inset-0 bg-[url('/images/expedition_map_bg.png')] bg-cover bg-center opacity-30 mix-blend-overlay" />
+                  <div className="relative z-10 flex flex-col items-center">
+                    <div className="bg-primary/20 p-3 rounded-full border border-primary/30 mb-2">
+                       {selectedActivity.type === 'wahana' ? (
+                         <MapPin className="w-6 h-6 text-primary torch-glow" />
+                       ) : (
+                         <Sword className="w-6 h-6 text-primary torch-glow" />
+                       )}
+                    </div>
+                    <h2 className="font-adventure text-2xl gold-engraving tracking-widest uppercase mb-1">
+                      {selectedActivity.name}
+                    </h2>
+                    {selectedActivity.difficulty_level && (
+                      <div className={`px-2 py-0.5 rounded-full text-[8px] font-adventure uppercase border ${
+                        selectedActivity.difficulty_level === 'Easy' ? 'bg-green-900/50 border-green-500/50 text-green-400' :
+                        selectedActivity.difficulty_level === 'Hard' ? 'bg-red-900/50 border-red-500/50 text-red-400' :
+                        'bg-amber-900/50 border-amber-500/50 text-amber-400'
+                      }`}>
+                        {selectedActivity.difficulty_level}
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => setSelectedActivity(null)}
+                    className="absolute top-4 right-4 z-20 text-foreground/40 hover:text-foreground transition-colors"
+                  >
+                    <X className="w-6 h-6" />
+                  </button>
+                </div>
+
+                {/* Modal Body */}
+                <div className="p-8 max-h-[60vh] overflow-y-auto custom-scrollbar">
+                  <div className="space-y-8">
+                    {/* Lore Section */}
+                    <section>
+                      <div className="flex items-center gap-3 mb-3">
+                        <span className="h-px flex-1 bg-primary/20" />
+                        <h3 className="font-adventure text-[10px] uppercase tracking-[0.4em] text-primary/60">Discovery Lore</h3>
+                        <span className="h-px flex-1 bg-primary/20" />
+                      </div>
+                      <p className="text-sm font-content text-foreground/80 italic leading-relaxed text-center px-4">
+                        "{selectedActivity.description || 'No lore recorded for this discovery.'}"
+                      </p>
+                    </section>
+
+                    {/* How to Play Section */}
+                    <section>
+                      <div className="flex items-center gap-3 mb-4">
+                        <span className="h-px flex-1 bg-primary/20" />
+                        <h3 className="font-adventure text-[10px] uppercase tracking-[0.4em] text-primary/60">Instructions</h3>
+                        <span className="h-px flex-1 bg-primary/20" />
+                      </div>
+                      <div className="bg-black/40 border border-primary/10 p-6 rounded-sm">
+                        <div className="text-xs font-content text-foreground/70 leading-relaxed whitespace-pre-wrap">
+                          {selectedActivity.how_to_play || 'Search the area for clues. The field officer will provide further guidance.'}
+                        </div>
+                      </div>
+                    </section>
+
+                    {/* Reward Section */}
+                    <div className="flex items-center justify-between pt-6 border-t border-primary/10">
+                      <div className="flex items-center gap-2">
+                        <Flame className="w-4 h-4 text-primary" />
+                        <span className="text-[10px] font-adventure text-primary/60 uppercase tracking-widest">
+                          Poin/Peserta
+                        </span>
+                      </div>
+                      <span className="text-lg font-adventure text-primary">
+                        {selectedActivity.max_points} pts/org
+                      </span>
+                    </div>
+                  </div>
                 </div>
               </motion.div>
             </motion.div>

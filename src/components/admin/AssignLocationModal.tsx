@@ -93,18 +93,8 @@ export default function AssignLocationModal({
 
         if (actError) throw actError;
 
-        // 3. Fetch all assigned activity IDs (excluding current user's)
-        const { data: assigned, error: assignedError } = await supabase
-          .from('lo_assignments')
-          .select('activity_id')
-          .neq('lo_id', user.id);
-
-        if (assignedError) throw assignedError;
-        const assignedIds = new Set((assigned || []).map(a => a.activity_id));
-
-        // 4. Filter out activities already assigned to other LOs
-        const availableActivities = (actData || []).filter(act => !assignedIds.has(act.id));
-        setActivities(availableActivities);
+        // 3. (Removed constraint) Wahana can now be assigned to multiple LOs.
+        setActivities(actData || []);
 
       } catch (err: any) {
         setError('Gagal sinkronisasi data wahana');

@@ -226,8 +226,9 @@ export default function MemberPortal() {
     if (regRes.data) setRegistrations(regRes.data);
     if (hintsRes.data) setHints(hintsRes.data as unknown as HintWithTreasure[]);
     if (claimRes.data) setClaims(claimRes.data as any[]);
-    if (Array.isArray(lbRes)) {
-      const ranked = lbRes.map((t: any, i: number) => ({ ...t, rank: i + 1 }));
+    const lbData = Array.isArray(lbRes) ? lbRes : lbRes?.leaderboard || [];
+    if (Array.isArray(lbData)) {
+      const ranked = lbData.map((t: any, i: number) => ({ ...t, rank: i + 1 }));
       setLeaderboard(ranked);
     }
     if (logsRes.data) setScoreLogs(logsRes.data as any as ScoreLog[]);

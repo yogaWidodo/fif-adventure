@@ -11,7 +11,8 @@ export async function GET() {
   const { data: teams, error } = await supabase
     .from('teams')
     .select('id, name, total_points')
-    .order('total_points', { ascending: false });
+    .order('total_points', { ascending: false })
+    .limit(50);
 
   if (error) {
     return NextResponse.json({ error: 'Failed to fetch leaderboard' }, { status: 500 });

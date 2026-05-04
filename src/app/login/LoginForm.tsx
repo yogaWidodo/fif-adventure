@@ -1,9 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Hash, Calendar, ChevronRight, MapPin, Loader2, ShieldAlert } from 'lucide-react';
+import { Hash, Calendar, ChevronRight, MapPin, Loader2, ShieldAlert, Clock } from 'lucide-react';
 import { getRoleRedirect } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
 
@@ -16,6 +16,8 @@ export default function LoginForm() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [geoStatus, setGeoStatus] = useState<GeoStatus>('idle');
   const [geoMessage, setGeoMessage] = useState('');
+  const [queueCountdown, setQueueCountdown] = useState(0);
+  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const { login, logout } = useAuth();
   const router = useRouter();
@@ -128,7 +130,20 @@ export default function LoginForm() {
       return;
     }
 
-    const result = await login(npk, birthDate);
+    // Only show queue/delay IF the server actually returns 429 (Rate Limited)
+    const result = await login(npk, birthDate, (delaySeconds) => {
+      setQueueCountdown(delaySeconds);
+      if (countdownRef.current) clearInterval(countdownRef.current);
+      let remaining = delaySeconds;
+      countdownRef.current = setInterval(() => {
+        remaining--;
+        setQueueCountdown(remaining);
+        if (remaining <= 0) {
+          if (countdownRef.current) clearInterval(countdownRef.current);
+          countdownRef.current = null;
+        }
+      }, 1000);
+    });
 
     if (result.success && result.role) {
       const destination = result.role === 'admin'
@@ -248,8 +263,8 @@ export default function LoginForm() {
       >
         <div className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity" />
         <span className="flex items-center justify-center gap-3">
-          {isSubmitting && !isLocating ? 'Memverifikasi...' : isLocating ? 'Mendeteksi Lokasi...' : geoStatus === 'out_of_range' ? 'Akses Ditolak' : 'Mulai Ekspedisi'}
-          {isLocating ? <Loader2 className="w-5 h-5 animate-spin" /> : geoStatus === 'out_of_range' ? <ShieldAlert className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
+          {queueCountdown > 0 ? `Antrian login... ${queueCountdown}s` : isSubmitting && !isLocating ? 'Memverifikasi...' : isLocating ? 'Mendeteksi Lokasi...' : geoStatus === 'out_of_range' ? 'Akses Ditolak' : 'Mulai Ekspedisi'}
+          {queueCountdown > 0 ? <Clock className="w-5 h-5 animate-pulse" /> : isLocating ? <Loader2 className="w-5 h-5 animate-spin" /> : geoStatus === 'out_of_range' ? <ShieldAlert className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
         </span>
       </button>
     </form>

@@ -805,7 +805,7 @@ function WahanaTab() {
         <div className="space-y-5">
           <ModalField label="Wahana Name" value={newName} onChange={setNewName} placeholder="e.g. Temple of Doom" />
           <ModalField label="Description (Lore)" value={newDesc} onChange={setNewDesc} placeholder="What happens here?" />
-          <ModalField label="How to Play (Steps)" value={newHowTo} onChange={setNewHowTo} placeholder="1. Walk in\n2. Solve... " />
+          <StepBuilderField label="How to Play (Steps)" value={newHowTo} onChange={setNewHowTo} />
           <ModalField label="Poin/Orang" value={newPoints} onChange={setNewPoints} placeholder="e.g. 100" type="number" />
           <DifficultySelector value={newLevel} onChange={setNewLevel} />
           <div>
@@ -1040,7 +1040,7 @@ function ChallengesTab() {
         <div className="space-y-5">
           <ModalField label="Challenge Name" value={newName} onChange={setNewName} placeholder="e.g. Bridge of Doom" />
           <ModalField label="Description (Lore)" value={newDesc} onChange={setNewDesc} placeholder="Misi apa ini?" />
-          <ModalField label="How to Play (Steps)" value={newHowTo} onChange={setNewHowTo} placeholder="1. Cross... " />
+          <StepBuilderField label="How to Play (Steps)" value={newHowTo} onChange={setNewHowTo} />
           <ModalField label="Poin/Orang" value={newPoints} onChange={setNewPoints} placeholder="e.g. 50" type="number" />
           <DifficultySelector value={newLevel} onChange={setNewLevel} />
           <div>
@@ -1822,6 +1822,68 @@ function ModalField({
         placeholder={placeholder}
         className="w-full bg-transparent border-b-2 border-[#2b1d0e]/20 p-3 font-adventure text-[#2b1d0e] placeholder:text-[#2b1d0e]/20 focus:outline-none focus:border-[#8b4513] transition-colors"
       />
+    </div>
+  );
+}
+
+function StepBuilderField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const steps = value
+    ? value.split('\n').map(s => s.replace(/^\d+\.\s*/, '').trim())
+    : [];
+
+  const updateSteps = (newSteps: string[]) => {
+    if (newSteps.length === 0) {
+      onChange('');
+      return;
+    }
+    const formatted = newSteps.map((s, i) => `${i + 1}. ${s}`).join('\n');
+    onChange(formatted);
+  };
+
+  const handleStepChange = (index: number, val: string) => {
+    const newSteps = [...steps];
+    newSteps[index] = val;
+    updateSteps(newSteps);
+  };
+
+  const addStep = () => {
+    updateSteps([...steps, '']);
+  };
+
+  const removeStep = (index: number) => {
+    const newSteps = steps.filter((_, i) => i !== index);
+    updateSteps(newSteps);
+  };
+
+  return (
+    <div className="space-y-3">
+      <label className="block text-[10px] uppercase tracking-widest font-adventure text-[#2b1d0e]/60">{label}</label>
+      {steps.map((step, idx) => (
+        <div key={idx} className="flex gap-2 items-center">
+          <span className="font-adventure text-[#2b1d0e]/60 w-5">{idx + 1}.</span>
+          <input
+            type="text"
+            value={step}
+            onChange={e => handleStepChange(idx, e.target.value)}
+            placeholder={`Langkah ${idx + 1}`}
+            className="flex-1 bg-transparent border-b border-[#2b1d0e]/20 p-2 font-adventure text-[#2b1d0e] focus:outline-none focus:border-[#8b4513] transition-colors"
+          />
+          <button type="button" onClick={() => removeStep(idx)} className="text-red-500 hover:text-red-700 p-1">
+             <Trash2 className="w-4 h-4" />
+          </button>
+        </div>
+      ))}
+      <button type="button" onClick={addStep} className="flex items-center gap-1 text-[10px] uppercase font-adventure text-[#8b4513] hover:text-[#5d2e0d]">
+        <Plus className="w-3 h-3" /> Tambah Langkah
+      </button>
     </div>
   );
 }

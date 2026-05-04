@@ -17,7 +17,7 @@ interface User {
 interface AuthContextType {
   userRole: Role;
   user: User | null;
-  login: (npk: string, birthDate: string) => Promise<{ success: boolean; role?: Role; userId?: string; error?: string }>;
+  login: (npk: string, birthDate: string, onRateLimit?: (seconds: number) => void) => Promise<{ success: boolean; role?: Role; userId?: string; error?: string }>;
   logout: () => Promise<void>;
   isLoading: boolean;
 }
@@ -74,8 +74,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => subscription.unsubscribe();
   }, []);
 
-  const login = async (npk: string, birthDate: string): Promise<{ success: boolean; role?: Role; userId?: string; error?: string }> => {
-    const MAX_RETRIES = 3;
+  const login = async (npk: string, birthDate: string, onRateLimit?: (seconds: number) => void): Promise<{ success: boolean; role?: Role; userId?: string; error?: string }> => {
+    const MAX_RETRIES = 2;
 
     const attemptLogin = async (attempt: number): Promise<Response> => {
       const response = await fetch('/api/auth/login', {
@@ -84,10 +84,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         body: JSON.stringify({ npk, birth_date: birthDate }),
       });
 
-      // Retry on 429 (rate limit) with exponential backoff
+      // If rate limited, trigger queue delay before retrying
       if (response.status === 429 && attempt < MAX_RETRIES) {
-        const backoff = Math.pow(2, attempt) * 1000 + Math.random() * 1000;
-        await new Promise(r => setTimeout(r, backoff));
+        // Random delay between 5 and 35 seconds to spread load
+        const delaySeconds = Math.floor(Math.random() * 30) + 5;
+        if (onRateLimit) onRateLimit(delaySeconds);
+        await new Promise(r => setTimeout(r, delaySeconds * 1000));
         return attemptLogin(attempt + 1);
       }
 

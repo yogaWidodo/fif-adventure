@@ -77,6 +77,22 @@ export default function TeamHistoryList({
     fetchHistory();
   }, [fetchHistory, refreshTrigger]);
 
+  // Supabase Realtime: listen for new scores
+  useEffect(() => {
+    const channel = supabase
+      .channel(`history-${activityId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'score_logs', filter: `activity_id=eq.${activityId}` },
+        () => { fetchHistory(); }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [activityId, fetchHistory]);
+
   const formatTime = (isoString: string) => {
     const date = new Date(isoString);
     return date.toLocaleTimeString('id-ID', {

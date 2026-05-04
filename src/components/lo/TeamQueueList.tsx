@@ -91,6 +91,27 @@ export default function TeamQueueList({
     fetchQueue();
   }, [fetchQueue, refreshTrigger]);
 
+  // Supabase Realtime: listen for new check-ins and new scores
+  useEffect(() => {
+    const channel = supabase
+      .channel(`team-queue-${activityId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'activity_registrations', filter: `activity_id=eq.${activityId}` },
+        () => { fetchQueue(); }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'score_logs', filter: `activity_id=eq.${activityId}` },
+        () => { fetchQueue(); }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [activityId, fetchQueue]);
+
   const formatTime = (isoString: string) => {
     const date = new Date(isoString);
     return date.toLocaleTimeString('id-ID', {

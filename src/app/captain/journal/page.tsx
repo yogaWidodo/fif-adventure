@@ -167,11 +167,11 @@ export default function TeamJournal() {
                       initial={{ opacity: 0, x: -10 }}
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: idx * 0.05 }}
-                      onClick={() => status !== 'not-started' && setSelectedActivity(act)}
-                      className={`parchment p-5 flex items-center justify-between border-l-[6px] transition-all relative overflow-hidden group ${
-                        status === 'done' ? 'opacity-100 shadow-lg cursor-pointer hover:translate-x-1 active:scale-[0.98]' :
-                        status === 'in-progress' ? 'opacity-90 border-l-amber-500 shadow-inner cursor-pointer animate-pulse-subtle bg-amber-500/5' :
-                        'opacity-40 grayscale pointer-events-none'
+                      onClick={() => setSelectedActivity(act)}
+                      className={`parchment p-5 flex items-center justify-between border-l-[6px] transition-all relative overflow-hidden group cursor-pointer hover:translate-x-1 active:scale-[0.98] ${
+                        status === 'done' ? 'opacity-100 shadow-lg' :
+                        status === 'in-progress' ? 'opacity-90 border-l-amber-500 shadow-inner animate-pulse-subtle bg-amber-500/5' :
+                        'opacity-70 hover:opacity-100'
                       } ${
                         act.difficulty_level === 'Easy' ? 'border-l-green-600' :
                         act.difficulty_level === 'Hard' ? 'border-l-red-600' :

@@ -41,7 +41,9 @@ export default function LeaderboardPage() {
         data = json.leaderboard;
       }
       
-      setTeams(data);
+      // Add rank based on index (since API returns it sorted by total_points)
+      const rankedData = data.map((t, index) => ({ ...t, rank: index + 1 }));
+      setTeams(rankedData);
       setLoading(false);
     } catch {
       setLoading(false);
@@ -125,7 +127,7 @@ export default function LeaderboardPage() {
   }, []);
 
   return (
-    <div className="relative min-h-screen flex flex-col items-center overflow-y-auto font-content selection:bg-primary selection:text-primary-foreground custom-scrollbar">
+    <div className="relative h-screen flex flex-col items-center overflow-hidden font-content selection:bg-primary selection:text-primary-foreground">
       {/* Immersive Background */}
       <div
         className="fixed inset-0 z-0 bg-cover bg-center opacity-30 mix-blend-luminosity"
@@ -134,8 +136,8 @@ export default function LeaderboardPage() {
       <div className="fixed inset-0 z-0 bg-[radial-gradient(circle_at_center,rgba(18,29,23,0.4)_0%,rgba(10,20,15,0.95)_100%)]" />
       <div className="fixed inset-0 z-10 jungle-overlay opacity-5 pointer-events-none" />
 
-      <div className="relative z-20 w-full max-w-4xl py-12 px-6 md:px-16">
-        <header className="mb-16 text-center">
+      <div className="relative z-20 w-full max-w-4xl py-6 md:py-12 px-6 md:px-16 flex flex-col h-full">
+        <header className="mb-6 md:mb-10 flex-shrink-0 text-center">
           <motion.div
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -180,14 +182,14 @@ export default function LeaderboardPage() {
         </AnimatePresence>
 
         {/* Leaderboard Table */}
-        <div className="adventure-card border-primary/20 bg-card/90 shadow-2xl overflow-hidden">
-          <div className="grid grid-cols-12 gap-2 md:gap-4 px-4 md:px-8 py-4 md:py-5 border-b border-primary/20 bg-primary/5">
+        <div className="adventure-card border-primary/20 bg-card/90 shadow-2xl flex flex-col flex-1 min-h-0 overflow-hidden">
+          <div className="flex-shrink-0 grid grid-cols-12 gap-2 md:gap-4 px-4 md:px-8 py-4 md:py-5 border-b border-primary/20 bg-primary/5">
             <div className="col-span-3 md:col-span-2 font-adventure text-[9px] md:text-[10px] uppercase tracking-[0.2em] md:tracking-[0.3em] text-primary">Rank</div>
             <div className="col-span-6 md:col-span-7 font-adventure text-[9px] md:text-[10px] uppercase tracking-[0.2em] md:tracking-[0.3em] text-primary">Expedition Group</div>
             <div className="col-span-3 font-adventure text-[9px] md:text-[10px] uppercase tracking-[0.2em] md:tracking-[0.3em] text-primary text-right">Prestige</div>
           </div>
 
-          <div className="divide-y divide-primary/10">
+          <div className="flex-1 overflow-y-auto divide-y divide-primary/10 custom-scrollbar">
             {loading ? (
               <div className="p-20 md:p-32 flex flex-col items-center justify-center opacity-40 italic">
                 <Compass className="w-10 h-10 md:w-12 md:h-12 text-primary animate-spin mb-4" />
@@ -246,7 +248,7 @@ export default function LeaderboardPage() {
           </div>
         </div>
 
-        <footer className="mt-16 flex flex-col items-center opacity-40">
+        <footer className="mt-6 md:mt-10 flex-shrink-0 flex flex-col items-center opacity-40">
           <div className="flex items-center gap-4 mb-4">
             <span className="h-px w-24 bg-gradient-to-r from-transparent to-primary/40" />
             <span className="font-adventure text-[10px] tracking-[0.5em] uppercase">Expedition Ledger</span>

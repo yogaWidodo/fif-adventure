@@ -3,12 +3,15 @@ import { createClient } from '@supabase/supabase-js';
 
 export const revalidate = 10; // Cache this route globally per 10 seconds
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
-
 export async function GET(request: Request) {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+  
+  if (!supabaseUrl || !supabaseKey) {
+    return NextResponse.json({ error: 'Missing Supabase credentials' }, { status: 500 });
+  }
+
+  const supabase = createClient(supabaseUrl, supabaseKey);
   const { searchParams } = new URL(request.url);
   const teamId = searchParams.get('teamId');
 

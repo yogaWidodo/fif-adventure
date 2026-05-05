@@ -27,8 +27,8 @@ export default function LeaderboardPage() {
   const pendingUpdatesRef = useRef<Record<string, number>>({});
   const notifTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ── Fetch leaderboard from API ─────────────────────────────────────────────
-  const fetchLeaderboard = async () => {
+  // ── Fetch leaderboard from API with Polling ────────────────────────────────
+  const fetchLeaderboard = async (isSilent = false) => {
     try {
       const res = await fetch('/api/leaderboard');
       if (!res.ok) return;
@@ -43,87 +43,45 @@ export default function LeaderboardPage() {
       
       // Add rank based on index (since API returns it sorted by total_points)
       const rankedData = data.map((t, index) => ({ ...t, rank: index + 1 }));
-      setTeams(rankedData);
-      setLoading(false);
+      
+      setTeams((prev) => {
+        // Compare prev and rankedData to find score changes for toast
+        if (prev.length > 0) {
+          // Find a team that has a score increase
+          for (const newTeam of rankedData) {
+            const oldTeam = prev.find(t => t.id === newTeam.id);
+            if (oldTeam && newTeam.total_points > oldTeam.total_points) {
+              if (notifTimerRef.current) clearTimeout(notifTimerRef.current);
+              setRecentUpdate({ 
+                teamName: newTeam.name, 
+                points: newTeam.total_points - oldTeam.total_points 
+              });
+              notifTimerRef.current = setTimeout(() => setRecentUpdate(null), 4000);
+              break; // Show one toast at a time
+            }
+          }
+        }
+        return rankedData;
+      });
+      
+      if (!isSilent) setLoading(false);
     } catch {
-      setLoading(false);
+      if (!isSilent) setLoading(false);
     }
   };
 
-  // ── Initial fetch ──────────────────────────────────────────────────────────
   useEffect(() => {
-    fetchLeaderboard();
-  }, []);
+    fetchLeaderboard(); // Initial load
 
-  // ── Supabase Realtime: subscribe to teams table changes ───────────────────
-  // Requirement 8.2: reflects score changes in real-time
-  // Requirement 8.4: reflects score changes within seconds
-  useEffect(() => {
-    const channel = supabase
-      .channel('leaderboard-realtime')
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'teams',
-        },
-        (payload) => {
-          const updated = payload.new as { id: string; name: string; total_points: number };
-          
-          // 1. Add to pending updates for throttled sorting
-          pendingUpdatesRef.current[updated.id] = updated.total_points;
-
-          // 2. Show immediate toast for excitement (only if points changed)
-          setTeams((prev) => {
-            const existing = prev.find(t => t.id === updated.id);
-            if (existing && existing.total_points !== updated.total_points) {
-              if (notifTimerRef.current) clearTimeout(notifTimerRef.current);
-              setRecentUpdate({ 
-                teamName: updated.name, 
-                points: updated.total_points - existing.total_points 
-              });
-              notifTimerRef.current = setTimeout(() => setRecentUpdate(null), 4000);
-            }
-            return prev; // Don't trigger resort here yet
-          });
-        }
-      )
-      .subscribe();
+    // Setup polling every 5 seconds
+    const interval = setInterval(() => {
+      fetchLeaderboard(true);
+    }, 5000);
 
     return () => {
-      supabase.removeChannel(channel);
+      clearInterval(interval);
       if (notifTimerRef.current) clearTimeout(notifTimerRef.current);
     };
-  }, []);
-
-  // ── Throttled Ranking: Flush updates every 3 seconds ───────────────────────
-  // Prevents browser lag when many teams are updated simultaneously
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const updates = pendingUpdatesRef.current;
-      if (Object.keys(updates).length === 0) return;
-
-      setTeams((prev) => {
-        // Collect all updates from the ref
-        const currentUpdates = { ...pendingUpdatesRef.current };
-        pendingUpdatesRef.current = {}; // Clear for next batch
-
-        // Map updates to existing list
-        const newList = prev.map(t => {
-          if (currentUpdates[t.id] !== undefined) {
-            return { ...t, total_points: currentUpdates[t.id] };
-          }
-          return t;
-        });
-
-        // Re-sort and re-rank
-        const sorted = [...newList].sort((a, b) => b.total_points - a.total_points);
-        return sorted.map((t, i) => ({ ...t, rank: i + 1 }));
-      });
-    }, 3000); // Batch every 3 seconds
-
-    return () => clearInterval(interval);
   }, []);
 
   return (

@@ -5,13 +5,15 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { PauseCircle } from 'lucide-react';
 import { useTimerContext } from '@/context/TimerContext';
 import { useAuth } from '@/context/AuthContext';
+import { usePathname } from 'next/navigation';
 
 export default function PauseModal(): React.JSX.Element | null {
   const { status } = useTimerContext();
   const { user } = useAuth();
+  const pathname = usePathname();
 
-  // Don't render for admins or when not paused
-  if (status !== 'paused' || user?.role === 'admin') {
+  // Don't render for admins, when not paused, or on login page
+  if (status !== 'paused' || user?.role === 'admin' || pathname === '/login') {
     return null;
   }
 

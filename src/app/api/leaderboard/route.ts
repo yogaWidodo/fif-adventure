@@ -4,6 +4,8 @@ import { NextResponse } from 'next/server';
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '';
 
+export const revalidate = 15; // Cache ini akan sangat membantu menahan beban 1500 user
+
 export async function GET() {
   const supabase = createClient(supabaseUrl, supabaseAnonKey);
 

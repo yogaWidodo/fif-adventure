@@ -19,52 +19,38 @@ export default function TeamJournal() {
   const [selectedActivity, setSelectedActivity] = useState<any>(null);
 
   useEffect(() => {
-    if (!user?.team_id) return;
-    fetchJournalData(user.team_id);
+    const teamId = user?.team_id;
+    if (!teamId) return;
+    
+    fetchJournalData(teamId);
 
-    // Real-time synchronization
-    const teamId = user.team_id;
-    const channel = supabase
-      .channel(`journal-updates-${teamId}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'activity_registrations', filter: `team_id=eq.${teamId}` },
-        () => fetchJournalData(teamId)
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'score_logs', filter: `team_id=eq.${teamId}` },
-        () => fetchJournalData(teamId)
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'treasure_hunt_hints', filter: `team_id=eq.${teamId}` },
-        () => fetchJournalData(teamId)
-      )
-      .subscribe();
+    // Polling every 10 seconds
+    const interval = setInterval(() => {
+      fetchJournalData(teamId);
+    }, 10000);
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return () => clearInterval(interval);
   }, [user?.team_id]);
 
   const fetchJournalData = async (teamId: string) => {
-    const [teamRes, activitiesRes, hintsRes, regRes, logsRes, claimRes] = await Promise.all([
-      supabase.from('teams').select('*').eq('id', teamId).maybeSingle(),
-      supabase.from('activities').select('id, name, description, how_to_play, type, max_points, difficulty_level').eq('is_visible', true).order('name'),
-      supabase.from('treasure_hunt_hints').select('id, treasure_hunt_id, received_at, treasure_hunts(id, name, hint_text, points, is_public)').eq('team_id', teamId).order('received_at', { ascending: false }),
-      supabase.from('activity_registrations').select('*').eq('team_id', teamId),
-      supabase.from('score_logs').select('activity_id, participant_ids').eq('team_id', teamId),
-      supabase.from('treasure_hunt_claims').select('*').eq('team_id', teamId),
-    ]);
-
-    setTeam(teamRes.data);
-    setActivities(activitiesRes.data || []);
-    setHints(hintsRes.data || []);
-    setRegistrations(regRes.data || []);
-    setScoreLogs(logsRes.data || []);
-    setClaims(claimRes.data || []);
-    setLoading(false);
+    try {
+      const res = await fetch(`/api/member/dashboard?teamId=${teamId}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      
+      if (data && !data.error) {
+        setTeam(data.team);
+        setActivities(data.activities || []);
+        setHints(data.hints || []);
+        setRegistrations(data.registrations || []);
+        setScoreLogs(data.scoreLogs || []);
+        setClaims(data.claims || []);
+      }
+    } catch {
+      // silent fail
+    } finally {
+      setLoading(false);
+    }
   };
 
   const getActivityStatus = (id: string) => {

@@ -13,6 +13,8 @@ import ExpeditionTimer from '@/components/ExpeditionTimer';
 import Copyright from '@/components/Copyright';
 import { supabase } from '@/lib/supabase';
 import { generateUserBarcode } from '@/lib/auth';
+import { useRef } from 'react';
+
 
 export default function CaptainPortal() {
   const { logout, user } = useAuth();
@@ -21,62 +23,61 @@ export default function CaptainPortal() {
   const [discoveredActivity, setDiscoveredActivity] = useState<any>(null);
   const [discoveredHint, setDiscoveredHint] = useState<any>(null);
 
-  // Real-time subscription for discovery
+  const notifiedRegIds = useRef<Set<string>>(new Set());
+  const notifiedHintIds = useRef<Set<string>>(new Set());
+  const isInitialLoad = useRef(true);
+
+  // Polling for discovery
   useEffect(() => {
     if (!user?.team_id) return;
 
-    const channelName = `discovery-${user.team_id}`;
-    supabase.removeChannel(supabase.channel(channelName));
-    
-    const channel = supabase
-      .channel(channelName)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'activity_registrations',
-          filter: `team_id=eq.${user.team_id}`,
-        },
-        async (payload) => {
-          const newReg = payload.new as any;
-          const { data: activity } = await supabase
-            .from('activities')
-            .select('id, name, description, how_to_play, type, max_points, difficulty_level')
-            .eq('id', newReg.activity_id)
-            .single();
-
-          if (activity) {
-            setDiscoveredActivity(activity);
+    const fetchDiscovery = async () => {
+      try {
+        const res = await fetch(`/api/member/dashboard?teamId=${user.team_id}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        
+        if (data && !data.error) {
+          if (!isInitialLoad.current) {
+            // Check for new registrations
+            if (data.registrations) {
+              data.registrations.forEach((reg: any) => {
+                if (!notifiedRegIds.current.has(reg.activity_id)) {
+                  notifiedRegIds.current.add(reg.activity_id);
+                  const activity = data.activities?.find((a: any) => a.id === reg.activity_id);
+                  if (activity) setDiscoveredActivity(activity);
+                }
+              });
+            }
+            // Check for new hints
+            if (data.hints) {
+              data.hints.forEach((hint: any) => {
+                if (!notifiedHintIds.current.has(hint.id)) {
+                  notifiedHintIds.current.add(hint.id);
+                  if (hint.treasure_hunts) setDiscoveredHint(hint.treasure_hunts);
+                }
+              });
+            }
+          } else {
+            // Initial load, just track existing IDs
+            if (data.registrations) {
+              data.registrations.forEach((r: any) => notifiedRegIds.current.add(r.activity_id));
+            }
+            if (data.hints) {
+              data.hints.forEach((h: any) => notifiedHintIds.current.add(h.id));
+            }
+            isInitialLoad.current = false;
           }
         }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'treasure_hunt_hints',
-          filter: `team_id=eq.${user.team_id}`,
-        },
-        async (payload) => {
-          const newHint = payload.new as any;
-          const { data: treasure } = await supabase
-            .from('treasure_hunts')
-            .select('id, name, hint_text, points')
-            .eq('id', newHint.treasure_hunt_id)
-            .single();
-
-          if (treasure) {
-            setDiscoveredHint(treasure);
-          }
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
+      } catch (e) {
+        // Silent fail
+      }
     };
+
+    fetchDiscovery();
+    const interval = setInterval(fetchDiscovery, 10000); // 10s polling
+
+    return () => clearInterval(interval);
   }, [user?.team_id]);
 
   return (

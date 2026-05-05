@@ -109,6 +109,9 @@ export default function MemberPortal() {
   const [globalChallenge, setGlobalChallenge] = useState<any>(null);
   const [selectedActivity, setSelectedActivity] = useState<any>(null);
   const notifiedChallengeIds = useRef<Set<string>>(new Set());
+  const notifiedRegIds = useRef<Set<string>>(new Set());
+  const notifiedHintIds = useRef<Set<string>>(new Set());
+  const isInitialLoad = useRef(true);
 
   useEffect(() => {
     if (!user?.team_id) {
@@ -116,129 +119,94 @@ export default function MemberPortal() {
       return;
     }
 
-    fetchAll(user.team_id);
-
     const teamId = user.team_id;
+    fetchAll(teamId, false);
 
-    // 1. Team Updates Channel (Check-ins & Scoring)
-    const teamChannel = supabase
-      .channel(`team-updates-${teamId}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'activity_registrations', filter: `team_id=eq.${teamId}` },
-        async (payload) => {
-          fetchAll(teamId);
-          if (payload.eventType === 'INSERT') {
-            const newReg = payload.new as any;
-            const isMeScanned = Array.isArray(newReg.participant_ids) && newReg.participant_ids.includes(user?.id);
-            if (isMeScanned) {
-              const { data: activity } = await supabase.from('activities').select('*').eq('id', newReg.activity_id).single();
-              if (activity) setDiscoveredActivity(activity);
-            }
-          }
-        }
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'score_logs', filter: `team_id=eq.${teamId}` },
-        () => fetchAll(teamId)
-      )
-      .subscribe();
+    const interval = setInterval(() => {
+      fetchAll(teamId, true);
+    }, 10000);
 
-    // 2. Global Activities Channel (Challenge Popups Hidden -> Public)
-    const globalChannel = supabase
-      .channel('global-activities')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'activities', filter: 'type=eq.challenge_popup' },
-        (payload) => {
-          const newAct = payload.new as any;
-          const oldAct = payload.old as any;
-          // Logic: Show notification only if it JUST became visible and not already notified in this session
-          const becameVisible = newAct.is_visible && !notifiedChallengeIds.current.has(newAct.id);
-          if (becameVisible) {
-            notifiedChallengeIds.current.add(newAct.id);
-            setGlobalChallenge(newAct);
-            fetchAll(teamId);
-          }
-        }
-      )
-      .subscribe();
-
-    // 3. Hint Updates Channel
-    const hintChannel = supabase
-      .channel(`hint-updates-${teamId}`)
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'treasure_hunt_hints', filter: `team_id=eq.${teamId}` },
-        async (payload) => {
-          const newHint = payload.new as any;
-          fetchAll(teamId);
-          if (newHint.triggered_by_user_id === user?.id) {
-            const { data: treasure } = await supabase.from('treasure_hunts').select('*').eq('id', newHint.treasure_hunt_id).single();
-            if (treasure) setDiscoveredHint(treasure);
-          }
-        }
-      )
-      .subscribe();
-
-    // 4. Public Treasure Updates (Quota changes)
-    const treasureChannel = supabase
-      .channel('public-treasures')
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'treasure_hunts' }, () => {
-        fetchAll(teamId);
-      })
-      .subscribe();
-
-    // 5. Team Claim Updates
-    const teamClaimChannel = supabase
-      .channel(`team-claims-${teamId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'treasure_hunt_claims', filter: `team_id=eq.${teamId}` }, () => {
-        fetchAll(teamId);
-      })
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(teamChannel);
-      supabase.removeChannel(globalChannel);
-      supabase.removeChannel(hintChannel);
-      supabase.removeChannel(treasureChannel);
-      supabase.removeChannel(teamClaimChannel);
-    };
+    return () => clearInterval(interval);
   }, [user?.team_id]);
 
-  const fetchAll = async (teamId: string) => {
-    setLoading(true);
+  const fetchAll = async (teamId: string, isSilent = false) => {
+    if (!isSilent) setLoading(true);
 
-    const results = await Promise.all([
-      supabase.from('teams').select('id, name, slogan, total_points').eq('id', teamId).maybeSingle(),
-      supabase.from('users').select('id, name, role').eq('team_id', teamId).order('role'),
-      supabase.from('activities').select('id, name, type, max_points, description, how_to_play, difficulty_level').eq('is_visible', true).order('name'),
-      supabase.from('activity_registrations').select('activity_id, checked_in_at, participant_ids').eq('team_id', teamId),
-      supabase.from('treasure_hunt_hints').select('id, treasure_hunt_id, received_at, treasure_hunts(id, name, hint_text, points)').eq('team_id', teamId).order('received_at', { ascending: false }),
-      supabase.from('treasure_hunt_claims').select('treasure_hunt_id, claimed_by, claimed_at, treasure_hunts(name, points)').eq('team_id', teamId),
-      fetch('/api/leaderboard').then(r => r.ok ? r.json() : []),
-      supabase.from('score_logs').select('*, activities(name)').eq('team_id', teamId).order('created_at', { ascending: false }),
-      supabase.from('treasure_hunts').select('*').eq('is_public', true)
-    ]);
+    try {
+      const [dashRes, lbRes] = await Promise.all([
+        fetch(`/api/member/dashboard?teamId=${teamId}`).then(r => r.ok ? r.json() : null),
+        fetch('/api/leaderboard').then(r => r.ok ? r.json() : [])
+      ]);
 
-    const [teamRes, membersRes, actRes, regRes, hintsRes, claimRes, lbRes, logsRes, publicThRes] = results;
+      if (dashRes && !dashRes.error) {
+        if (dashRes.team) setTeam(dashRes.team);
+        if (dashRes.members) setMembers(dashRes.members as TeamMember[]);
+        
+        if (dashRes.activities) {
+          setActivities(dashRes.activities);
+          
+          if (!isInitialLoad.current) {
+            const challenges = dashRes.activities.filter((a: any) => a.type === 'challenge_popup');
+            challenges.forEach((c: any) => {
+              if (!notifiedChallengeIds.current.has(c.id)) {
+                notifiedChallengeIds.current.add(c.id);
+                setGlobalChallenge(c);
+              }
+            });
+          } else {
+            dashRes.activities.filter((a: any) => a.type === 'challenge_popup').forEach((c: any) => notifiedChallengeIds.current.add(c.id));
+          }
+        }
 
-    if (teamRes.data) setTeam(teamRes.data);
-    if (membersRes.data) setMembers(membersRes.data as TeamMember[]);
-    if (actRes.data) setActivities(actRes.data);
-    if (regRes.data) setRegistrations(regRes.data);
-    if (hintsRes.data) setHints(hintsRes.data as unknown as HintWithTreasure[]);
-    if (claimRes.data) setClaims(claimRes.data as any[]);
-    const lbData = Array.isArray(lbRes) ? lbRes : lbRes?.leaderboard || [];
-    if (Array.isArray(lbData)) {
-      const ranked = lbData.map((t: any, i: number) => ({ ...t, rank: i + 1 }));
-      setLeaderboard(ranked);
+        if (dashRes.registrations) {
+          setRegistrations(dashRes.registrations);
+          
+          if (!isInitialLoad.current && user?.id) {
+            dashRes.registrations.forEach((reg: any) => {
+              const regId = `${reg.activity_id}-${reg.checked_in_at}`;
+              if (!notifiedRegIds.current.has(regId) && reg.participant_ids?.includes(user.id)) {
+                notifiedRegIds.current.add(regId);
+                const activity = dashRes.activities?.find((a: any) => a.id === reg.activity_id);
+                if (activity) setDiscoveredActivity(activity);
+              }
+            });
+          } else {
+            dashRes.registrations.forEach((reg: any) => notifiedRegIds.current.add(`${reg.activity_id}-${reg.checked_in_at}`));
+          }
+        }
+
+        if (dashRes.hints) {
+          setHints(dashRes.hints as unknown as HintWithTreasure[]);
+          
+          if (!isInitialLoad.current) {
+            dashRes.hints.forEach((hint: any) => {
+              if (!notifiedHintIds.current.has(hint.id)) {
+                notifiedHintIds.current.add(hint.id);
+                if (hint.treasure_hunts) setDiscoveredHint(hint.treasure_hunts);
+              }
+            });
+          } else {
+            dashRes.hints.forEach((hint: any) => notifiedHintIds.current.add(hint.id));
+          }
+        }
+
+        if (dashRes.claims) setClaims(dashRes.claims as any[]);
+        if (dashRes.scoreLogs) setScoreLogs(dashRes.scoreLogs as any as ScoreLog[]);
+        if (dashRes.publicTreasures) setPublicTreasures(dashRes.publicTreasures);
+      }
+
+      const lbData = Array.isArray(lbRes) ? lbRes : lbRes?.leaderboard || [];
+      if (Array.isArray(lbData)) {
+        const ranked = lbData.map((t: any, i: number) => ({ ...t, rank: i + 1 }));
+        setLeaderboard(ranked);
+      }
+
+      isInitialLoad.current = false;
+    } catch (error) {
+      console.error('Failed to fetch dashboard data:', error);
     }
-    if (logsRes.data) setScoreLogs(logsRes.data as any as ScoreLog[]);
-    if (publicThRes.data) setPublicTreasures(publicThRes.data);
 
-    setLoading(false);
+    if (!isSilent) setLoading(false);
   };
 
   const getActivityStatus = (id: string) => {

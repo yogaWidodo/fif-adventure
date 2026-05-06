@@ -21,15 +21,22 @@ export default function QRCodeDisplay({ barcodeData, label, size = 160 }: QRCode
     const svg = svgRef.current;
     if (!svg) return;
 
-    // Serialize SVG to string
+    // Serialize SVG to string and ensure it has large dimensions for the canvas
     const serializer = new XMLSerializer();
-    const svgStr = serializer.serializeToString(svg);
+    const targetSize = 2000; // High resolution for print
+    const padding = 160;     // Proportional padding
+    
+    // Clone the SVG and set its dimensions to targetSize so it renders sharply
+    const clonedSvg = svg.cloneNode(true) as SVGSVGElement;
+    clonedSvg.setAttribute('width', targetSize.toString());
+    clonedSvg.setAttribute('height', targetSize.toString());
+    
+    const svgStr = serializer.serializeToString(clonedSvg);
 
-    // Draw onto a canvas and export as PNG
+    // Draw onto a high-resolution canvas for printing
     const canvas = document.createElement('canvas');
-    const padding = 16;
-    canvas.width = size + padding * 2;
-    canvas.height = size + padding * 2;
+    canvas.width = targetSize + padding * 2;
+    canvas.height = targetSize + padding * 2;
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -43,7 +50,7 @@ export default function QRCodeDisplay({ barcodeData, label, size = 160 }: QRCode
     const url = URL.createObjectURL(svgBlob);
 
     img.onload = () => {
-      ctx.drawImage(img, padding, padding, size, size);
+      ctx.drawImage(img, padding, padding, targetSize, targetSize);
       URL.revokeObjectURL(url);
 
       const pngUrl = canvas.toDataURL('image/png');
@@ -75,7 +82,8 @@ export default function QRCodeDisplay({ barcodeData, label, size = 160 }: QRCode
           size={size}
           bgColor="#ffffff"
           fgColor="#000000"
-          level="M"
+          level="H"
+          marginSize={2}
         />
       </div>
 

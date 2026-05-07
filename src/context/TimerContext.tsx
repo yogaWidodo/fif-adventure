@@ -12,6 +12,7 @@ interface TimerContextValue {
   elapsedSeconds: number;
   durationMinutes: number;
   isExpired: boolean;
+  isLoading: boolean; // true until first fetch completes
 }
 
 const defaultValue: TimerContextValue = {
@@ -20,6 +21,7 @@ const defaultValue: TimerContextValue = {
   elapsedSeconds: 0,
   durationMinutes: 0,
   isExpired: false,
+  isLoading: true,
 };
 
 const TimerContext = createContext<TimerContextValue>(defaultValue);
@@ -31,6 +33,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [durationMinutes, setDurationMinutes] = useState(0);
   const [isExpired, setIsExpired] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     // We want the timer to be global, but only active for logged-in users
@@ -40,10 +43,11 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
       setElapsedSeconds(0);
       setDurationMinutes(0);
       setIsExpired(false);
+      setIsLoading(false); // No user = no fetch needed, not loading
       return;
     }
 
-    const fetchTimerSettings = async () => {
+    const fetchTimerSettings = async (isFirst = false) => {
       try {
         const res = await fetch('/api/timer');
         if (res.ok) {
@@ -56,10 +60,12 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
         }
       } catch {
         // Silent fail
+      } finally {
+        if (isFirst) setIsLoading(false);
       }
     };
 
-    fetchTimerSettings();
+    fetchTimerSettings(true); // Mark as first fetch to clear loading state
 
     // Polling every 15 seconds, skip when tab is hidden
     const interval = setInterval(() => {
@@ -72,7 +78,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <TimerContext.Provider
-      value={{ status, startedAt, elapsedSeconds, durationMinutes, isExpired }}
+      value={{ status, startedAt, elapsedSeconds, durationMinutes, isExpired, isLoading }}
     >
       {children}
     </TimerContext.Provider>

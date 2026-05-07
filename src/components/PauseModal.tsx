@@ -8,15 +8,25 @@ import { useAuth } from '@/context/AuthContext';
 import { usePathname } from 'next/navigation';
 
 export default function PauseModal(): React.JSX.Element | null {
-  const { status } = useTimerContext();
+  const { status, isLoading } = useTimerContext();
   const { user } = useAuth();
   const pathname = usePathname();
 
   const isIdle   = status === 'idle';
   const isPaused = status === 'paused';
 
-  // Show for idle or paused — but never for admins or on the login page
-  if ((!isIdle && !isPaused) || user?.role === 'admin' || pathname === '/login') {
+  // Don't show while timer status is still being fetched (prevents flash on refresh)
+  if (isLoading) return null;
+
+  // Only show for authenticated users on member/lo/captain pages
+  // Exclude: admin, login page, root landing page, unauthenticated users
+  const blockedPaths = ['/', '/login'];
+  if (
+    (!isIdle && !isPaused) ||
+    !user ||
+    user.role === 'admin' ||
+    blockedPaths.includes(pathname)
+  ) {
     return null;
   }
 

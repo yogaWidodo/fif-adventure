@@ -619,7 +619,11 @@ export default function MemberPortal() {
                             publicTreasures.map((th) => {
                               const claimed = claims.some(c => c.treasure_hunt_id === th.id);
                               return (
-                                <div key={th.id} className={`p-3 rounded border ${claimed ? 'border-green-500/30 bg-green-500/5 opacity-60' : 'border-accent/30 bg-accent/5 shadow-[inset_0_0_10px_rgba(var(--accent-rgb),0.1)]'}`}>
+                                <div 
+                                  key={th.id} 
+                                  onClick={() => setDiscoveredHint(th)}
+                                  className={`p-3 rounded border transition-all cursor-pointer active:scale-[0.98] ${claimed ? 'border-green-500/30 bg-green-500/5 opacity-60' : 'border-accent/30 bg-accent/5 shadow-[inset_0_0_10px_rgba(var(--accent-rgb),0.1)] hover:bg-accent/10'}`}
+                                >
                                   <div className="flex justify-between items-start mb-1">
                                     <div className="flex items-center gap-2">
                                       <p className="font-adventure text-xs text-accent">{th.name}</p>
@@ -628,7 +632,7 @@ export default function MemberPortal() {
                                     {claimed && <CheckCircle2 className="w-3 h-3 text-green-500" />}
                                   </div>
                                   <p className="text-[10px] text-white/70 mb-2 leading-relaxed">
-                                    {claimed ? 'Tantangan ini telah berhasil diselesaikan oleh tim kamu.' : 'Cari lokasi ini dan scan kodenya untuk mendapatkan poin tambahan!'}
+                                    {claimed ? 'Tantangan ini telah berhasil diselesaikan oleh tim kamu.' : 'Klik untuk melihat petunjuk! Cari lokasi ini dan scan kodenya untuk mendapatkan poin tambahan.'}
                                   </p>
                                   <div className="flex justify-between items-center text-[8px] font-adventure opacity-60 uppercase">
                                     <span className="flex items-center gap-1"><Trophy className="w-2.5 h-2.5" /> {th.points} Pts</span>

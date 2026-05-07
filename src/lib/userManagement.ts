@@ -3,6 +3,7 @@
  */
 
 import { type Role, isValidRole } from './auth';
+import * as XLSX from 'xlsx';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -127,6 +128,59 @@ export function parseUserCSV(content: string): ParseUserCSVResult {
     const team_name = colIndex['team_name'] >= 0 ? (values[colIndex['team_name']] ?? '') : '';
 
     rows.push({ name, npk, role, team_name, birth_date });
+  }
+
+  return { rows, errors };
+}
+
+/**
+ * Parse Excel file content.
+ */
+export function parseUserExcel(data: ArrayBuffer): ParseUserCSVResult {
+  const rows: ParsedUserRow[] = [];
+  const errors: string[] = [];
+
+  try {
+    const workbook = XLSX.read(data, { type: 'array' });
+    const firstSheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[firstSheetName];
+    
+    // Convert to JSON with headers
+    const jsonData = XLSX.utils.sheet_to_json(worksheet) as any[];
+
+    if (jsonData.length === 0) {
+      errors.push('Excel sheet is empty');
+      return { rows, errors };
+    }
+
+    // Check for required columns (case insensitive)
+    const firstRow = jsonData[0];
+    const actualKeys = Object.keys(firstRow).map(k => k.toLowerCase().trim());
+    
+    const missingColumns = REQUIRED_CSV_COLUMNS.filter((col) => !actualKeys.includes(col));
+    if (missingColumns.length > 0) {
+      errors.push(`Missing required columns in Excel: ${missingColumns.join(', ')}`);
+      return { rows, errors };
+    }
+
+    // Map keys to standard fields
+    jsonData.forEach((row, index) => {
+      const normalizedRow: any = {};
+      Object.keys(row).forEach(key => {
+        normalizedRow[key.toLowerCase().trim()] = row[key];
+      });
+
+      rows.push({
+        name: String(normalizedRow['name'] ?? '').trim(),
+        npk: String(normalizedRow['npk'] ?? '').trim(),
+        role: String(normalizedRow['role'] ?? '').trim().toLowerCase(),
+        birth_date: String(normalizedRow['birth_date'] ?? '').trim(),
+        team_name: String(normalizedRow['team_name'] ?? '').trim(),
+      });
+    });
+
+  } catch (e: any) {
+    errors.push(`Excel parsing failed: ${e.message}`);
   }
 
   return { rows, errors };

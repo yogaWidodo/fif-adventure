@@ -141,10 +141,10 @@ export default function MemberPortal() {
       if (dashRes && !dashRes.error) {
         if (dashRes.team) setTeam(dashRes.team);
         if (dashRes.members) setMembers(dashRes.members as TeamMember[]);
-        
+
         if (dashRes.activities) {
           setActivities(dashRes.activities);
-          
+
           if (!isInitialLoad.current) {
             const challenges = dashRes.activities.filter((a: any) => a.type === 'challenge_popup');
             challenges.forEach((c: any) => {
@@ -160,7 +160,7 @@ export default function MemberPortal() {
 
         if (dashRes.registrations) {
           setRegistrations(dashRes.registrations);
-          
+
           if (!isInitialLoad.current && user?.id) {
             dashRes.registrations.forEach((reg: any) => {
               const regId = `${reg.activity_id}-${reg.checked_in_at}`;
@@ -177,7 +177,7 @@ export default function MemberPortal() {
 
         if (dashRes.hints) {
           setHints(dashRes.hints as unknown as HintWithTreasure[]);
-          
+
           if (!isInitialLoad.current) {
             dashRes.hints.forEach((hint: any) => {
               if (!notifiedHintIds.current.has(hint.id)) {
@@ -601,7 +601,7 @@ export default function MemberPortal() {
                       className="w-full p-4 flex items-center justify-between bg-accent/5 hover:bg-accent/10 transition-colors"
                     >
                       <h3 className="font-adventure text-sm text-accent mb-0 flex items-center gap-2">
-                        <Sword className="w-4 h-4" /> Public Treasures
+                        <Sword className="w-4 h-4" /> Treasury Hunt
                       </h3>
                       <ChevronDown className={`w-4 h-4 text-accent/40 transition-transform ${showPublic ? 'rotate-180' : ''}`} />
                     </button>
@@ -619,15 +619,14 @@ export default function MemberPortal() {
                             publicTreasures.map((th) => {
                               const claimed = claims.some(c => c.treasure_hunt_id === th.id);
                               return (
-                                <div 
-                                  key={th.id} 
+                                <div
+                                  key={th.id}
                                   onClick={() => setDiscoveredHint(th)}
                                   className={`p-3 rounded border transition-all cursor-pointer active:scale-[0.98] ${claimed ? 'border-green-500/30 bg-green-500/5 opacity-60' : 'border-accent/30 bg-accent/5 shadow-[inset_0_0_10px_rgba(var(--accent-rgb),0.1)] hover:bg-accent/10'}`}
                                 >
                                   <div className="flex justify-between items-start mb-1">
                                     <div className="flex items-center gap-2">
                                       <p className="font-adventure text-xs text-accent">{th.name}</p>
-                                      <span className="text-[7px] px-1 bg-accent/20 text-accent rounded border border-accent/20 uppercase tracking-tighter pt-0.5">Public</span>
                                     </div>
                                     {claimed && <CheckCircle2 className="w-3 h-3 text-green-500" />}
                                   </div>
@@ -647,53 +646,6 @@ export default function MemberPortal() {
                     </AnimatePresence>
                   </div>
 
-                  {/* Hidden Treasures */}
-                  <div className="adventure-card overflow-hidden">
-                    <button
-                      onClick={() => setShowHidden(!showHidden)}
-                      className="w-full p-4 flex items-center justify-between hover:bg-white/5 transition-colors"
-                    >
-                      <h3 className="font-adventure text-sm text-primary flex items-center gap-2">
-                        <Gem className="w-4 h-4" /> Hidden Treasures
-                      </h3>
-                      <ChevronDown className={`w-4 h-4 text-white/20 transition-transform ${showHidden ? 'rotate-180' : ''}`} />
-                    </button>
-                    <AnimatePresence>
-                      {showHidden && (
-                        <motion.div
-                          initial={{ height: 0 }}
-                          animate={{ height: 'auto' }}
-                          exit={{ height: 0 }}
-                          className="px-4 pb-4 space-y-3"
-                        >
-                          {hints.length === 0 ? (
-                            <div className="py-6 text-center">
-                              <Lock className="w-5 h-5 text-white/10 mx-auto mb-2" />
-                              <p className="text-[10px] italic opacity-30">Scan wahana rahasia untuk membuka hint!</p>
-                            </div>
-                          ) : (
-                            hints.map((hint) => {
-                              const th = hint.treasure_hunts;
-                              const claimed = th ? claims.some(c => c.treasure_hunt_id === th.id) : false;
-                              return (
-                                <div key={hint.id} className={`p-3 rounded border border-dashed ${claimed ? 'border-green-500/30 bg-green-500/5' : 'border-primary/30 bg-black/20'}`}>
-                                  <div className="flex justify-between items-start mb-2">
-                                    <p className="font-adventure text-xs text-primary">{th?.name}</p>
-                                    {claimed && <CheckCircle2 className="w-3 h-3 text-green-500" />}
-                                  </div>
-                                  <p className="text-[11px] text-white/60 italic leading-relaxed mb-2">"{th?.hint_text}"</p>
-                                  <div className="flex justify-between items-center text-[8px] font-adventure opacity-40 uppercase">
-                                    <span>{th?.points} Pts</span>
-                                    <span>{new Date(hint.received_at).toLocaleDateString()}</span>
-                                  </div>
-                                </div>
-                              );
-                            })
-                          )}
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </div>
                 </motion.div>
               )}
 
@@ -1146,21 +1098,20 @@ export default function MemberPortal() {
                   <div className="absolute inset-0 bg-[url('/images/expedition_map_bg.png')] bg-cover bg-center opacity-30 mix-blend-overlay" />
                   <div className="relative z-10 flex flex-col items-center">
                     <div className="bg-primary/20 p-3 rounded-full border border-primary/30 mb-2">
-                       {selectedActivity.type === 'wahana' ? (
-                         <MapPin className="w-6 h-6 text-primary torch-glow" />
-                       ) : (
-                         <Sword className="w-6 h-6 text-primary torch-glow" />
-                       )}
+                      {selectedActivity.type === 'wahana' ? (
+                        <MapPin className="w-6 h-6 text-primary torch-glow" />
+                      ) : (
+                        <Sword className="w-6 h-6 text-primary torch-glow" />
+                      )}
                     </div>
                     <h2 className="font-adventure text-2xl gold-engraving tracking-widest uppercase mb-1">
                       {selectedActivity.name}
                     </h2>
                     {selectedActivity.difficulty_level && (
-                      <div className={`px-2 py-0.5 rounded-full text-[8px] font-adventure uppercase border ${
-                        selectedActivity.difficulty_level === 'Easy' ? 'bg-green-900/50 border-green-500/50 text-green-400' :
+                      <div className={`px-2 py-0.5 rounded-full text-[8px] font-adventure uppercase border ${selectedActivity.difficulty_level === 'Easy' ? 'bg-green-900/50 border-green-500/50 text-green-400' :
                         selectedActivity.difficulty_level === 'Hard' ? 'bg-red-900/50 border-red-500/50 text-red-400' :
-                        'bg-amber-900/50 border-amber-500/50 text-amber-400'
-                      }`}>
+                          'bg-amber-900/50 border-amber-500/50 text-amber-400'
+                        }`}>
                         {selectedActivity.difficulty_level}
                       </div>
                     )}

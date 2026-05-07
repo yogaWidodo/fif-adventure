@@ -142,16 +142,30 @@ export async function GET(request: NextRequest) {
 
   const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
-  const { data: users, error } = await supabaseAdmin
-    .from('users')
-    .select('id, name, npk, role, team_id, is_login, login_at, login_lat, login_lng')
-    .in('role', ['captain', 'vice_captain', 'member', 'lo'])
-    .order('is_login', { ascending: false })
-    .order('login_at', { ascending: false });
+  let allUsers: any[] = [];
+  let from = 0;
+  const step = 1000;
 
-  if (error) {
-    return Response.json({ error: error.message }, { status: 500 });
+  while (true) {
+    const { data, error } = await supabaseAdmin
+      .from('users')
+      .select('id, name, npk, role, team_id, is_login, login_at, login_lat, login_lng')
+      .in('role', ['captain', 'vice_captain', 'member', 'lo'])
+      .order('is_login', { ascending: false })
+      .order('login_at', { ascending: false })
+      .range(from, from + step - 1);
+
+    if (error) {
+      return Response.json({ error: error.message }, { status: 500 });
+    }
+
+    if (!data || data.length === 0) break;
+    allUsers = [...allUsers, ...data];
+    if (data.length < step) break;
+    from += step;
   }
+
+  const users = allUsers;
 
   const present = (users ?? []).filter(u => u.is_login).length;
   const absent = (users ?? []).length - present;

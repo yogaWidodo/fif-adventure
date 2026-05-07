@@ -116,20 +116,32 @@ export default function AttendanceTab() {
   const exportActivityCSV = async () => {
     setLoading(true);
     try {
-      // Fetch detailed participation logs
-      const { data, error } = await supabase
-        .from('score_logs')
-        .select(`
-          created_at,
-          points_awarded,
-          participant_ids,
-          teams(name),
-          activities(name)
-        `)
-        .order('created_at', { ascending: false });
+      let allLogs: any[] = [];
+      let fromLog = 0;
+      const logStep = 1000;
 
-      if (error) throw error;
-      if (!data) return;
+      while (true) {
+        const { data, error } = await supabase
+          .from('score_logs')
+          .select(`
+            created_at,
+            points_awarded,
+            participant_ids,
+            teams(name),
+            activities(name)
+          `)
+          .order('created_at', { ascending: false })
+          .range(fromLog, fromLog + logStep - 1);
+
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+        
+        allLogs = [...allLogs, ...data];
+        if (data.length < logStep) break;
+        fromLog += logStep;
+      }
+
+      const data = allLogs;
 
       // Since participant_ids is a JSONB array, we need to handle it.
       // For Option 1, it usually has 1 element.

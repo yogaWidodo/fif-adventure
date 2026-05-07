@@ -32,6 +32,8 @@ export default function CaptainPortal() {
     if (!user?.team_id) return;
 
     const fetchDiscovery = async () => {
+      // Skip if browser tab is hidden
+      if (document.hidden) return;
       try {
         const res = await fetch(`/api/member/dashboard?teamId=${user.team_id}`);
         if (!res.ok) return;
@@ -75,7 +77,7 @@ export default function CaptainPortal() {
     };
 
     fetchDiscovery();
-    const interval = setInterval(fetchDiscovery, 10000); // 10s polling
+    const interval = setInterval(fetchDiscovery, 15000); // 15s matches server-side cache
 
     return () => clearInterval(interval);
   }, [user?.team_id]);

@@ -73,10 +73,12 @@ export default function LeaderboardPage() {
   useEffect(() => {
     fetchLeaderboard(); // Initial load
 
-    // Setup polling every 5 seconds
+    // Setup polling every 15 seconds (matches server revalidate cache)
     const interval = setInterval(() => {
+      // Skip polling when browser tab is not visible
+      if (document.hidden) return;
       fetchLeaderboard(true);
-    }, 5000);
+    }, 15000);
 
     return () => {
       clearInterval(interval);

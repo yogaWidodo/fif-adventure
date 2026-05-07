@@ -113,6 +113,18 @@ export default function MemberPortal() {
   const notifiedHintIds = useRef<Set<string>>(new Set());
   const isInitialLoad = useRef(true);
 
+  // Track activeTab in a ref so polling callback can read latest value
+  const activeTabRef = useRef(activeTab);
+  useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
+
+  // Track if browser tab is visible
+  const isPageVisible = useRef(true);
+  useEffect(() => {
+    const handleVisibility = () => { isPageVisible.current = !document.hidden; };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, []);
+
   useEffect(() => {
     if (!user?.team_id) {
       setLoading(false);
@@ -123,8 +135,10 @@ export default function MemberPortal() {
     fetchAll(teamId, false);
 
     const interval = setInterval(() => {
+      // Skip polling when browser tab is hidden
+      if (!isPageVisible.current) return;
       fetchAll(teamId, true);
-    }, 10000);
+    }, 15000); // 15s matches server-side revalidate cache
 
     return () => clearInterval(interval);
   }, [user?.team_id]);
@@ -133,10 +147,15 @@ export default function MemberPortal() {
     if (!isSilent) setLoading(true);
 
     try {
-      const [dashRes, lbRes] = await Promise.all([
-        fetch(`/api/member/dashboard?teamId=${teamId}`).then(r => r.ok ? r.json() : null),
-        fetch('/api/leaderboard').then(r => r.ok ? r.json() : [])
-      ]);
+      // Always fetch dashboard (needed for notifications/discovery modals)
+      const dashPromise = fetch(`/api/member/dashboard?teamId=${teamId}`).then(r => r.ok ? r.json() : null);
+      
+      // Only fetch leaderboard when user is on the ranking tab
+      const lbPromise = activeTabRef.current === 'ranking'
+        ? fetch('/api/leaderboard').then(r => r.ok ? r.json() : [])
+        : Promise.resolve(null);
+
+      const [dashRes, lbRes] = await Promise.all([dashPromise, lbPromise]);
 
       if (dashRes && !dashRes.error) {
         if (dashRes.team) setTeam(dashRes.team);
@@ -195,10 +214,13 @@ export default function MemberPortal() {
         if (dashRes.publicTreasures) setPublicTreasures(dashRes.publicTreasures);
       }
 
-      const lbData = Array.isArray(lbRes) ? lbRes : lbRes?.leaderboard || [];
-      if (Array.isArray(lbData)) {
-        const ranked = lbData.map((t: any, i: number) => ({ ...t, rank: i + 1 }));
-        setLeaderboard(ranked);
+      // Only update leaderboard if we actually fetched it (tab was 'ranking')
+      if (lbRes) {
+        const lbData = Array.isArray(lbRes) ? lbRes : lbRes?.leaderboard || [];
+        if (Array.isArray(lbData)) {
+          const ranked = lbData.map((t: any, i: number) => ({ ...t, rank: i + 1 }));
+          setLeaderboard(ranked);
+        }
       }
 
       isInitialLoad.current = false;
@@ -231,6 +253,12 @@ export default function MemberPortal() {
     return sum + pointsPerPerson;
   }, 0);
 
+  // Team-wide treasure points (all claims by any team member)
+  const teamTreasurePoints = claims.reduce((sum, c) => {
+    return sum + (c.treasure_hunts?.points || 0);
+  }, 0);
+
+  // Personal treasure contribution (only claims by this user)
   const myTreasureContribution = claims.reduce((sum, c) => {
     if (c.claimed_by === user?.id) {
       return sum + (c.treasure_hunts?.points || 0);
@@ -392,7 +420,8 @@ export default function MemberPortal() {
                         <Gem className="w-3 h-3 text-primary" />
                         <span className="text-[8px] uppercase font-adventure text-primary/70 tracking-widest pt-0.5">Treasure Pts</span>
                       </div>
-                      <p className="font-adventure text-lg leading-none text-white">{Math.round(myTreasureContribution)}</p>
+                      <p className="font-adventure text-lg leading-none text-white">{Math.round(teamTreasurePoints)}</p>
+                      <p className="text-[7px] uppercase font-adventure text-primary/30 tracking-widest mt-1">Team Total</p>
                     </div>
                     <div className="col-span-2 adventure-card p-3 bg-primary/10 border-primary/20 flex justify-between items-center">
                       <div className="flex items-center gap-3">
@@ -411,45 +440,48 @@ export default function MemberPortal() {
                     </div>
                   </div>
 
-                  {/* My Journey Timeline - Merged Mission & Treasure Discoveries */}
+                  {/* My Personal Discoveries */}
                   <div className="adventure-card overflow-hidden">
                     <div className="px-4 py-3 border-b border-primary/10 flex justify-between items-center">
                       <div className="flex items-center gap-2">
-                        <MapPin className="w-3.5 h-3.5 text-primary" />
-                        <span className="font-adventure text-[10px] tracking-widest text-primary uppercase pt-0.5">My Recent Discoveries</span>
+                        <Compass className="w-3.5 h-3.5 text-primary" />
+                        <span className="font-adventure text-[10px] tracking-widest text-primary uppercase pt-0.5">My Discoveries</span>
                       </div>
                     </div>
-                    <div className="p-4 space-y-4 max-h-[300px] overflow-y-auto">
+                    <div className="p-4 space-y-4 max-h-[250px] overflow-y-auto">
                       {(() => {
-                        // Merge score logs and treasure claims into a single timeline
-                        const missionLogs = scoreLogs.filter(log => log.participant_ids && user?.id && log.participant_ids.includes(user.id))
+                        const myMissions = scoreLogs.filter(log => log.participant_ids && user?.id && log.participant_ids.includes(user.id))
                           .map(log => ({
                             id: log.id,
                             name: log.activities?.name || 'Mission',
                             points: Math.round(log.points_awarded / (log.participant_ids?.length || 1)),
                             date: new Date(log.created_at),
-                            type: 'mission'
+                            type: 'mission' as const,
+                            claimedBy: null as string | null
                           }));
 
-                        const treasureLogs = claims.map(c => ({
-                          id: c.treasure_hunt_id,
-                          name: c.treasure_hunts?.name || 'Treasure',
-                          points: c.treasure_hunts?.points || 0,
-                          date: new Date(c.claimed_at),
-                          type: 'treasure'
-                        }));
+                        const myTreasures = claims
+                          .filter(c => c.claimed_by === user?.id)
+                          .map(c => ({
+                            id: c.treasure_hunt_id,
+                            name: c.treasure_hunts?.name || 'Treasure',
+                            points: c.treasure_hunts?.points || 0,
+                            date: new Date(c.claimed_at),
+                            type: 'treasure' as const,
+                            claimedBy: null as string | null
+                          }));
 
-                        const combinedTimeline = [...missionLogs, ...treasureLogs]
+                        const myTimeline = [...myMissions, ...myTreasures]
                           .sort((a, b) => b.date.getTime() - a.date.getTime());
 
-                        if (combinedTimeline.length === 0) {
-                          return <p className="text-[11px] text-foreground/40 italic text-center py-4">Belum ada aktivitas tercatat.</p>;
+                        if (myTimeline.length === 0) {
+                          return <p className="text-[11px] text-foreground/40 italic text-center py-4">Belum ada aktivitas pribadimu.</p>;
                         }
 
                         return (
                           <div className="relative pl-3 border-l border-primary/20 space-y-4">
-                            {combinedTimeline.slice(0, 8).map((item) => (
-                              <div key={`${item.type}-${item.id}`} className="relative">
+                            {myTimeline.slice(0, 6).map((item) => (
+                              <div key={`my-${item.type}-${item.id}`} className="relative">
                                 <div className={`absolute -left-[18.5px] top-1.5 w-2.5 h-2.5 bg-black border rounded-full ${item.type === 'treasure' ? 'border-accent shadow-[0_0_5px_rgba(var(--accent-rgb),0.5)]' : 'border-primary'}`} />
                                 <div className="flex justify-between items-center">
                                   <div className="flex items-center gap-2 truncate">
@@ -465,6 +497,78 @@ export default function MemberPortal() {
                                     {item.date.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
                                   </p>
                                   {item.type === 'treasure' && <span className="text-[7px] font-adventure text-accent/40 uppercase tracking-tighter">Treasure Claimed</span>}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  </div>
+
+                  {/* Team Discoveries */}
+                  <div className="adventure-card overflow-hidden border-accent/10">
+                    <div className="px-4 py-3 border-b border-accent/10 bg-accent/5 flex justify-between items-center">
+                      <div className="flex items-center gap-2">
+                        <Users className="w-3.5 h-3.5 text-accent" />
+                        <span className="font-adventure text-[10px] tracking-widest text-accent uppercase pt-0.5">Team Discoveries</span>
+                      </div>
+                    </div>
+                    <div className="p-4 space-y-4 max-h-[250px] overflow-y-auto">
+                      {(() => {
+                        const teamMissions = scoreLogs.map(log => ({
+                            id: log.id,
+                            name: log.activities?.name || 'Mission',
+                            points: log.points_awarded,
+                            date: new Date(log.created_at),
+                            type: 'mission' as const,
+                            participantCount: log.participant_ids?.length || 0
+                          }));
+
+                        const teamTreasures = claims.map(c => {
+                          const claimer = members.find(m => m.id === c.claimed_by);
+                          return {
+                            id: c.treasure_hunt_id,
+                            name: c.treasure_hunts?.name || 'Treasure',
+                            points: c.treasure_hunts?.points || 0,
+                            date: new Date(c.claimed_at),
+                            type: 'treasure' as const,
+                            participantCount: 0,
+                            claimerName: claimer?.name || 'Anggota'
+                          };
+                        });
+
+                        const teamTimeline = [...teamMissions, ...teamTreasures]
+                          .sort((a, b) => b.date.getTime() - a.date.getTime());
+
+                        if (teamTimeline.length === 0) {
+                          return <p className="text-[11px] text-foreground/40 italic text-center py-4">Belum ada aktivitas tim.</p>;
+                        }
+
+                        return (
+                          <div className="relative pl-3 border-l border-accent/20 space-y-4">
+                            {teamTimeline.slice(0, 8).map((item) => (
+                              <div key={`team-${item.type}-${item.id}`} className="relative">
+                                <div className={`absolute -left-[18.5px] top-1.5 w-2.5 h-2.5 bg-black border rounded-full ${item.type === 'treasure' ? 'border-accent shadow-[0_0_5px_rgba(var(--accent-rgb),0.5)]' : 'border-accent/40'}`} />
+                                <div className="flex justify-between items-center">
+                                  <div className="flex items-center gap-2 truncate">
+                                    {item.type === 'treasure' && <Gem className="w-2.5 h-2.5 text-accent" />}
+                                    <p className="font-adventure text-xs text-foreground/90 truncate">{item.name}</p>
+                                  </div>
+                                  <span className={`text-[10px] font-adventure flex-shrink-0 ${item.type === 'treasure' ? 'text-accent' : 'text-accent/60'}`}>
+                                    +{item.points}
+                                  </span>
+                                </div>
+                                <div className="flex justify-between items-center mt-0.5">
+                                  <p className="text-[8px] uppercase font-adventure text-white/20">
+                                    {item.date.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+                                  </p>
+                                  {item.type === 'treasure' && 'claimerName' in item && (
+                                    <span className="text-[7px] font-adventure text-accent/40 uppercase tracking-tighter">oleh {(item as any).claimerName}</span>
+                                  )}
+                                  {item.type === 'mission' && item.participantCount > 0 && (
+                                    <span className="text-[7px] font-adventure text-primary/30 uppercase tracking-tighter">{item.participantCount} peserta</span>
+                                  )}
                                 </div>
                               </div>
                             ))}
@@ -867,7 +971,18 @@ export default function MemberPortal() {
                 <span className="text-[8px] uppercase font-adventure tracking-widest pt-1">Crew</span>
               </button>
               <button
-                onClick={() => setActiveTab('ranking')}
+                onClick={() => {
+                  setActiveTab('ranking');
+                  // Eagerly fetch leaderboard when switching to ranking tab
+                  if (user?.team_id) {
+                    fetch('/api/leaderboard').then(r => r.ok ? r.json() : null).then(lbRes => {
+                      if (lbRes) {
+                        const lbData = Array.isArray(lbRes) ? lbRes : lbRes?.leaderboard || [];
+                        if (Array.isArray(lbData)) setLeaderboard(lbData.map((t: any, i: number) => ({ ...t, rank: i + 1 })));
+                      }
+                    });
+                  }
+                }}
                 className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'ranking' ? 'text-primary' : 'text-white/40'}`}
               >
                 <Trophy className="w-5 h-5" />

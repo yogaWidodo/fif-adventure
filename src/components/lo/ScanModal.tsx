@@ -116,6 +116,7 @@ export default function ScanModal({
   const scannerRef = useRef<import('html5-qrcode').Html5Qrcode | null>(null);
   const isScanningRef = useRef(false);
   const processingRef = useRef(false);
+  const isSubmittingRef = useRef(false); // Debounce guard for check-in & scoring
 
   // ── Camera ──────────────────────────────────────────────────────────────────
 
@@ -343,6 +344,8 @@ export default function ScanModal({
 
   const handleCheckin = async () => {
     if (!team) return;
+    if (isSubmittingRef.current) return; // Debounce: block double-tap
+    isSubmittingRef.current = true;
     setPhase('submitting');
 
     try {
@@ -376,6 +379,8 @@ export default function ScanModal({
     } catch {
       setErrorMsg('Gagal terhubung ke server.');
       setPhase('error');
+    } finally {
+      isSubmittingRef.current = false;
     }
   };
 
@@ -393,10 +398,12 @@ export default function ScanModal({
 
   const submitPoint = async () => {
     if (!team) return;
+    if (isSubmittingRef.current) return; // Debounce: block double-tap
+    isSubmittingRef.current = true;
     
     // For Two-Stage Scan, we only award points to those who were confirmed via scan
     const finalParticipantIds = confirmedMemberIds.length > 0 ? confirmedMemberIds : selectedMemberIds;
-    const calculatedPoints = activityPoints * finalParticipantIds.length;
+    const calculatedPoints = activityPoints;
     
     // Create detailed note
     const selectedNames = finalParticipantIds
@@ -443,6 +450,8 @@ export default function ScanModal({
     } catch {
       setErrorMsg('Gagal terhubung ke server.');
       setPhase('error');
+    } finally {
+      isSubmittingRef.current = false;
     }
   };
 
@@ -454,6 +463,7 @@ export default function ScanModal({
     setConfirmedMemberIds([]);
     setErrorMsg('');
     processingRef.current = false;
+    isSubmittingRef.current = false; // Reset debounce guard on retry
     // useEffect will handle startCamera
   };
 

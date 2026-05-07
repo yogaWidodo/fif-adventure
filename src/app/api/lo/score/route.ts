@@ -174,6 +174,12 @@ export async function PATCH(request: NextRequest): Promise<Response> {
     return Response.json({ error: 'team_id, activity_id and valid points are required' }, { status: 400 });
   }
 
+  // Validate Event Status — prevent score edits after event ends
+  const { data: statusData } = await supabase.from('settings').select('value').eq('key', 'event_status').single();
+  if (statusData?.value !== 'running') {
+    return Response.json({ error: 'Event sedang tidak berlangsung.' }, { status: 403 });
+  }
+
   const { data: userProfile } = await supabase
     .from('users')
     .select('id, role')

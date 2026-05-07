@@ -102,7 +102,7 @@ export default function TeamHistoryList({
   };
 
   return (
-    <div className="adventure-card border-primary/20 bg-card/90 overflow-hidden shadow-2xl">
+    <div className="adventure-card border-primary/20 bg-card/90 shadow-2xl">
       {/* Header */}
       <div className="flex items-center gap-3 px-6 py-4 border-b border-primary/20 bg-primary/5">
         <History className="w-4 h-4 text-primary" />
@@ -117,7 +117,7 @@ export default function TeamHistoryList({
       </div>
 
       {/* Rows */}
-      <div className="divide-y divide-primary/10 max-h-[500px] overflow-y-auto custom-scrollbar">
+      <div className="divide-y divide-primary/10 max-h-[60vh] overflow-y-auto custom-scrollbar" style={{ WebkitOverflowScrolling: 'touch' }}>
         <AnimatePresence mode="popLayout">
           {loading ? (
             <motion.div

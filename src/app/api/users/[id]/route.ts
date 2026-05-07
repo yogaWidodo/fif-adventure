@@ -96,31 +96,51 @@ export async function PATCH(
     updates.birth_date = formatDateForDB(body.birth_date.trim());
   }
 
-  // Handle npk change — requires updating Supabase Auth email + password
+  // Handle NPK or Birth Date change — requires updating Supabase Auth email and/or password
   const newNpk = typeof body.npk === 'string' ? body.npk.trim() : null;
-  if (newNpk !== null && newNpk !== currentUser.npk) {
-    if (!newNpk) {
-      return Response.json({ error: 'npk cannot be empty' }, { status: 400 });
+  const newBirthDateRaw = typeof body.birth_date === 'string' ? body.birth_date.trim() : null;
+  
+  const npkChanged = newNpk !== null && newNpk !== currentUser.npk;
+  const birthDateChanged = newBirthDateRaw !== null;
+
+  if ((npkChanged || birthDateChanged) && currentUser.auth_id) {
+    const authUpdates: any = {};
+    
+    if (npkChanged) {
+      if (!newNpk) return Response.json({ error: 'npk cannot be empty' }, { status: 400 });
+      authUpdates.email = buildAuthEmail(newNpk);
+      updates.npk = newNpk;
+    }
+    
+    if (birthDateChanged) {
+      authUpdates.password = newBirthDateRaw; // Password is the raw ddmmyyyy string
+    } else if (npkChanged) {
+      // If NPK changed but birth_date didn't, we still want to ensure password is the current birth_date
+      // In this system, the password is DDMMYYYY.
+      const { data: userWithBirthDate } = await supabaseAdmin
+        .from('users')
+        .select('birth_date')
+        .eq('id', id)
+        .single();
+        
+      if (userWithBirthDate?.birth_date) {
+        // Convert YYYY-MM-DD back to DDMMYYYY for the password
+        const [y, m, d] = userWithBirthDate.birth_date.split('-');
+        authUpdates.password = `${d}${m}${y}`;
+      }
     }
 
-    if (!currentUser.auth_id) {
-      return Response.json({ error: 'User has no auth account to update' }, { status: 400 });
-    }
-
-    // Update Supabase Auth email and password first
     const { error: authUpdateError } = await supabaseAdmin.auth.admin.updateUserById(
       currentUser.auth_id,
-      {
-        email: buildAuthEmail(newNpk),
-        password: newNpk,
-      }
+      authUpdates
     );
 
     if (authUpdateError) {
       console.error('[PATCH /api/users] auth update failed:', authUpdateError.message);
-      return Response.json({ error: 'Failed to update auth account' }, { status: 500 });
+      return Response.json({ error: `Gagal memperbarui akun login: ${authUpdateError.message}` }, { status: 500 });
     }
-
+  } else if (npkChanged) {
+    if (!newNpk) return Response.json({ error: 'npk cannot be empty' }, { status: 400 });
     updates.npk = newNpk;
   }
 

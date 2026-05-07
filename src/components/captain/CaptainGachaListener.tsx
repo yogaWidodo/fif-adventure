@@ -43,8 +43,11 @@ export default function CaptainGachaListener() {
     // Initial check
     checkGacha();
 
-    // Setup polling every 5 seconds (fallback incase realtime doesn't hit)
-    const interval = setInterval(checkGacha, 5000);
+    // Setup polling every 10 seconds, skip when tab hidden
+    const interval = setInterval(() => {
+      if (document.hidden) return;
+      checkGacha();
+    }, 10000);
     return () => clearInterval(interval);
   }, [user]);
 

@@ -24,10 +24,11 @@ export default function TeamJournal() {
     
     fetchJournalData(teamId);
 
-    // Polling every 10 seconds
+    // Polling every 15 seconds (matches server cache), skip when tab hidden
     const interval = setInterval(() => {
+      if (document.hidden) return;
       fetchJournalData(teamId);
-    }, 10000);
+    }, 15000);
 
     return () => clearInterval(interval);
   }, [user?.team_id]);

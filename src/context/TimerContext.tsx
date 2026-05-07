@@ -61,8 +61,11 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
 
     fetchTimerSettings();
 
-    // Polling every 15 seconds
-    const interval = setInterval(fetchTimerSettings, 15000);
+    // Polling every 15 seconds, skip when tab is hidden
+    const interval = setInterval(() => {
+      if (document.hidden) return;
+      fetchTimerSettings();
+    }, 15000);
 
     return () => clearInterval(interval);
   }, [user]);

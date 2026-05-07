@@ -1098,7 +1098,7 @@ function TreasureTab() {
   const [editingTreasure, setEditingTreasure] = useState<TreasureHunt | null>(null);
   const [expandedQR, setExpandedQR] = useState<string | null>(null);
   const [expandedClaims, setExpandedClaims] = useState<string | null>(null);
-  const [claimTeams, setClaimTeams] = useState<{ team_name: string }[]>([]);
+  const [claimTeams, setClaimTeams] = useState<{ team_name: string; claimer_name: string }[]>([]);
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 10;
 
@@ -1112,10 +1112,14 @@ function TreasureTab() {
   const fetchClaims = useCallback(async (treasureId: string) => {
     const { data } = await supabase
       .from('treasure_hunt_claims')
-      .select('team_id, teams(name)')
-      .eq('treasure_hunt_id', treasureId);
+      .select('team_id, claimed_by, claimed_at, teams(name), users!treasure_hunt_claims_claimed_by_fkey(name)')
+      .eq('treasure_hunt_id', treasureId)
+      .order('claimed_at', { ascending: false });
 
-    setClaimTeams((data || []).map((s: any) => ({ team_name: s.teams?.name || 'Unknown' })));
+    setClaimTeams((data || []).map((s: any) => ({
+      team_name: s.teams?.name || 'Unknown',
+      claimer_name: s.users?.name || 'Unknown'
+    })));
     setExpandedClaims(treasureId);
   }, []);
 
@@ -1296,7 +1300,10 @@ function TreasureTab() {
                       <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden mt-4 space-y-1">
                         <p className="text-[10px] uppercase font-adventure text-primary/40 border-b border-primary/10 pb-1">Claimed By:</p>
                         {claimTeams.length === 0 ? <p className="text-[10px] italic opacity-30">No claims yet</p> : claimTeams.map((c, i) => (
-                          <p key={i} className="text-[11px] text-foreground/70">• {c.team_name}</p>
+                          <div key={i} className="flex items-center justify-between py-1">
+                            <p className="text-[11px] text-foreground/70">• {c.team_name}</p>
+                            <span className="text-[9px] text-primary/50 italic">oleh {c.claimer_name}</span>
+                          </div>
                         ))}
                       </motion.div>
                     )}

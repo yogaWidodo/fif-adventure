@@ -324,6 +324,21 @@ export default function ScanModal({
 
       // --- NEW: DIRECT FLOW FOR CHALLENGE ---
       if (activityType !== 'wahana') {
+        // Early duplicate check: has this member already received points for this challenge?
+        const { data: existingScore } = await supabase
+          .from('score_logs')
+          .select('id')
+          .eq('activity_id', activityId)
+          .contains('participant_ids', [userRecord.id])
+          .maybeSingle();
+
+        if (existingScore) {
+          setErrorMsg(`${userRecord.name} sudah mendapatkan poin untuk challenge ini.`);
+          setPhase('error');
+          processingRef.current = false;
+          return;
+        }
+
         // Direct to scoring, confirm the scanned member
         setConfirmedMemberIds([userRecord.id]);
         setPhase('giving_point');

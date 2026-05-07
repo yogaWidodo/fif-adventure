@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import AssignLocationModal from '@/components/admin/AssignLocationModal';
 import { supabase } from '@/lib/supabase';
-import { parseUserCSV, type ParsedUserRow, type UploadReport } from '@/lib/userManagement';
+import { parseUserCSV, parseUserExcel, type ParsedUserRow, type UploadReport } from '@/lib/userManagement';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -341,17 +341,32 @@ function BulkUploadPanel({
     const file = e.target.files?.[0];
     if (!file) return;
     setFileName(file.name);
+    const isExcel = file.name.endsWith('.xlsx') || file.name.endsWith('.xls');
     const reader = new FileReader();
+    
     reader.onload = (ev) => {
-      const content = ev.target?.result as string;
-      const result = parseUserCSV(content);
+      const content = ev.target?.result;
+      if (!content) return;
+
+      let result;
+      if (isExcel) {
+        result = parseUserExcel(content as ArrayBuffer);
+      } else {
+        result = parseUserCSV(content as string);
+      }
+
       setAllRows(result.rows);
       setPreview(result.rows.slice(0, 5));
       setParseErrors(result.errors);
       setReport(null);
       setProgress(0);
     };
-    reader.readAsText(file);
+
+    if (isExcel) {
+      reader.readAsArrayBuffer(file);
+    } else {
+      reader.readAsText(file);
+    }
   };
 
   const handleImport = async () => {
@@ -446,10 +461,10 @@ function BulkUploadPanel({
           >
             <Upload className="w-10 h-10 text-primary/30 mx-auto mb-3 group-hover:scale-110 transition-transform" />
             <p className="text-[11px] text-foreground/60 uppercase tracking-[0.2em] font-adventure mb-1">
-              {fileName || 'Drop CSV file here or click to browse'}
+              {fileName || 'Drop CSV or Excel file here or click to browse'}
             </p>
             <p className="text-[9px] text-muted-foreground italic">Support: Name, NPK, Role, Birth Date, Team</p>
-            <input ref={fileInputRef} type="file" className="hidden" accept=".csv" onChange={handleFileChange} />
+            <input ref={fileInputRef} type="file" className="hidden" accept=".csv, .xlsx, .xls" onChange={handleFileChange} />
           </div>
 
           {allRows.length > 500 && (

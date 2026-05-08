@@ -418,7 +418,8 @@ export default function ScanModal({
     
     // For Two-Stage Scan, we only award points to those who were confirmed via scan
     const finalParticipantIds = confirmedMemberIds.length > 0 ? confirmedMemberIds : selectedMemberIds;
-    const calculatedPoints = activityPoints;
+    // Opsi B: each participant earns full activityPoints (e.g. 6 people × 60 pts = 360 total)
+    const calculatedPoints = activityPoints * finalParticipantIds.length;
     
     // Create detailed note
     const selectedNames = finalParticipantIds
@@ -508,7 +509,7 @@ export default function ScanModal({
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={{ scale: 0.92, opacity: 0, y: 20 }}
             transition={{ duration: 0.25, ease: 'easeOut' }}
-            className="adventure-card w-full max-w-sm mx-auto overflow-hidden"
+            className="adventure-card w-full max-w-sm mx-auto overflow-y-auto max-h-[90vh]"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
@@ -637,7 +638,7 @@ export default function ScanModal({
                       </p>
                     </div>
 
-                    <div className="adventure-card bg-black/40 border border-primary/20 rounded-lg max-h-[300px] overflow-y-auto custom-scrollbar p-3 space-y-2">
+                    <div className="adventure-card bg-black/40 border border-primary/20 rounded-lg max-h-[50vh] overflow-y-auto custom-scrollbar p-3 space-y-2">
                       {selectedMemberIds.map(memberId => {
                         const isConfirmed = confirmedMemberIds.includes(memberId);
                         const memberName = teamMembers.find(m => m.id === memberId)?.name || 'Member';
